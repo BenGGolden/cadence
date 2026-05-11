@@ -21,7 +21,7 @@ jobs:
 
       - name: Fetch plugin manifest schema
         run: |
-          curl --fail --silent --show-error \
+          curl --fail --silent --show-error --location \
             -o plugin-manifest.schema.json \
             https://json.schemastore.org/claude-code-plugin-manifest.json
 
