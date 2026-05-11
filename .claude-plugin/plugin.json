@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "cadence",
+  "version": "0.1.0",
+  "description": "Linear-driven workflow supervisor for Claude Code: subagents move issues through a state machine on a /schedule or /loop cadence, with humans approving at gates.",
+  "author": {
+    "name": "Ben Golden",
+    "url": "https://github.com/BenGGolden"
+  },
+  "repository": "https://github.com/BenGGolden/cadence",
+  "license": "MIT",
+  "keywords": ["linear", "workflow", "automation", "scheduling", "subagents", "supervisor"]
+}

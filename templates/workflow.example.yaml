@@ -1,0 +1,87 @@
+# .claude/workflow.yaml
+# ---------------------
+# Cadence workflow definition. The /cadence:cadence-tick bootstrap reads this
+# file on every fire. No restart needed for config changes — edit and the
+# next fire picks up the new shape.
+#
+# Validation rules (enforced at the top of every fire — invalid configs
+# never reach Linear):
+#   - Every linear_state / approved_linear_state / rework_linear_state value
+#     must be unique across the whole config.
+#   - Exactly one `entry` state; it must exist and be of type: agent.
+#   - Every `next`, `on_approve`, `on_rework` target must reference a
+#     defined state.
+#   - Every state.subagent must resolve to .claude/agents/{name}.md.
+
+linear:
+  # Required. Your Linear team key (e.g. "ENG", "PROD"). Used by the
+  # bootstrap when querying for eligible issues.
+  team: ENG
+
+  # Required. The Linear project to scope issues to. Use the project slug
+  # (the bit after /project/ in the Linear URL) or the project's UUID,
+  # whichever your Linear MCP server accepts.
+  project_slug: replace-with-your-project-slug
+
+  # Required. The Linear state new issues land in. Issues here are eligible
+  # for pickup; on first fire they move to the entry state's linear_state.
+  pickup_state: "Backlog"
+
+label:
+  # Soft lock label. Added at the start of every fire and removed at the
+  # end. Stale ones are cleared by /cadence:cadence-sweep.
+  cadence_active: "cadence-active"
+
+  # Set when an issue exceeds max_attempts_per_issue or max_rework.
+  # Excludes the issue from pickup until a human removes the label.
+  cadence_needs_human: "cadence-needs-human"
+
+limits:
+  # Hard cap on consecutive attempts at any single workflow state for a
+  # single issue. When exceeded, the bootstrap posts a needs-human comment
+  # and adds the cadence_needs_human label.
+  max_attempts_per_issue: 3
+
+  # Optional. /cadence:cadence-sweep clears cadence_active labels that have
+  # been set on issues with no updates within this window. Default 30.
+  # stale_after_minutes: 30
+
+# The first workflow state new issues enter. Must be type: agent.
+entry: plan
+
+states:
+  # ----------- planning -----------
+  plan:
+    type: agent
+    subagent: planner                # → .claude/agents/planner.md
+    linear_state: "Planning"         # Linear column for this state
+    next: implement                  # On success → this state
+
+  # ----------- implementation -----------
+  implement:
+    type: agent
+    subagent: implementer            # → .claude/agents/implementer.md
+    linear_state: "Implementing"
+    next: review
+
+  # ----------- human review gate -----------
+  review:
+    type: gate
+    # The three Linear columns the gate uses. All three MUST exist as
+    # distinct columns on your Linear board, and all three MUST be
+    # unique across the whole workflow config.
+    linear_state: "In Review"               # waiting — humans haven't decided
+    approved_linear_state: "Approved"       # human moves here to approve
+    rework_linear_state: "Needs Rework"     # human moves here to send back
+
+    on_approve: done                        # next state on approval
+    on_rework: implement                    # next state on rework
+
+    # Optional. Max rework rounds before the bootstrap escalates with
+    # cadence_needs_human. Omit for unlimited rework.
+    max_rework: 2
+
+  # ----------- terminal -----------
+  done:
+    type: terminal
+    linear_state: "Done"
