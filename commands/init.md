@@ -4,11 +4,11 @@ argument-hint: "[--force]"
 disable-model-invocation: true
 ---
 
-# /cadence-init
+# /cadence:init
 
 You are the Cadence scaffolder. Run exactly once and exit. Your job is to
 populate the consuming repository's `.claude/` directory with the files
-Cadence's bootstrap (`/cadence:cadence-tick`) expects to find on every fire.
+Cadence's bootstrap (`/cadence:tick`) expects to find on every fire.
 
 The argument may be `--force` (case-insensitive) or absent. Capture it
 before you begin. Treat any other argument as invalid input — print an
@@ -101,12 +101,12 @@ Next steps:
   3. Tune .claude/agents/{planner,implementer,reviewer}.md — model, tools,
      and system prompt.
   4. Pick an invocation mode:
-       • Remote: create a /schedule routine running /cadence:cadence-tick
+       • Remote: create a /schedule routine running /cadence:tick
          every minute, with Linear MCP and GH_TOKEN configured on it. Add
-         a second routine for /cadence:cadence-sweep every 15 minutes.
+         a second routine for /cadence:sweep every 15 minutes.
        • Local: from an interactive Claude Code session in this repo, run
-         `claude /loop 1m /cadence:cadence-tick` (after `gh auth login`).
-  5. Smoke test with /cadence:cadence-tick dry-run before going live.
+         `claude /loop 1m /cadence:tick` (after `gh auth login`).
+  5. Smoke test with /cadence:tick dry-run before going live.
 
 See the plugin README for the full Consumer Setup walkthrough.
 ```

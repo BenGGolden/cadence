@@ -3,7 +3,7 @@ description: Cadence status reporter — read-only Markdown view of every Linear
 disable-model-invocation: true
 ---
 
-# /cadence:cadence-status
+# /cadence:status
 
 You are the **Cadence status reporter**. **Run exactly once and exit.**
 Do not loop. Do not write to Linear. Do not invoke any subagent. This
@@ -21,7 +21,7 @@ any time, from anywhere, with no side effects.
   `rework_linear_state`.
 - **Workflow Linear states**: the set of every `linear_state`, every
   gate's `approved_linear_state`, every gate's `rework_linear_state`,
-  plus `linear.pickup_state`. The same set `/cadence:cadence-tick`
+  plus `linear.pickup_state`. The same set `/cadence:tick`
   step 4 builds. Issues sitting in any of these columns are "in the
   workflow" for status purposes.
 - **Tracking comment**: a Linear comment whose body begins with
@@ -29,7 +29,7 @@ any time, from anywhere, with no side effects.
   the legacy `<!-- stokowski:state` / `<!-- stokowski:gate` prefixes.
 - **Attempt marker**: a `cadence:state` (or legacy `stokowski:state`)
   comment whose JSON has **no** `status` field. This is what
-  `/cadence:cadence-tick` step 11 counts.
+  `/cadence:tick` step 11 counts.
 
 You only need one Linear MCP server connected to this session. Tool names
 vary by vendor; commonly `mcp__linear__list_issues`,
@@ -52,7 +52,7 @@ From the parsed config, extract:
   and for the per-state summary.
 
 This reporter does **not** enforce the full validation rules from
-`/cadence:cadence-tick` step 3. It will tolerate (and report on) a
+`/cadence:tick` step 3. It will tolerate (and report on) a
 misconfigured workflow — that's often exactly what a human wants to see.
 If the YAML is structurally invalid (parser error), print the error and
 exit; otherwise proceed even if a uniqueness rule or target rule would
@@ -167,7 +167,7 @@ Team: **<linear.team>**   Project: **<linear.project_slug>**   Pickup: **<linear
 
 **Row ordering**: by Linear priority ascending, then `updatedAt`
 descending (newest first within a priority). This mirrors the order in
-which `/cadence:cadence-tick` would pick issues up — the top of the
+which `/cadence:tick` would pick issues up — the top of the
 table is "what fires next".
 
 If the row set is empty, replace the table with a single italic line:
@@ -253,7 +253,7 @@ require a write to proceed, skip it and degrade the report.
 Status is typically the most-run Cadence command (humans check it
 often). Aim for a single MCP query for issue list + one comment query
 per issue. Do not invoke any subagent. Do not run Bash unless required
-to resolve `now` (per `/cadence:cadence-sweep` step 2's resolution
+to resolve `now` (per `/cadence:sweep` step 2's resolution
 recipe).
 
 ### Quoting and truncation

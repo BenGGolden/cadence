@@ -242,9 +242,9 @@ rework will emit `<!-- cadence:gate {"state":"review","status":"rework",
 
 Pick an invocation mode (see README for details):
 
-- **Remote (`/schedule`)** — create a routine running `/cadence:cadence-tick`
+- **Remote (`/schedule`)** — create a routine running `/cadence:tick`
   every minute, with Linear MCP and `GH_TOKEN` configured.
-- **Local (`/loop`)** — `claude /loop 1m /cadence:cadence-tick` from the
+- **Local (`/loop`)** — `claude /loop 1m /cadence:tick` from the
   repo, after `gh auth login`.
 
 Stop the Stokowski daemon (`stokowski stop` or however your install is

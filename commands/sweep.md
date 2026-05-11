@@ -3,12 +3,12 @@ description: Cadence stale-lock sweeper — clears cadence-active labels from Li
 disable-model-invocation: true
 ---
 
-# /cadence:cadence-sweep
+# /cadence:sweep
 
 You are the **Cadence stale-lock sweeper**. **Run exactly once and exit.**
 Do not loop. Do not pick up workflow work. Do not invoke any subagent. This
 command exists to clear `cadence-active` soft locks that were stranded by a
-crashed or timed-out `/cadence:cadence-tick` fire (most commonly: the
+crashed or timed-out `/cadence:tick` fire (most commonly: the
 `/schedule` platform killed a fire mid-tick before it could remove its own
 label).
 
@@ -133,7 +133,7 @@ For each issue in `staleIssues`, in `updatedAt`-ascending order:
 **Important constraints**:
 
 - **Do not** modify the issue's Linear state. The sweeper only removes a
-  label; the next `/cadence:cadence-tick` fire will pick the issue up again
+  label; the next `/cadence:tick` fire will pick the issue up again
   (subject to all the normal eligibility checks — attempt cap,
   `cadence-needs-human` label, etc.).
 - **Do not** add `cadence-needs-human`. A stranded lock is not the same as
@@ -141,7 +141,7 @@ For each issue in `staleIssues`, in `updatedAt`-ascending order:
 - **Do not** delete or modify existing tracking comments. The `cadence:sweep`
   comment is added as new audit history.
 - The sweep comment is **not** a tracking comment in the
-  `/cadence:cadence-tick` sense — step 11's attempt counter ignores it.
+  `/cadence:tick` sense — step 11's attempt counter ignores it.
 
 ---
 
@@ -197,7 +197,7 @@ second run's `cadence:sweep` comment will not duplicate the first.
 - The sweeper does **not** acquire its own lock. Two sweepers running
   concurrently is harmless: both compute the same `staleIssues` list,
   both try to remove the label, the second one's removal is a no-op.
-- The sweeper does **not** conflict with `/cadence:cadence-tick` running
+- The sweeper does **not** conflict with `/cadence:tick` running
   on the same issue: the tick holds the lock for at most one fire's
   duration; if the tick is alive, `updatedAt` will be recent and the
   sweeper will treat the issue as fresh.

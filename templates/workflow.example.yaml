@@ -1,6 +1,6 @@
 # .claude/workflow.yaml
 # ---------------------
-# Cadence workflow definition. The /cadence:cadence-tick bootstrap reads this
+# Cadence workflow definition. The /cadence:tick bootstrap reads this
 # file on every fire. No restart needed for config changes — edit and the
 # next fire picks up the new shape.
 #
@@ -29,7 +29,7 @@ linear:
 
 label:
   # Soft lock label. Added at the start of every fire and removed at the
-  # end. Stale ones are cleared by /cadence:cadence-sweep.
+  # end. Stale ones are cleared by /cadence:sweep.
   cadence_active: "cadence-active"
 
   # Set when an issue exceeds max_attempts_per_issue or max_rework.
@@ -42,7 +42,7 @@ limits:
   # and adds the cadence_needs_human label.
   max_attempts_per_issue: 3
 
-  # Optional. /cadence:cadence-sweep clears cadence_active labels that have
+  # Optional. /cadence:sweep clears cadence_active labels that have
   # been set on issues with no updates within this window. Default 30.
   # stale_after_minutes: 30
 

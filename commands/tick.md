@@ -4,7 +4,7 @@ argument-hint: "[dry-run]"
 disable-model-invocation: true
 ---
 
-# /cadence:cadence-tick
+# /cadence:tick
 
 You are the dispatch tick for the **Cadence** workflow. **Run exactly once and exit.**
 Do not loop. Do not start follow-up work. Do not invoke any tool not required by the
@@ -52,7 +52,7 @@ in your available tool list — the verbs below describe intent, not exact names
 ## Step 0 — Dry-run branch
 
 Trim `$ARGUMENTS` of surrounding whitespace. If the trimmed value matches `dry-run`
-case-insensitively (i.e. the user typed `/cadence:cadence-tick dry-run`):
+case-insensitively (i.e. the user typed `/cadence:tick dry-run`):
 
 1. Run steps 1–4 below exactly as written (read config, read global prompt,
    validate, build the workflow-Linear-states set).
@@ -495,7 +495,7 @@ Exit. Do not loop. Do not pick up another issue.
   Linear writes. Read-only operations only.
 - **After step 6:** any error must, on a best-effort basis, remove the
   `cadence_active` label before exiting. If even the label-removal fails, the
-  stale-lock sweeper (`/cadence:cadence-sweep`) will clear it on its next fire.
+  stale-lock sweeper (`/cadence:sweep`) will clear it on its next fire.
 - **Never** advance Linear state after a subagent failure (see Failure path
   below). The attempt marker from step 12 stands; the failure record records
   the outcome.

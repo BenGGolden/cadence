@@ -35,16 +35,16 @@ project after this run is the verification.
 
 1. [ ] `cd` into the throwaway consumer repo (NOT the Cadence plugin
        repo). Open a Claude Code session.
-2. [ ] Run `/cadence:cadence-init`.
+2. [ ] Run `/cadence:init`.
        **Expect**: `.claude/workflow.yaml`, `.claude/prompts/global.md`,
        `.claude/agents/{planner,implementer,reviewer}.md` are created.
        Next-steps instructions are printed.
-3. [ ] Run `/cadence:cadence-init` again (no `--force`).
+3. [ ] Run `/cadence:init` again (no `--force`).
        **Expect**: refuses to overwrite, names the existing path, exits.
 4. [ ] Edit `.claude/workflow.yaml` — fill in `linear.team`,
        `linear.project_slug` (your throwaway project), and leave the
        rest at defaults.
-5. [ ] Run `/cadence:cadence-tick dry-run`.
+5. [ ] Run `/cadence:tick dry-run`.
        **Expect**: validation `passed`, the workflow-Linear-states set
        is printed, a Lifecycle Context block for a hypothetical
        `EXAMPLE-1` entry-state issue is composed and printed, ending
@@ -52,7 +52,7 @@ project after this run is the verification.
 6. [ ] Introduce a deliberate validation error (e.g. set
        `states.plan.linear_state` to the same value as
        `states.implement.linear_state`).
-       Run `/cadence:cadence-tick dry-run`.
+       Run `/cadence:tick dry-run`.
        **Expect**: an error naming both states and the duplicated
        string. No Linear writes. Revert the edit before continuing.
 
@@ -63,7 +63,7 @@ project after this run is the verification.
 7. [ ] In Linear, create issue `CADENCE-TEST-1` in `Backlog` with a
        small, realistic description (e.g. "Add a `--version` flag to
        the CLI"). Set priority `Medium` (2).
-8. [ ] Run `/cadence:cadence-tick` interactively (one-shot, not
+8. [ ] Run `/cadence:tick` interactively (one-shot, not
        looped).
        **Expect**:
        - The issue moves `Backlog → Planning`.
@@ -76,7 +76,7 @@ project after this run is the verification.
        - The issue moves `Planning → Implementing` at end of fire.
        - The runtime prints
          `Cadence: CADENCE-TEST-1 advanced from plan → implement (attempt 1).`
-9. [ ] Run `/cadence:cadence-tick` again.
+9. [ ] Run `/cadence:tick` again.
        **Expect**:
        - The issue moves `Implementing → In Review` at end of fire.
        - A plain comment with the implementer's Markdown summary,
@@ -85,7 +85,7 @@ project after this run is the verification.
          comment is posted.
        - A new PR is open in GitHub against the throwaway repo's
          default branch.
-10. [ ] Run `/cadence:cadence-tick` again.
+10. [ ] Run `/cadence:tick` again.
         **Expect**: the gate is waiting; the fire releases the lock and
         exits with `No eligible issues.` or moves on to another issue
         (depending on the queue). The Linear column does not change.
@@ -96,7 +96,7 @@ project after this run is the verification.
 
 11. [ ] In Linear, manually move `CADENCE-TEST-1` from `In Review` to
         `Approved`.
-12. [ ] Run `/cadence:cadence-tick`.
+12. [ ] Run `/cadence:tick`.
         **Expect**:
         - The issue moves `Approved → Done` (the terminal state in the
           default workflow).
@@ -112,13 +112,13 @@ project after this run is the verification.
 ## Phase 4 — Gate rework
 
 14. [ ] In Linear, create issue `CADENCE-TEST-2` in `Backlog`. Run
-        `/cadence:cadence-tick` twice to drive it to `In Review`
+        `/cadence:tick` twice to drive it to `In Review`
         (Planning fire, then Implementing fire — same shape as
         Phase 2).
 15. [ ] In Linear, post a human comment on `CADENCE-TEST-2` explaining
         what to change ("please rename `foo` to `bar`"). Then move the
         issue from `In Review` to `Needs Rework`.
-16. [ ] Run `/cadence:cadence-tick`.
+16. [ ] Run `/cadence:tick`.
         **Expect**:
         - A `<!-- cadence:gate {"state":"review","status":"rework",
           "rework_to":"implement"} -->` comment is posted.
@@ -132,7 +132,7 @@ project after this run is the verification.
         - At end of fire, the issue moves `Implementing → In Review`
           again.
 17. [ ] In Linear, approve the issue (move to `Approved`). Run
-        `/cadence:cadence-tick` once more — should land in `Done`.
+        `/cadence:tick` once more — should land in `Done`.
 
 ---
 
@@ -143,7 +143,7 @@ project after this run is the verification.
         description empty or nonsensical, but a more honest test is to
         require a tool the subagent doesn't have (e.g. ask it to call
         a private API it has no credentials for).
-19. [ ] Run `/cadence:cadence-tick` three times in a row.
+19. [ ] Run `/cadence:tick` three times in a row.
         **Expect**:
         - Three attempt markers
           (`<!-- cadence:state {"state":"plan","attempt":N,...} -->`)
@@ -152,7 +152,7 @@ project after this run is the verification.
           (`<!-- cadence:state {"status":"failed",...} -->`) accumulate.
         - Linear state stays in `Planning` (failure path does not
           advance state).
-20. [ ] Run `/cadence:cadence-tick` a fourth time.
+20. [ ] Run `/cadence:tick` a fourth time.
         **Expect**:
         - A `[Cadence] Max attempts (3) reached at state plan` plain
           comment is posted.
@@ -170,20 +170,20 @@ project after this run is the verification.
         `updatedAt` is older than `limits.stale_after_minutes`
         (default 30 — for testing, temporarily set
         `stale_after_minutes: 1` in `workflow.yaml`).
-22. [ ] Run `/cadence:cadence-sweep`.
+22. [ ] Run `/cadence:sweep`.
         **Expect**:
         - The `cadence-active` label is removed.
         - A `<!-- cadence:sweep ... -->` comment is posted on the
           issue.
         - The summary report names the issue under **Cleared**.
-23. [ ] Run `/cadence:cadence-sweep` again.
+23. [ ] Run `/cadence:sweep` again.
         **Expect**: `No cadence-active locks found.` Idempotent.
 
 ---
 
 ## Phase 7 — Status reporter
 
-24. [ ] Run `/cadence:cadence-status`.
+24. [ ] Run `/cadence:status`.
         **Expect**:
         - The Markdown report renders with the rows from Phases 1–6
           (the closed issues in `Done`, the needs-human-flagged one in
@@ -201,7 +201,7 @@ project after this run is the verification.
 26. [ ] Pick any in-flight issue (or create one and drive it to
         `Implementing`). Manually drag it back to `Planning` in
         Linear.
-27. [ ] Run `/cadence:cadence-tick`.
+27. [ ] Run `/cadence:tick`.
         **Expect**:
         - A `<!-- cadence:reconcile {...} -->` comment is posted
           noting the drift.

@@ -7,13 +7,13 @@ one shot, fired by `/schedule` or `/loop`.
 
 Cadence is a reusable, packaged replacement for the per-project
 [Stokowski](https://github.com/Sugar-Coffee/stokowski) supervisor. Consuming
-projects install the plugin, run `/cadence:cadence-init`, edit one YAML
+projects install the plugin, run `/cadence:init`, edit one YAML
 file and three subagent prompts, point a scheduled routine at
-`/cadence:cadence-tick`, and watch Linear.
+`/cadence:tick`, and watch Linear.
 
 > **Build status:** v1 scaffolding is complete. All four slash commands
-> (`/cadence:cadence-init`, `/cadence:cadence-tick`,
-> `/cadence:cadence-sweep`, `/cadence:cadence-status`) are implemented
+> (`/cadence:init`, `/cadence:tick`,
+> `/cadence:sweep`, `/cadence:status`) are implemented
 > against the design in [PLAN.md](./PLAN.md). End-to-end smoke testing
 > against a live Linear project happens once per consuming repo
 > ([SMOKE.md](./SMOKE.md) is the checklist).
@@ -26,7 +26,7 @@ file and three subagent prompts, point a scheduled routine at
    /schedule or /loop fires on cron interval
         |
         v
-   /cadence:cadence-tick (Cadence bootstrap)
+   /cadence:tick (Cadence bootstrap)
         |
         +-- 1. Pick next eligible Linear issue
         +-- 2. Acquire soft lock (cadence-active label)
@@ -39,7 +39,7 @@ file and three subagent prompts, point a scheduled routine at
 
 Workflow state lives in Linear columns. There is no separate database,
 no orchestrator process, no resume-from-checkpoint. State machine
-behaviour is described in prose in `commands/cadence-tick.md` — that
+behaviour is described in prose in `commands/tick.md` — that
 prose IS the dispatch logic.
 
 ---
@@ -74,10 +74,10 @@ namespace:
 
 | File                          | Invocation                       |
 |-------------------------------|----------------------------------|
-| `commands/cadence-tick.md`    | `/cadence:cadence-tick`          |
-| `commands/cadence-init.md`    | `/cadence:cadence-init`          |
-| `commands/cadence-sweep.md`   | `/cadence:cadence-sweep`         |
-| `commands/cadence-status.md`  | `/cadence:cadence-status`        |
+| `commands/tick.md`            | `/cadence:tick`                  |
+| `commands/init.md`            | `/cadence:init`                  |
+| `commands/sweep.md`           | `/cadence:sweep`                 |
+| `commands/status.md`          | `/cadence:status`                |
 
 [marketplaces]: https://code.claude.com/docs/en/plugin-marketplaces
 
@@ -86,7 +86,7 @@ namespace:
 ## Consumer setup
 
 Both invocation modes use the same plugin and the same
-`/cadence:cadence-tick` command. They differ in where the cron lives.
+`/cadence:tick` command. They differ in where the cron lives.
 
 ### Mode A — Remote (`/schedule`)
 
@@ -96,7 +96,7 @@ Fully autonomous. No operator presence required between fires.
 # 1. Install plugin (see above).
 
 # 2. From the consuming repo's Claude Code session:
-/cadence:cadence-init
+/cadence:init
 
 # 3. Edit the scaffolded files:
 #    .claude/workflow.yaml        ← Linear team, project, state names
@@ -108,13 +108,13 @@ Fully autonomous. No operator presence required between fires.
 # 4. Create a /schedule routine:
 #       Schedule:  */1 * * * *
 #       Repo:      this repo
-#       Prompt:    /cadence:cadence-tick
+#       Prompt:    /cadence:tick
 #       MCP:       Linear MCP server
 #       Env:       GH_TOKEN (for gh CLI in the implementer)
 
 # 5. Create a second /schedule routine for stale-lock cleanup:
 #       Schedule:  */15 * * * *
-#       Prompt:    /cadence:cadence-sweep
+#       Prompt:    /cadence:sweep
 
 # 6. Watch Linear.
 ```
@@ -127,7 +127,7 @@ Operator-tended. Runs in a local Claude Code session in the repo.
 # Steps 1-3 identical to Mode A.
 
 # 4. From an interactive Claude Code session in the repo, after gh auth login:
-claude /loop 1m /cadence:cadence-tick
+claude /loop 1m /cadence:tick
 
 # 5. Leave the session running. Interrupt with Ctrl+C to pause.
 ```
@@ -154,11 +154,11 @@ watch their fleet and keep work on a laptop pick local.
 
 ## Watching the workflow
 
-Once the routines are running, the human-facing view is `/cadence:cadence-status`.
+Once the routines are running, the human-facing view is `/cadence:status`.
 It's read-only and safe to run any time:
 
 ```
-$ claude /cadence:cadence-status
+$ claude /cadence:status
 ```
 
 Sample output for a small workflow with three live issues:
@@ -208,14 +208,14 @@ cap and is now sidelined until a human removes the
 no fire seems to be doing anything with it. The status report shows 🔒
 but the issue's `updatedAt` is older than your tick interval.
 
-**Cause**: a previous `/cadence:cadence-tick` fire was killed mid-tick
+**Cause**: a previous `/cadence:tick` fire was killed mid-tick
 (platform timeout, network drop) before it could remove its own label.
 
-**Fix**: the `/cadence:cadence-sweep` routine clears these automatically
+**Fix**: the `/cadence:sweep` routine clears these automatically
 on its cadence (default every 15 minutes — see Mode A setup). For an
-immediate clear, run `/cadence:cadence-sweep` once interactively, or
+immediate clear, run `/cadence:sweep` once interactively, or
 manually delete the `cadence-active` label in Linear. The next
-`/cadence:cadence-tick` fire will pick the issue back up.
+`/cadence:tick` fire will pick the issue back up.
 
 The sweeper's threshold is configurable in `.claude/workflow.yaml`:
 
@@ -242,7 +242,7 @@ automatically.
 2. Address the root cause — fix the env, clarify the issue description,
    or break the task down.
 3. Remove the `cadence-needs-human` label in Linear. The next
-   `/cadence:cadence-tick` fire will pick the issue up. The attempt
+   `/cadence:tick` fire will pick the issue up. The attempt
    counter is **not** reset by removing the label — if you want a clean
    slate, also delete the prior attempt-marker comments (the bootstrap
    counts them on every fire).
@@ -267,7 +267,7 @@ comments if you want it to.
 
 ### Validation errors
 
-**Symptom**: every `/cadence:cadence-tick` fire exits immediately with a
+**Symptom**: every `/cadence:tick` fire exits immediately with a
 config error, no Linear writes happen.
 
 **Cause**: `.claude/workflow.yaml` violates a validation rule (duplicate
@@ -275,7 +275,7 @@ Linear column, undefined target, missing subagent file).
 
 **Fix**: read the error — it names the offending keys. Fix
 `.claude/workflow.yaml`. The next fire will succeed; no restart needed.
-Run `/cadence:cadence-tick dry-run` to confirm before going live again.
+Run `/cadence:tick dry-run` to confirm before going live again.
 
 ### Issue moved to an unmapped state
 
@@ -303,7 +303,7 @@ authoritative state.
 **Fix**: usually none required — this is expected. If you didn't mean
 to move it, just move it back and the next fire will re-reconcile.
 
-### `/cadence:cadence-status` is slow
+### `/cadence:status` is slow
 
 **Symptom**: status takes tens of seconds to render.
 
@@ -345,7 +345,7 @@ truth for the build.
 
 ## Files this plugin scaffolds
 
-`/cadence:cadence-init` creates the following in the consumer's repo:
+`/cadence:init` creates the following in the consumer's repo:
 
 ```
 <consumer-repo>/
@@ -359,8 +359,8 @@ truth for the build.
         └── reviewer.md           # Sonnet, read-only
 ```
 
-Re-running `/cadence:cadence-init` refuses to overwrite. Use
-`/cadence:cadence-init --force` to replace existing files.
+Re-running `/cadence:init` refuses to overwrite. Use
+`/cadence:init --force` to replace existing files.
 
 ---
 

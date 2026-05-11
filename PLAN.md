@@ -34,7 +34,7 @@ Same end behaviour as Stokowski: Linear issues flow through a state machine, age
    bootstrap routine prompt (static, set at routine creation)
         |
         v
-   slash command in the repo: /cadence-tick
+   slash command in the repo: /cadence:tick
         |
         +-- 1. Pick next eligible issue from Linear
         +-- 2. Acquire soft lock: add cadence-active label
@@ -62,22 +62,22 @@ Plugin name: `cadence`. The plugin lives at the **repo root** (`c:\Code\Cadence\
 <repo-root>/
   plugin.json                    # Claude Code plugin manifest (schema fetched from Anthropic docs at build time)
   commands/
-    cadence-tick.md              # /cadence-tick — the bootstrap (heart of system)
-    cadence-init.md              # /cadence-init — scaffolds workflow.yaml + subagent stubs into the consuming repo
-    cadence-sweep.md             # /cadence-sweep — stale-lock cleanup
-    cadence-status.md            # /cadence-status — human-facing status view
+    tick.md              # /cadence:tick — the bootstrap (heart of system)
+    init.md              # /cadence:init — scaffolds workflow.yaml + subagent stubs into the consuming repo
+    sweep.md             # /cadence:sweep — stale-lock cleanup
+    status.md            # /cadence:status — human-facing status view
   agents/
     _template-planner.md         # starter subagents the consumer customises
     _template-implementer.md
     _template-reviewer.md
   templates/
-    workflow.example.yaml        # copied by /cadence-init
-    global-prompt.example.md     # copied by /cadence-init
+    workflow.example.yaml        # copied by /cadence:init
+    global-prompt.example.md     # copied by /cadence:init
   README.md                      # consumer-facing setup guide
   MIGRATION.md                   # Stokowski → Cadence guide
 ```
 
-Consumer repo after `/cadence-init`:
+Consumer repo after `/cadence:init`:
 
 ```
 <repo>/
@@ -101,7 +101,7 @@ Use whatever schema the **current** Anthropic docs prescribe. The build session 
 
 - Plugin name (`cadence`)
 - Version
-- The four slash commands (`/cadence-tick`, `/cadence-init`, `/cadence-sweep`, `/cadence-status`)
+- The four slash commands (`/cadence:tick`, `/cadence:init`, `/cadence:sweep`, `/cadence:status`)
 - The three starter subagents
 - Any required permissions / MCP servers the consumer must wire up
 
@@ -121,7 +121,7 @@ claude plugin install github:BenGGolden/cadence
 
 ## Subagent definitions (starter set)
 
-Each subagent is a `.md` file with frontmatter. The plugin ships `_template-*.md` files in `cadence/agents/`; `/cadence-init` copies them into the consumer's `.claude/agents/` under their final names.
+Each subagent is a `.md` file with frontmatter. The plugin ships `_template-*.md` files in `cadence/agents/`; `/cadence:init` copies them into the consumer's `.claude/agents/` under their final names.
 
 **planner.md** — Opus, read-only tools. Planning is the highest-leverage step (bad plan poisons everything downstream), small token budget, ambiguity-heavy — pay for the strongest reasoning here.
 ```yaml
@@ -252,7 +252,7 @@ label:
 
 limits:
   max_attempts_per_issue: 3               # counted via tracking comments
-  stale_after_minutes: 30                 # /cadence-sweep clears cadence_active locks older than this
+  stale_after_minutes: 30                 # /cadence:sweep clears cadence_active locks older than this
 
 entry: plan                               # First workflow state for new issues
 
@@ -285,7 +285,7 @@ states:
 
 The bootstrap reads this file each fire. No restart needed for config changes.
 
-### Validation rules (enforced at the top of `/cadence-tick`)
+### Validation rules (enforced at the top of `/cadence:tick`)
 
 1. Every `linear_state` (and every gate's `approved_linear_state` / `rework_linear_state`) must be **unique** across the whole config. Two workflow states cannot share a Linear state. On collision: the bootstrap exits with a clear error message (no Linear writes).
 2. Exactly one `entry` state. The named state must exist and be of `type: agent`.
@@ -332,9 +332,9 @@ What comments are used for:
 
 ---
 
-## Bootstrap prompt (the `/cadence-tick` body)
+## Bootstrap prompt (the `/cadence:tick` body)
 
-The full contents of `commands/cadence-tick.md` (the slash command body) is roughly the following. Session B writes this prose; it must be specific enough that a fresh agent running it produces correct behaviour every fire.
+The full contents of `commands/cadence:tick.md` (the slash command body) is roughly the following. Session B writes this prose; it must be specific enough that a fresh agent running it produces correct behaviour every fire.
 
 ```
 You are the dispatch tick for the Cadence workflow. Run exactly once and exit.
@@ -511,13 +511,13 @@ Uniform rule for both invocation modes: **one tick/fire processes exactly one is
 ## Failure handling
 
 - **Subagent error**: bootstrap catches and posts a `<!-- cadence:state {"state":"X","attempt":N,"status":"failed","error":"..."} -->` failure record (the attempt-marker from step 12 already established N as a counted attempt; this failure record is for the audit trail and is NOT counted by step 11). Releases lock. Next fire will retry until `max_attempts_per_issue`.
-- **Bootstrap timeout (`/schedule` platform max)**: the platform kills the fire. The lock label persists until a human or sweeper removes it. Mitigation: a separate `/schedule` routine running `/cadence-sweep` every 15 min that removes the label from issues with no recent activity (see below).
+- **Bootstrap timeout (`/schedule` platform max)**: the platform kills the fire. The lock label persists until a human or sweeper removes it. Mitigation: a separate `/schedule` routine running `/cadence:sweep` every 15 min that removes the label from issues with no recent activity (see below).
 - **Linear API down**: bootstrap fails before lock acquisition (step 6). No side effects. Next fire retries.
 - **Permanent issue failure**: after `max_attempts_per_issue`, the bootstrap posts a needs-human comment + `cadence-needs-human` label. The label keeps it out of the queue until a human intervenes.
 
-### `/cadence-sweep` semantics
+### `/cadence:sweep` semantics
 
-The body of `commands/cadence-sweep.md`:
+The body of `commands/cadence:sweep.md`:
 
 ```
 You are the Cadence stale-lock sweeper. Run exactly once and exit.
@@ -536,15 +536,15 @@ Configurable via an optional `limits.stale_after_minutes` field in workflow.yaml
 
 ---
 
-## `/cadence-status` semantics
+## `/cadence:status` semantics
 
-Read-only status view. Prints a Markdown table to the user's terminal. Body of `commands/cadence-status.md`:
+Read-only status view. Prints a Markdown table to the user's terminal. Body of `commands/cadence:status.md`:
 
 ```
 You are the Cadence status reporter. Run exactly once and exit.
 
 1. Read .claude/workflow.yaml.
-2. Build the set of workflow Linear states (same as /cadence-tick step 4).
+2. Build the set of workflow Linear states (same as /cadence:tick step 4).
 3. Query Linear for all issues in those states. For each, capture:
    - Identifier, title, current Linear state
    - cadence_active and cadence-needs-human label presence
@@ -561,7 +561,7 @@ No Linear writes. Safe to run at any time.
 
 ## Consumer setup
 
-Two invocation modes. Both use the same plugin and the same `/cadence-tick` command — they differ only in where the cron lives.
+Two invocation modes. Both use the same plugin and the same `/cadence:tick` command — they differ only in where the cron lives.
 
 ### Mode A — Remote (`/schedule`)
 
@@ -574,14 +574,14 @@ claude plugin install github:BenGGolden/cadence
 # (or: claude plugin install /path/to/local/cadence)
 
 # 2. Scaffold workflow
-claude /cadence-init
+claude /cadence:init
 
 # 3. Edit .claude/workflow.yaml, .claude/agents/*.md, .claude/prompts/global.md
 
 # 4. Create a routine via /schedule:
 #    - Schedule: */1 * * * *
 #    - Repo: this repo
-#    - Prompt: /cadence-tick
+#    - Prompt: /cadence:tick
 #    - Linear MCP configured on the routine
 #    - GH_TOKEN env var configured on the routine
 
@@ -590,7 +590,7 @@ claude /cadence-init
 
 Second routine for the stale-lock sweeper:
 - Schedule: `*/15 * * * *`
-- Prompt: `/cadence-sweep`
+- Prompt: `/cadence:sweep`
 
 ### Mode B — Local (`/loop`)
 
@@ -600,12 +600,12 @@ Operator-tended, runs in a local Claude Code session.
 # Steps 1-3 identical.
 
 # 4. From an interactive Claude Code session in the repo, after gh auth login:
-claude /loop 1m /cadence-tick
+claude /loop 1m /cadence:tick
 
 # 5. Leave the session running. Interrupt with Ctrl+C to pause.
 ```
 
-No stale-lock sweeper needed — there's no remote platform timeout, and the operator can resolve stuck locks manually via `/cadence-status` (or by deleting the `cadence-active` label in Linear).
+No stale-lock sweeper needed — there's no remote platform timeout, and the operator can resolve stuck locks manually via `/cadence:status` (or by deleting the `cadence-active` label in Linear).
 
 ### Choosing a mode
 
@@ -653,18 +653,18 @@ The build is partitioned into three self-contained sessions. Each session's "Del
 
 Every session starts by re-reading this `PLAN.md` and the current Anthropic Claude Code plugin docs (WebFetch).
 
-### Session A — Scaffolding (plugin skeleton + /cadence-init + starter subagents)
+### Session A — Scaffolding (plugin skeleton + /cadence:init + starter subagents)
 
 **Goal**: produce an installable Cadence plugin that scaffolds the consumer's `.claude/` directory correctly, but does not yet implement the dispatch tick.
 
 **Deliverables** (all under `c:\Code\Cadence\`):
 1. `plugin.json` — manifest conforming to current Anthropic plugin spec (fetch docs first). Declares the four slash commands and three starter subagents.
-2. `commands/cadence-tick.md` — **stub only**: prints "TODO: implemented in session B" and exits. Frontmatter + description correct, body to be filled by session B.
-3. `commands/cadence-init.md` — full implementation. Logic:
+2. `commands/cadence:tick.md` — **stub only**: prints "TODO: implemented in session B" and exits. Frontmatter + description correct, body to be filled by session B.
+3. `commands/cadence:init.md` — full implementation. Logic:
    - Refuse to overwrite an existing `.claude/workflow.yaml` unless invoked with a `--force` argument; print the existing path and exit.
    - Otherwise create `.claude/agents/`, `.claude/prompts/`, copy template files, write `.claude/workflow.yaml` from `templates/workflow.example.yaml`, write `.claude/prompts/global.md` from `templates/global-prompt.example.md`.
    - Print next-steps instructions (edit these files, then set up `/schedule` or `/loop`).
-4. `commands/cadence-sweep.md`, `commands/cadence-status.md` — stubs only ("TODO: implemented in session C").
+4. `commands/cadence:sweep.md`, `commands/cadence:status.md` — stubs only ("TODO: implemented in session C").
 5. `agents/_template-planner.md`, `_template-implementer.md`, `_template-reviewer.md` — full frontmatter + body. Body content adapts the Stokowski-style prompts (investigate / implement / review) to the Cadence contract: subagents do NOT call Linear directly, they return a summary string. The implementer body covers branch creation, commits, `gh pr create`, rework path (push to existing branch, no force-push).
 6. `templates/workflow.example.yaml` — annotated single-project workflow with `plan → implement → review (gate) → done` matching the example in PLAN.md.
 7. `templates/global-prompt.example.md` — adapted from Stokowski's global.example.md. Drop the "post your own Workpad" instruction since the bootstrap now posts everything; keep the "no questions, no interactive commands, headless" rules.
@@ -674,19 +674,19 @@ Every session starts by re-reading this `PLAN.md` and the current Anthropic Clau
 **Verification**:
 - `plugin.json` parses cleanly (JSON validity).
 - All command/agent files have valid frontmatter.
-- Install the plugin into a throwaway Claude Code session. Run `/cadence-init` against an empty temp directory. Verify the expected file tree is produced.
-- Run `/cadence-init` again — should refuse to overwrite.
-- Run `/cadence-init --force` — should overwrite.
-- Run `/cadence-tick` — should print the stub message and exit cleanly.
+- Install the plugin into a throwaway Claude Code session. Run `/cadence:init` against an empty temp directory. Verify the expected file tree is produced.
+- Run `/cadence:init` again — should refuse to overwrite.
+- Run `/cadence:init --force` — should overwrite.
+- Run `/cadence:tick` — should print the stub message and exit cleanly.
 
 **Out of scope** for session A: the bootstrap prose itself, the sweeper logic, the status reporter logic.
 
-### Session B — Bootstrap (/cadence-tick prose)
+### Session B — Bootstrap (/cadence:tick prose)
 
-**Goal**: replace the `/cadence-tick` stub with the full dispatch prose described in this PLAN.
+**Goal**: replace the `/cadence:tick` stub with the full dispatch prose described in this PLAN.
 
 **Deliverables**:
-1. `commands/cadence-tick.md` rewritten as full bootstrap (using the prose in this PLAN's "Bootstrap prompt" section as the template). Must include:
+1. `commands/cadence:tick.md` rewritten as full bootstrap (using the prose in this PLAN's "Bootstrap prompt" section as the template). Must include:
    - The dry-run branch (step 0).
    - All validation rules (step 3).
    - The Lifecycle Context block construction (step 13) — verbatim shape per PLAN.
@@ -696,28 +696,28 @@ Every session starts by re-reading this `PLAN.md` and the current Anthropic Clau
 2. Update `templates/workflow.example.yaml` if any field is missing for the bootstrap to work (e.g. add `limits.stale_after_minutes` as a commented-out optional field, since session C will need it).
 
 **Verification**:
-- Run `/cadence-tick dry-run` in a repo where `/cadence-init` has been executed. Dry-run does NOT call Linear MCP — it only reads config, validates, and prints the Lifecycle Context block it *would* compose for a hypothetical entry-state issue. Output must include "DRY RUN — no side effects."
+- Run `/cadence:tick dry-run` in a repo where `/cadence:init` has been executed. Dry-run does NOT call Linear MCP — it only reads config, validates, and prints the Lifecycle Context block it *would* compose for a hypothetical entry-state issue. Output must include "DRY RUN — no side effects."
 - Read the file and walk through each of the 18 numbered steps; confirm each maps to a clear instruction the runtime agent can follow without ambiguity.
 - Mock-run by hand against synthetic issue descriptions covering: entry-state issue with no comments, gate→approve, gate→rework with max_rework exceeded, attempt cap exceeded. Walk the prose for each; the routing should match this PLAN.
 
 **Out of scope**: sweeper, status, docs.
 
-### Session C — Operations (/cadence-sweep + /cadence-status + polish)
+### Session C — Operations (/cadence:sweep + /cadence:status + polish)
 
 **Goal**: ship the operational commands and finalise docs.
 
 **Deliverables**:
-1. `commands/cadence-sweep.md` — full prose per PLAN. Honours `limits.stale_after_minutes` from workflow.yaml.
-2. `commands/cadence-status.md` — full prose per PLAN. Read-only; produces Markdown table + summary.
+1. `commands/cadence:sweep.md` — full prose per PLAN. Honours `limits.stale_after_minutes` from workflow.yaml.
+2. `commands/cadence:status.md` — full prose per PLAN. Read-only; produces Markdown table + summary.
 3. README updates:
-   - Sample Markdown output of `/cadence-status` so consumers know what to expect.
+   - Sample Markdown output of `/cadence:status` so consumers know what to expect.
    - Troubleshooting section: stale locks, max-attempts hit, validation errors, the `cadence-needs-human` label workflow.
 4. MIGRATION.md polish: explicit example showing a `<!-- stokowski:state ... -->` comment surviving migration.
 5. End-to-end smoke checklist (manual): a single page listing the steps to validate against a real throwaway Linear project after merge.
 
 **Verification**:
-- Run `/cadence-sweep` in dry-run terms (read the prose, walk through it against synthetic data).
-- Run `/cadence-status` against a freshly-`/cadence-init`-ed repo with no Linear data; it should produce an empty table without errors.
+- Run `/cadence:sweep` in dry-run terms (read the prose, walk through it against synthetic data).
+- Run `/cadence:status` against a freshly-`/cadence:init`-ed repo with no Linear data; it should produce an empty table without errors.
 - Spell-check / link-check the README and MIGRATION.
 
 ---
