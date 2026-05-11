@@ -1,5 +1,5 @@
 ---
-name: _template-reviewer
+name: reviewer
 description: Reviews an open PR linked to a Linear issue. Read-only — produces a Markdown review findings summary that the Cadence bootstrap posts as a Linear comment alongside any inline GitHub review comments. Use during the `review` gate (informational; humans approve).
 model: sonnet
 tools: [Read, Grep, Glob, WebFetch]

@@ -1,0 +1,73 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  plugin-manifest:
+    name: Plugin manifest schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install ajv-cli
+        run: npm install --global ajv-cli@5 ajv-formats@3
+
+      - name: Fetch plugin manifest schema
+        run: |
+          curl --fail --silent --show-error \
+            -o plugin-manifest.schema.json \
+            https://json.schemastore.org/claude-code-plugin-manifest.json
+
+      - name: Validate .claude-plugin/plugin.json
+        run: |
+          ajv validate \
+            -c ajv-formats \
+            -s plugin-manifest.schema.json \
+            -d .claude-plugin/plugin.json \
+            --strict=false
+
+  command-frontmatter:
+    name: Command frontmatter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Parse YAML frontmatter for every command
+        shell: python
+        run: |
+          import pathlib, re, sys, yaml
+
+          fail = False
+          for path in sorted(pathlib.Path("commands").glob("*.md")):
+              text = path.read_text(encoding="utf-8")
+              match = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
+              if not match:
+                  print(f"::error file={path}::missing YAML frontmatter")
+                  fail = True
+                  continue
+              try:
+                  fm = yaml.safe_load(match.group(1)) or {}
+              except yaml.YAMLError as exc:
+                  print(f"::error file={path}::invalid YAML frontmatter: {exc}")
+                  fail = True
+                  continue
+              if "description" not in fm:
+                  print(f"::error file={path}::frontmatter missing 'description'")
+                  fail = True
+              if fm.get("disable-model-invocation") is not True:
+                  print(f"::warning file={path}::disable-model-invocation is not true; subagents may auto-trigger this command")
+          sys.exit(1 if fail else 0)

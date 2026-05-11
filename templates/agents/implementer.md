@@ -1,5 +1,5 @@
 ---
-name: _template-implementer
+name: implementer
 description: Implements the plan from the prior planning comment. Opens or updates a GitHub PR. Returns a Markdown summary string (including the PR URL) that the Cadence bootstrap posts as a Linear comment. Use during the `implement` workflow state.
 model: sonnet
 tools: [Read, Edit, Write, Bash, Grep, Glob]

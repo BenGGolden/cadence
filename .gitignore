@@ -1,0 +1,21 @@
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Local Claude Code state — never commit consumer-side scaffolding from
+# experimentation in this repo
+.claude/
+!.claude-plugin/
+
+# Logs and scratch
+*.log
+.tmp/
+.cache/

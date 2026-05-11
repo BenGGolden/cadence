@@ -1,5 +1,5 @@
 ---
-name: _template-planner
+name: planner
 description: Breaks down a Linear issue into a concrete implementation plan. Read-only — produces a Markdown plan summary string that the Cadence bootstrap will post as a Linear comment. Use during the `plan` workflow state.
 model: opus
 tools: [Read, Grep, Glob, WebFetch, Bash]

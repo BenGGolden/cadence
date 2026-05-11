@@ -66,13 +66,13 @@ Plugin name: `cadence`. The plugin lives at the **repo root** (`c:\Code\Cadence\
     init.md              # /cadence:init — scaffolds workflow.yaml + subagent stubs into the consuming repo
     sweep.md             # /cadence:sweep — stale-lock cleanup
     status.md            # /cadence:status — human-facing status view
-  agents/
-    _template-planner.md         # starter subagents the consumer customises
-    _template-implementer.md
-    _template-reviewer.md
   templates/
     workflow.example.yaml        # copied by /cadence:init
     global-prompt.example.md     # copied by /cadence:init
+    agents/
+      planner.md                 # starter subagents the consumer customises
+      implementer.md
+      reviewer.md
   README.md                      # consumer-facing setup guide
   MIGRATION.md                   # Stokowski → Cadence guide
 ```
@@ -121,7 +121,7 @@ claude plugin install github:BenGGolden/cadence
 
 ## Subagent definitions (starter set)
 
-Each subagent is a `.md` file with frontmatter. The plugin ships `_template-*.md` files in `cadence/agents/`; `/cadence:init` copies them into the consumer's `.claude/agents/` under their final names.
+Each subagent is a `.md` file with frontmatter. The plugin ships starter files under `cadence/templates/agents/`; `/cadence:init` copies them into the consumer's `.claude/agents/`. They live outside the plugin's `agents/` tree on purpose — anything under `agents/` is auto-registered as a plugin-provided subagent in every consuming session, and the starter set is meant to be consumer-owned, not plugin-resident.
 
 **planner.md** — Opus, read-only tools. Planning is the highest-leverage step (bad plan poisons everything downstream), small token budget, ambiguity-heavy — pay for the strongest reasoning here.
 ```yaml
@@ -665,7 +665,7 @@ Every session starts by re-reading this `PLAN.md` and the current Anthropic Clau
    - Otherwise create `.claude/agents/`, `.claude/prompts/`, copy template files, write `.claude/workflow.yaml` from `templates/workflow.example.yaml`, write `.claude/prompts/global.md` from `templates/global-prompt.example.md`.
    - Print next-steps instructions (edit these files, then set up `/schedule` or `/loop`).
 4. `commands/cadence:sweep.md`, `commands/cadence:status.md` — stubs only ("TODO: implemented in session C").
-5. `agents/_template-planner.md`, `_template-implementer.md`, `_template-reviewer.md` — full frontmatter + body. Body content adapts the Stokowski-style prompts (investigate / implement / review) to the Cadence contract: subagents do NOT call Linear directly, they return a summary string. The implementer body covers branch creation, commits, `gh pr create`, rework path (push to existing branch, no force-push).
+5. `templates/agents/planner.md`, `implementer.md`, `reviewer.md` — full frontmatter + body. Body content adapts the Stokowski-style prompts (investigate / implement / review) to the Cadence contract: subagents do NOT call Linear directly, they return a summary string. The implementer body covers branch creation, commits, `gh pr create`, rework path (push to existing branch, no force-push). They live under `templates/` rather than `agents/` so the plugin's own session does not auto-register them.
 6. `templates/workflow.example.yaml` — annotated single-project workflow with `plan → implement → review (gate) → done` matching the example in PLAN.md.
 7. `templates/global-prompt.example.md` — adapted from Stokowski's global.example.md. Drop the "post your own Workpad" instruction since the bootstrap now posts everything; keep the "no questions, no interactive commands, headless" rules.
 8. `README.md` — install + setup walkthrough for both modes.

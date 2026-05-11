@@ -18,7 +18,7 @@ error and exit.
 
 You are running from the consumer's repository root. The plugin templates
 live under `${CLAUDE_PLUGIN_ROOT}/templates/` and the agent templates under
-`${CLAUDE_PLUGIN_ROOT}/agents/_template-{planner,implementer,reviewer}.md`.
+`${CLAUDE_PLUGIN_ROOT}/templates/agents/{planner,implementer,reviewer}.md`.
 Do NOT write anywhere outside the current working directory.
 
 ## Step 2 — Overwrite check
@@ -59,16 +59,13 @@ actual plugin root at runtime.
 |-------------------------------------------------------------------|------------------------------|
 | `${CLAUDE_PLUGIN_ROOT}/templates/workflow.example.yaml`           | `.claude/workflow.yaml`      |
 | `${CLAUDE_PLUGIN_ROOT}/templates/global-prompt.example.md`        | `.claude/prompts/global.md`  |
-| `${CLAUDE_PLUGIN_ROOT}/agents/_template-planner.md`               | `.claude/agents/planner.md`  |
-| `${CLAUDE_PLUGIN_ROOT}/agents/_template-implementer.md`           | `.claude/agents/implementer.md` |
-| `${CLAUDE_PLUGIN_ROOT}/agents/_template-reviewer.md`              | `.claude/agents/reviewer.md` |
+| `${CLAUDE_PLUGIN_ROOT}/templates/agents/planner.md`               | `.claude/agents/planner.md`  |
+| `${CLAUDE_PLUGIN_ROOT}/templates/agents/implementer.md`           | `.claude/agents/implementer.md` |
+| `${CLAUDE_PLUGIN_ROOT}/templates/agents/reviewer.md`              | `.claude/agents/reviewer.md` |
 
-When copying the agent templates, **change the `name:` field in the
-frontmatter** from `_template-planner` / `_template-implementer` /
-`_template-reviewer` to `planner` / `implementer` / `reviewer`
-respectively. The rest of the file is copied verbatim. The consumer's
-`workflow.yaml` references these short names; the underscore-prefixed names
-are reserved for the plugin's shipped templates.
+The agent templates already carry their final `name:` (`planner`,
+`implementer`, `reviewer`) in their frontmatter — copy them verbatim. The
+consumer's `workflow.yaml` references these short names.
 
 If `--force` was supplied and a destination already exists, overwrite it.
 If `--force` was NOT supplied (which means step 2 fell through because
