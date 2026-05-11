@@ -1,23 +1,267 @@
 ---
-description: Cadence human-facing status view — prints a Markdown table of issues in the workflow. (Session A stub; full body lands in Session C.)
+description: Cadence status reporter — read-only Markdown view of every Linear issue currently in a workflow state. Shows current state, attempt count, lock and needs-human flags, plus per-state summary counts.
 disable-model-invocation: true
 ---
 
-# /cadence-status (Session A stub)
+# /cadence:cadence-status
 
-The read-only status reporter is implemented in **Session C** of the build
-plan. This stub is a placeholder so the slash command exists and the plugin
-loads.
+You are the **Cadence status reporter**. **Run exactly once and exit.**
+Do not loop. Do not write to Linear. Do not invoke any subagent. This
+command is the human's at-a-glance view of the workflow — safe to run at
+any time, from anywhere, with no side effects.
 
-Print verbatim, then stop:
+---
+
+## Vocabulary
+
+- **Workflow state**: a state defined in `.claude/workflow.yaml` under
+  `states:`. Each has a `type` of `agent`, `gate`, or `terminal`.
+- **Linear state**: a Linear board column. Workflow states declare their
+  `linear_state`; gates additionally declare `approved_linear_state` and
+  `rework_linear_state`.
+- **Workflow Linear states**: the set of every `linear_state`, every
+  gate's `approved_linear_state`, every gate's `rework_linear_state`,
+  plus `linear.pickup_state`. The same set `/cadence:cadence-tick`
+  step 4 builds. Issues sitting in any of these columns are "in the
+  workflow" for status purposes.
+- **Tracking comment**: a Linear comment whose body begins with
+  `<!-- cadence:state`, `<!-- cadence:gate`, `<!-- cadence:reconcile`, or
+  the legacy `<!-- stokowski:state` / `<!-- stokowski:gate` prefixes.
+- **Attempt marker**: a `cadence:state` (or legacy `stokowski:state`)
+  comment whose JSON has **no** `status` field. This is what
+  `/cadence:cadence-tick` step 11 counts.
+
+You only need one Linear MCP server connected to this session. Tool names
+vary by vendor; commonly `mcp__linear__list_issues`,
+`mcp__linear__get_issue`, `mcp__linear__list_comments`. Use whichever
+verbs are present.
+
+---
+
+## Step 1 — Read config
+
+Read `.claude/workflow.yaml`. If missing or unreadable, print a clear
+error naming the path and exit.
+
+From the parsed config, extract:
+
+- `linear.team`, `linear.project_slug`, `linear.pickup_state` — required.
+- `label.cadence_active` — required.
+- `label.cadence_needs_human` — required.
+- The full `states:` map and `entry` value — for state-to-Linear mapping
+  and for the per-state summary.
+
+This reporter does **not** enforce the full validation rules from
+`/cadence:cadence-tick` step 3. It will tolerate (and report on) a
+misconfigured workflow — that's often exactly what a human wants to see.
+If the YAML is structurally invalid (parser error), print the error and
+exit; otherwise proceed even if a uniqueness rule or target rule would
+fail at tick time. Mention any obvious issues in a **Config warnings**
+section at the end of the report (step 5).
+
+---
+
+## Step 2 — Build the workflow-Linear-states set and reverse lookup
+
+Construct two structures:
+
+1. `workflowLinearStates` — the set used to filter the query. Contains:
+   - `linear.pickup_state`
+   - Every state's `linear_state`
+   - Every gate's `approved_linear_state` and `rework_linear_state`
+
+2. `linearToWorkflow` — a map from each Linear column **back** to its
+   role in the workflow. Each entry is one of:
+   - `{ kind: "pickup", workflow_state: null }` for `linear.pickup_state`.
+   - `{ kind: "state", workflow_state: "<name>" }` for an agent or
+     terminal state's `linear_state`.
+   - `{ kind: "gate_waiting", workflow_state: "<gate>" }` for a gate's
+     `linear_state`.
+   - `{ kind: "gate_approved", workflow_state: "<gate>" }` for a gate's
+     `approved_linear_state`.
+   - `{ kind: "gate_rework", workflow_state: "<gate>" }` for a gate's
+     `rework_linear_state`.
+
+   If two configs would produce two entries for the same Linear column
+   (a uniqueness violation), keep the first and remember the conflict
+   for the **Config warnings** section.
+
+---
+
+## Step 3 — Query workflow issues
+
+Using the Linear MCP, query the team/project named in `linear.team` /
+`linear.project_slug` for issues where Linear state ∈
+`workflowLinearStates`. For each issue, capture:
+
+- `identifier` (e.g. `ENG-123`)
+- `title`
+- `state.name` (current Linear column)
+- `priority` (numeric; null/"No priority" treated as worst)
+- `updatedAt`
+- `labels` (array of label names) — used to detect `cadence_active` and
+  `cadence_needs_human`
+- Any field your MCP exposes that identifies the issue for the comment
+  fetch in step 4
+
+If the query returns no issues, skip step 4 and go directly to step 5
+with an empty result set.
+
+**Performance note.** This is the slowest part of the report. If your
+MCP supports pagination, paginate; if it supports server-side filtering
+on multiple states, use it (one query covering all `workflowLinearStates`
+is better than one per state).
+
+---
+
+## Step 4 — Fetch each issue's latest attempt marker
+
+For **each** issue from step 3, query its comments. Find the **latest**
+tracking comment whose body begins with `<!-- cadence:state` or
+`<!-- stokowski:state` (the gate / reconcile / sweep variants are
+ignored here). Parse its JSON and pull:
+
+- `state` — the workflow state the last attempt was at.
+- `attempt` (or legacy `run`) — the attempt number.
+- `started_at` (or legacy `timestamp`) — when the attempt began.
+- `status` — present (`"failed"`) on failure records, absent on attempt
+  markers.
+
+If the issue has **no** `cadence:state` / `stokowski:state` comments at
+all, record `attempt = 0` and `last_state = "(none yet)"`.
+
+If your MCP makes per-issue comment fetches expensive and the issue
+count is high, you may degrade gracefully: skip the per-issue fetch and
+render the Attempt column as `?`. Mention the degradation in the
+**Config warnings** section. This is a fallback, not the default.
+
+---
+
+## Step 5 — Render the report
+
+Print the following Markdown to the user's terminal verbatim (filling in
+the bracketed parts). No Linear writes have happened — this is the
+entire user-visible output.
+
+```markdown
+## Cadence status — <now in UTC ISO 8601>
+
+Team: **<linear.team>**   Project: **<linear.project_slug>**   Pickup: **<linear.pickup_state>**
+
+### Issues in workflow
+
+| ID | Title | Linear column | Workflow state | Attempt | Lock | Needs human |
+|----|-------|---------------|----------------|---------|------|-------------|
+| <identifier> | <title truncated to ~50 chars> | <state.name> | <workflow_state from linearToWorkflow, formatted per below> | <attempt or "—"> | <"🔒" if cadence_active label present, else ""> | <"🛑" if cadence_needs_human label present, else ""> |
+```
+
+**Workflow-state column formatting** (per `linearToWorkflow` entry):
+
+| Reverse-lookup kind | Render as                       |
+|---------------------|---------------------------------|
+| `pickup`            | `(pickup)`                      |
+| `state`             | the workflow state name         |
+| `gate_waiting`      | `<gate> (waiting)`              |
+| `gate_approved`     | `<gate> (approved)`             |
+| `gate_rework`       | `<gate> (rework)`               |
+
+**Row ordering**: by Linear priority ascending, then `updatedAt`
+descending (newest first within a priority). This mirrors the order in
+which `/cadence:cadence-tick` would pick issues up — the top of the
+table is "what fires next".
+
+If the row set is empty, replace the table with a single italic line:
+`*No issues currently in workflow states.*`
+
+### Per-state summary
+
+Below the table, print a per-workflow-state summary. Walk the `states:`
+map in declaration order and emit one line per state:
+
+```markdown
+### Per-state counts
+
+- **<state name>** (`<linear_state>`) — N issues   <"  🔒 N locked" if any> <"  🛑 N needs-human" if any>
+- **<state name>** (`<linear_state>`) — N issues   ...
+```
+
+For **gates**, emit three lines instead of one (waiting, approved,
+rework):
+
+```markdown
+- **<gate name>** (gate)
+  - waiting (`<linear_state>`) — N issues
+  - approved (`<linear_state>`) — N issues
+  - rework (`<linear_state>`) — N issues
+```
+
+For **terminal** states, render as the single-line form. Include them
+even when count is 0 — the empty terminal column tells the reader the
+workflow is healthy.
+
+Also emit a single line for `pickup_state`:
+
+```markdown
+- **(pickup)** (`<pickup_state>`) — N issues
+```
+
+### Config warnings
+
+If any of the following hold, append a **Config warnings** section after
+the summary:
+
+- Duplicate Linear column across states (the conflict recorded in
+  step 2). Name both states and the duplicated column.
+- A state's `subagent` references a file that does not exist under
+  `.claude/agents/`. List the missing path. *(Optional best-effort
+  check: read `.claude/agents/` and compare names. If the read fails,
+  skip silently.)*
+- A `next` / `on_approve` / `on_rework` target does not appear in
+  `states:`. Name the source state and the dangling target.
+- Per-issue comment fetch was degraded (per step 4's fallback).
+
+If none, omit the section entirely.
+
+### Footer
+
+End with one blank line and the literal line:
 
 ```
-TODO: /cadence:cadence-status is not yet implemented.
-
-This command will query Linear for all issues currently in workflow states,
-render a Markdown table (Identifier | Title | State | Attempt | Locked? |
-Needs Human?), and print summary counts. Lands in Session C per PLAN.md
-("/cadence-status semantics").
+Read-only — no Linear writes performed.
 ```
 
-Do not call any tools. Exit immediately after printing.
+---
+
+## Constraints
+
+### Read-only
+
+This command must **never** write to Linear. No label changes, no state
+moves, no comments — not even tracking comments. If a step would
+require a write to proceed, skip it and degrade the report.
+
+### Error tolerance
+
+- Missing or unreadable `.claude/workflow.yaml`: print error and exit.
+- Linear MCP unavailable / unauthorised: print a single-line error
+  noting the failure and exit. Do not pretend an empty result.
+- Per-issue comment fetch fails for one issue: render its Attempt cell
+  as `?` and continue with the rest.
+
+### Performance
+
+Status is typically the most-run Cadence command (humans check it
+often). Aim for a single MCP query for issue list + one comment query
+per issue. Do not invoke any subagent. Do not run Bash unless required
+to resolve `now` (per `/cadence:cadence-sweep` step 2's resolution
+recipe).
+
+### Quoting and truncation
+
+- Titles in tables: truncate at ~50 characters with a trailing `…`.
+  Newlines in titles are replaced with single spaces.
+- Identifiers are printed verbatim (Linear identifiers don't contain
+  Markdown-breaking characters).
+- The full `state.name` and `linear_state` strings are printed without
+  truncation; if a Linear column name contains pipe characters, escape
+  them as `\|` to keep the Markdown table well-formed.

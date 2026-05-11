@@ -170,27 +170,73 @@ conventions you want every subagent to follow.
 
 ### 5. Existing tracking comments survive
 
-Stokowski emitted comments like:
+Cadence's bootstrap parses both `cadence:` and `stokowski:` comment
+prefixes, treating the legacy fields `run` and `timestamp` as the new
+`attempt` and `started_at`. **You do not need to rewrite existing
+comments** — attempt counts, failure records, gate history, all of it
+flows across the migration boundary intact.
+
+#### Worked example
+
+Take issue ENG-456 which was already mid-flight on Stokowski when the
+migration happened. Its Linear comment history might look like this
+before, during, and after the cutover:
 
 ```
-<!-- stokowski:state {"state":"plan","run":2,"timestamp":"2025-12-01T14:00:00Z"} -->
-**[Stokowski]** Entering state: **plan** (run 2)
+─── before migration ────────────────────────────────────────────────────
+
+[Linear comment posted by Stokowski daemon, 2025-12-01 14:00 UTC]
+<!-- stokowski:state {"state":"plan","run":1,"timestamp":"2025-12-01T14:00:00Z"} -->
+**[Stokowski]** Entering state: **plan** (run 1)
+
+[Linear comment posted by Stokowski daemon, 2025-12-01 14:18 UTC]
+Plan complete. Will implement: refactor PaymentService to extract
+RetryPolicy, add unit tests, update the integration test for the 5xx
+backoff path. ETA ~4 hours.
+
+[Linear comment posted by Stokowski daemon, 2025-12-01 14:19 UTC]
+<!-- stokowski:state {"state":"implement","run":1,"timestamp":"2025-12-01T14:19:12Z"} -->
+**[Stokowski]** Entering state: **implement** (run 1)
+
+[Linear comment posted by Stokowski daemon, 2025-12-01 15:42 UTC]
+<!-- stokowski:state {"state":"implement","run":1,"status":"failed","error":"gh pr create: rate limit exceeded"} -->
+**[Stokowski]** Subagent failed at run 1: gh pr create: rate limit exceeded
+
+─── migration cutover ──────────────────────────────────────────────────
+
+(Stokowski daemon stopped. Linear board restructured to add separate
+"Planning" / "Implementing" / "In Review" / "Approved" / "Needs Rework"
+columns. ENG-456 is left sitting in "Implementing". Cadence /schedule
+routine starts.)
+
+─── after migration ────────────────────────────────────────────────────
+
+[Linear comment posted by Cadence bootstrap, 2026-05-12 09:15 UTC]
+<!-- cadence:state {"state":"implement","attempt":2,"started_at":"2026-05-12T09:15:00Z"} -->
+**[Cadence]** Entering state: **implement** (attempt 2)
 ```
 
-Cadence's bootstrap parses these transparently. It treats `run` as
-`attempt` and `timestamp` as `started_at`, so an issue's attempt history
-crosses the migration boundary intact. You do **not** need to rewrite
-existing comments.
+Two things to notice:
 
-New comments from Cadence will use:
+1. **Attempt counting crossed the boundary.** Cadence picked up
+   ENG-456, scanned its tracking comments, found one legacy
+   `stokowski:state` attempt marker for the `implement` state (the
+   2025-12-01 14:19 comment), treated it as `attempt: 1`, and emitted
+   its own marker as `attempt: 2`. The failure record at 15:42 was
+   correctly ignored (it has `status: "failed"`, so it's not an attempt
+   marker). If `limits.max_attempts_per_issue: 3`, ENG-456 has one
+   retry left before escalation.
 
-```
-<!-- cadence:state {"state":"plan","attempt":3,"started_at":"2026-05-12T09:15:00Z"} -->
-**[Cadence]** Entering state: **plan** (attempt 3)
-```
+2. **The legacy comments stay put.** Cadence never rewrites or deletes
+   them. Mixed prefixes (`stokowski:` and `cadence:`) coexist on the
+   same issue indefinitely. The audit trail reads top to bottom across
+   both eras.
 
-Both prefixes coexist in the same issue. The bootstrap reads either one
-when counting attempts or finding the last transition.
+The same survives for gates: a `<!-- stokowski:gate {"state":"review",
+"status":"rework","run":1} -->` from before the migration counts toward
+the gate's `max_rework` after the migration. Cadence's first new
+rework will emit `<!-- cadence:gate {"state":"review","status":"rework",
+"rework_to":"implement"} -->`, picking up where Stokowski left off.
 
 ### 6. Stop Stokowski, start Cadence
 

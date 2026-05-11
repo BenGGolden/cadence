@@ -11,11 +11,12 @@ projects install the plugin, run `/cadence:cadence-init`, edit one YAML
 file and three subagent prompts, point a scheduled routine at
 `/cadence:cadence-tick`, and watch Linear.
 
-> **Build status:** Session A scaffolding is complete (this commit). The
-> dispatch tick `/cadence:cadence-tick` is a stub until Session B; the
-> sweeper and status reporter are stubs until Session C. The plugin
-> installs cleanly and `/cadence:cadence-init` is fully functional today.
-> See [PLAN.md](./PLAN.md) for the full build plan.
+> **Build status:** v1 scaffolding is complete. All four slash commands
+> (`/cadence:cadence-init`, `/cadence:cadence-tick`,
+> `/cadence:cadence-sweep`, `/cadence:cadence-status`) are implemented
+> against the design in [PLAN.md](./PLAN.md). End-to-end smoke testing
+> against a live Linear project happens once per consuming repo
+> ([SMOKE.md](./SMOKE.md) is the checklist).
 
 ---
 
@@ -148,6 +149,173 @@ needed.
 
 Teams that want CI-like "fire and forget" pick remote. Teams that want to
 watch their fleet and keep work on a laptop pick local.
+
+---
+
+## Watching the workflow
+
+Once the routines are running, the human-facing view is `/cadence:cadence-status`.
+It's read-only and safe to run any time:
+
+```
+$ claude /cadence:cadence-status
+```
+
+Sample output for a small workflow with three live issues:
+
+```markdown
+## Cadence status — 2026-05-11T14:23:01Z
+
+Team: **ENG**   Project: **acme-platform**   Pickup: **Backlog**
+
+### Issues in workflow
+
+| ID      | Title                                              | Linear column | Workflow state    | Attempt | Lock | Needs human |
+|---------|----------------------------------------------------|---------------|-------------------|---------|------|-------------|
+| ENG-204 | Add OAuth callback retry on transient 5xx          | Implementing  | implement         | 2       | 🔒   |             |
+| ENG-198 | Migrate analytics worker to BullMQ                 | In Review     | review (waiting)  | 1       |      |             |
+| ENG-187 | Crash on empty rate-limit header                   | Needs Rework  | review (rework)   | 2       |      |             |
+| ENG-176 | Tighten auth middleware regex                      | Backlog       | (pickup)          | —       |      |             |
+| ENG-149 | Reindex legacy events                              | Implementing  | implement         | 3       |      | 🛑          |
+
+### Per-state counts
+
+- **(pickup)** (`Backlog`) — 1 issues
+- **plan** (`Planning`) — 0 issues
+- **implement** (`Implementing`) — 2 issues   🔒 1 locked   🛑 1 needs-human
+- **review** (gate)
+  - waiting (`In Review`) — 1 issues
+  - approved (`Approved`) — 0 issues
+  - rework (`Needs Rework`) — 1 issues
+- **done** (`Done`) — 0 issues
+
+Read-only — no Linear writes performed.
+```
+
+The lock (🔒) and needs-human (🛑) columns are the operational signals.
+A lock means a tick is in flight (or a stale lock the sweeper hasn't
+caught yet). Needs-human means the issue hit the attempt cap or rework
+cap and is now sidelined until a human removes the
+`cadence-needs-human` label.
+
+---
+
+## Troubleshooting
+
+### Stale locks (Mode A, `/schedule`)
+
+**Symptom**: an issue is stuck with the `cadence-active` label set, but
+no fire seems to be doing anything with it. The status report shows 🔒
+but the issue's `updatedAt` is older than your tick interval.
+
+**Cause**: a previous `/cadence:cadence-tick` fire was killed mid-tick
+(platform timeout, network drop) before it could remove its own label.
+
+**Fix**: the `/cadence:cadence-sweep` routine clears these automatically
+on its cadence (default every 15 minutes — see Mode A setup). For an
+immediate clear, run `/cadence:cadence-sweep` once interactively, or
+manually delete the `cadence-active` label in Linear. The next
+`/cadence:cadence-tick` fire will pick the issue back up.
+
+The sweeper's threshold is configurable in `.claude/workflow.yaml`:
+
+```yaml
+limits:
+  stale_after_minutes: 30   # default
+```
+
+### Max attempts reached
+
+**Symptom**: an issue is sidelined with the `cadence-needs-human` label,
+and its Linear comments include a `[Cadence] Max attempts (N) reached at
+state X` line.
+
+**Cause**: the same workflow state failed `limits.max_attempts_per_issue`
+times in a row (default 3). The bootstrap has stopped retrying it
+automatically.
+
+**Fix**:
+1. Read the failure records (`<!-- cadence:state {"status":"failed",...} -->`)
+   to understand what went wrong. Common causes: missing credentials,
+   genuinely impossible task, flaky test that fails on the implementer's
+   environment, ambiguous Linear description.
+2. Address the root cause — fix the env, clarify the issue description,
+   or break the task down.
+3. Remove the `cadence-needs-human` label in Linear. The next
+   `/cadence:cadence-tick` fire will pick the issue up. The attempt
+   counter is **not** reset by removing the label — if you want a clean
+   slate, also delete the prior attempt-marker comments (the bootstrap
+   counts them on every fire).
+4. If the issue needs to be permanently abandoned, move it to a Linear
+   column outside the workflow (e.g. "Cancelled") and leave the
+   needs-human label set.
+
+### Rework limit reached
+
+**Symptom**: similar to max attempts, but the failure comment names a
+gate: `[Cadence] Rework limit reached at gate <name>`.
+
+**Cause**: the gate's `max_rework` was exceeded — the human kept moving
+the issue to the rework column and the subagent kept not satisfying
+review.
+
+**Fix**: same shape as max-attempts. Read the rework comments, fix the
+underlying problem (often a clearer review comment or a smaller scope),
+remove `cadence-needs-human`. The rework counter isn't reset by label
+removal — delete prior `<!-- cadence:gate {"status":"rework"} -->`
+comments if you want it to.
+
+### Validation errors
+
+**Symptom**: every `/cadence:cadence-tick` fire exits immediately with a
+config error, no Linear writes happen.
+
+**Cause**: `.claude/workflow.yaml` violates a validation rule (duplicate
+Linear column, undefined target, missing subagent file).
+
+**Fix**: read the error — it names the offending keys. Fix
+`.claude/workflow.yaml`. The next fire will succeed; no restart needed.
+Run `/cadence:cadence-tick dry-run` to confirm before going live again.
+
+### Issue moved to an unmapped state
+
+**Symptom**: a Linear comment reads `Issue moved to unmapped Linear
+state <X> between pickup and dispatch; releasing lock without action`,
+and the issue keeps being picked up and immediately released.
+
+**Cause**: a human (or another tool) moved the issue to a Linear column
+that's not part of `workflowLinearStates`.
+
+**Fix**: either move the issue back to a workflow column, or add the
+column to `workflow.yaml`, or remove the issue's `cadence-active` label
+and accept that it's now out of band.
+
+### Drift reconciliation
+
+**Symptom**: a Linear comment reads `Detected human-driven state change;
+proceeding from Linear's state.` (a `<!-- cadence:reconcile ... -->`
+tracking comment).
+
+**Cause**: a human dragged the issue between Linear columns out of band.
+The bootstrap detected the drift and is proceeding from Linear's
+authoritative state.
+
+**Fix**: usually none required — this is expected. If you didn't mean
+to move it, just move it back and the next fire will re-reconcile.
+
+### `/cadence:cadence-status` is slow
+
+**Symptom**: status takes tens of seconds to render.
+
+**Cause**: each issue's comment list is fetched separately to find its
+latest attempt marker. Large workflows (hundreds of issues in flight)
+amplify this.
+
+**Fix**: the status reporter degrades gracefully — it renders attempt
+counts as `?` when comment fetches fail. If you need to keep the table
+populated, narrow the project scope (split into multiple Linear
+projects with separate `workflow.yaml` files in separate repos), or
+restrict the report by running it against a Linear filter view.
 
 ---
 
