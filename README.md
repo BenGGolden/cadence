@@ -105,18 +105,31 @@ Fully autonomous. No operator presence required between fires.
 #    .claude/agents/reviewer.md
 #    .claude/prompts/global.md    ← shared preamble
 
-# 4. Create a /schedule routine:
-#       Schedule:  */1 * * * *
-#       Repo:      this repo
-#       Prompt:    /cadence:tick
-#       MCP:       Linear MCP server
-#       Env:       GH_TOKEN (for gh CLI in the implementer)
+# 4. Add Linear as an account-level connector (one-time, web only):
+#       https://claude.ai/customize/connectors → Linear → OAuth.
+#    Routines run in Anthropic's cloud and do NOT inherit MCP servers
+#    you OAuthed locally via the CLI — they pick up connectors from
+#    your claude.ai account.
 
-# 5. Create a second /schedule routine for stale-lock cleanup:
+# 5. Create a /schedule routine (manage at https://claude.ai/code/routines):
+#       Schedule:    */1 * * * *
+#       Repo:        this repo
+#       Prompt:      /cadence:tick
+#       Connectors:  Linear (toggled on)
+#       Env vars:    GH_TOKEN  (set on the routine's cloud environment:
+#                               cloud-env icon → settings →
+#                               Update cloud environment → Environment variables)
+#       Permissions: set Linear MCP tools + Agent + Bash + Read/Write/Edit
+#                    to Always Allow. Unattended routines have no human to
+#                    answer permission prompts, so anything that prompts
+#                    will hang or fail.
+
+# 6. Create a second /schedule routine for stale-lock cleanup:
 #       Schedule:  */15 * * * *
 #       Prompt:    /cadence:sweep
+#    (Same connectors, env vars, and permissions as the tick routine.)
 
-# 6. Watch Linear.
+# 7. Watch Linear.
 ```
 
 ### Mode B — Local (`/loop`)
@@ -149,6 +162,89 @@ needed.
 
 Teams that want CI-like "fire and forget" pick remote. Teams that want to
 watch their fleet and keep work on a laptop pick local.
+
+---
+
+## Required permissions
+
+Cadence is a system of slash commands and subagents — each call hits the
+Claude Code permission system. In Mode A (`/schedule`) every tool the
+bootstrap or a subagent calls **must be pre-allowed** on the routine,
+because a remote routine has no human to answer permission prompts and
+will hang or fail on the first prompt. In Mode B (`/loop`) you can
+approve interactively, but pre-allowing the same set lets the loop run
+unattended for stretches without stalling on prompts.
+
+The lists below are the minimum surface for the shipped templates. If
+you edit `.claude/agents/*.md` `tools:` lines or extend the bootstrap
+prose, adjust accordingly.
+
+### Bootstrap (`/cadence:tick`, `/cadence:sweep`, `/cadence:status`)
+
+| Tool        | Why                                                          |
+|-------------|--------------------------------------------------------------|
+| `Read`      | Read `.claude/workflow.yaml`, `.claude/prompts/global.md`, subagent files. |
+| `Bash`      | Generate the current UTC timestamp for tracking-comment JSON (`date -u …` or `Get-Date …` — step 12 of `tick.md`). |
+| `Agent`     | Invoke planner / implementer / reviewer subagents.           |
+| `TodoWrite` | Optional — only if you want progress visibility on long fires. |
+
+### Subagents (shipped template defaults — edit per repo)
+
+| Subagent       | Tools declared in frontmatter                         |
+|----------------|-------------------------------------------------------|
+| `planner`      | `Read, Grep, Glob, WebFetch, Bash`                    |
+| `implementer`  | `Read, Edit, Write, Bash, Grep, Glob` (`Bash` covers `git` and `gh`) |
+| `reviewer`     | `Read, Grep, Glob, WebFetch`                          |
+
+### Linear MCP tools
+
+The Cadence prose reaches for two kinds of Linear writes: posting
+comments and updating issues (state moves + label add/remove are both
+issue updates in MCPs that expose labels via `save_issue` / equivalent).
+Read-only calls are bounded to listing issues, reading an issue, and
+listing comments. Tool names vary by MCP vendor — match by intent.
+
+**Read tools — pre-allow only what Cadence calls.**
+The prose reaches for exactly three read-only tools. Set these to
+Always Allow:
+
+| Intent          | Common names                                                  |
+|-----------------|---------------------------------------------------------------|
+| List issues     | `list_issues`, `mcp__linear__list_issues`, `search_issues`    |
+| Read an issue   | `get_issue`, `mcp__linear__get_issue`                         |
+| List comments   | `list_comments`, `mcp__linear__list_comments`                 |
+
+Leave the rest of the read-only category on Ask. "Read-only" is not the
+same as "harmless" — `get_document`, `list_users`, `list_projects`,
+`get_attachment`, etc. read confidential data that has no business in a
+subagent's working context, and a hallucinated call could echo any of it
+into a Linear comment the bootstrap posts verbatim. Bulk-allowing the
+whole read-only category is fine in a throwaway test workspace, but on
+any workspace that holds real data, pre-allow narrowly.
+
+**Write tools — pre-allow only what Cadence calls.**
+Set these to Always Allow:
+
+| Intent                       | Common names                                                                                          |
+|------------------------------|-------------------------------------------------------------------------------------------------------|
+| Post a comment               | `save_comment`, `mcp__linear__create_comment`                                                         |
+| Update issue (state, labels) | `save_issue`, `mcp__linear__update_issue`, `mcp__linear__add_label`, `mcp__linear__remove_label`      |
+
+Leave every other write/delete tool on Ask (or off):
+`create_attachment`, `delete_attachment`, `delete_comment`,
+`create_issue_label` (labels are created up front in SMOKE prereq,
+not by the plugin), `save_document`, `save_milestone`, `save_project`,
+and any other workspace-wide mutation tool. Keeping these on Ask means
+a hallucinated tool call or future prose change fails closed instead
+of silently mutating Linear.
+
+### Environment variables
+
+| Var        | Where to set (Mode A)                                | Why                                            |
+|------------|------------------------------------------------------|------------------------------------------------|
+| `GH_TOKEN` | Routine's cloud environment → Environment variables  | Implementer subagent's `gh` CLI calls.         |
+
+In Mode B (`/loop`) `gh auth login` once locally; no env var needed.
 
 ---
 

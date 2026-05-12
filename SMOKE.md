@@ -14,9 +14,19 @@ project after this run is the verification.
 ## Prerequisites
 
 - [ ] A throwaway Linear team with a project you can pollute (call it
-      `CADENCE-TEST`). Empty is fine.
+      `CADENCE-TEST`). Empty is fine. For hard isolation from real work
+      consider a separate throwaway Linear *workspace* instead — see the
+      MCP note below.
 - [ ] Linear MCP server configured locally and on your `/schedule`
-      routine, with **write access** scoped to this team only.
+      routine. **Heads-up on scope:** Linear OAuth authorises the MCP at
+      the *workspace* level — there is no team-level write scope you can
+      tick during connection. Cadence enforces team/project scope at the
+      plugin layer (`linear.team` and `linear.project_slug` in
+      `workflow.yaml` constrain every query), so a typo there or a bug
+      in the prose could technically touch other teams in the same
+      workspace. For a watched smoke run, a throwaway team is fine; for
+      unattended `/schedule` runs against a workspace that contains real
+      work, prefer a separate workspace.
 - [ ] A throwaway GitHub repo (or a feature branch in a sandbox repo).
       `gh auth login` succeeded locally; `GH_TOKEN` configured on the
       `/schedule` routine.
