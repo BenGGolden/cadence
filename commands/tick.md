@@ -70,8 +70,37 @@ case-insensitively (i.e. the user typed `/cadence:tick dry-run`):
    - `labels`: `(none)`
    - `description`: `No description provided.`
    - No rework section.
-4. Print a single Markdown report containing:
-   - **Validation:** `passed` (or the specific error and stop).
+4. Print a single Markdown report. Start with a **Validation** section that
+   walks step 3's five rules **in order**. For each rule, you MUST show your
+   work — list the specific values you collected and the references you
+   dereferenced from the YAML you just read in step 1. A bare "passed" without
+   listed evidence is a bug; the point of dry-run is to make the validation
+   work visible. Required shape per rule:
+
+   - **Rule 1 — Linear-state uniqueness.** List every collected
+     `linear_state` / `approved_linear_state` / `rework_linear_state` value as
+     a bullet of the form `` `<value>` ← states.<name>.<field> ``. Then state
+     the result: PASS if all values are distinct; FAIL naming both
+     `states.X.field` paths and the duplicated string.
+   - **Rule 2 — Entry.** Print the `entry` value, whether the named state
+     exists in `states:`, and its `type`. PASS only if it exists and has
+     `type: agent`.
+   - **Rule 3 — Targets.** List every `next` / `on_approve` / `on_rework`
+     reference in the config as a bullet of the form
+     `` states.<name>.<field> → `<target>` → <exists | MISSING> ``. PASS only
+     if every target resolves to a state defined in `states:`.
+   - **Rule 4 — Subagent files.** For each `type: agent` state, list a bullet
+     of the form
+     `` states.<name>.subagent → `.claude/agents/<name>.md` → <exists | MISSING> ``.
+     PASS only if every file is present.
+   - **Rule 5 — Pickup state.** Print the `linear.pickup_state` value. PASS if
+     non-empty.
+
+   If any rule fails: stop after printing that rule's evidence and failure
+   message, end with `DRY RUN — no side effects.`, and exit. Skip the rest of
+   the report.
+
+   If all five rules pass, follow the Validation section with:
    - **Workflow Linear states queried:** the full set from step 4, one per line.
    - **Entry state:** the workflow state name plus the subagent that would be
      invoked.
