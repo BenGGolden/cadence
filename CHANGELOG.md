@@ -9,9 +9,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.1.0] — 2026-05-11
 
 Initial scaffolding release. The plugin compiles, all four slash commands
-exist, and the design in [PLAN.md](./PLAN.md) is implemented end-to-end in
-prose. End-to-end validation against a live Linear project is tracked in
-[SMOKE.md](./SMOKE.md) and happens per consuming repo.
+exist and are implemented end-to-end in prose. End-to-end validation
+against a live Linear project is tracked in [SMOKE.md](./SMOKE.md) and
+happens per consuming repo.
 
 ### Added
 - Plugin manifest at `.claude-plugin/plugin.json`.

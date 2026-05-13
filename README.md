@@ -13,9 +13,8 @@ file and three subagent prompts, point a scheduled routine at
 
 > **Build status:** v1 scaffolding is complete. All four slash commands
 > (`/cadence:init`, `/cadence:tick`,
-> `/cadence:sweep`, `/cadence:status`) are implemented
-> against the design in [PLAN.md](./PLAN.md). End-to-end smoke testing
-> against a live Linear project happens once per consuming repo
+> `/cadence:sweep`, `/cadence:status`) are implemented. End-to-end smoke
+> testing against a live Linear project happens once per consuming repo
 > ([SMOKE.md](./SMOKE.md) is the checklist).
 
 ---
@@ -105,11 +104,25 @@ Fully autonomous. No operator presence required between fires.
 #    .claude/agents/reviewer.md
 #    .claude/prompts/global.md    ← shared preamble
 
-# 4. Add Linear as an account-level connector (one-time, web only):
-#       https://claude.ai/customize/connectors → Linear → OAuth.
-#    Routines run in Anthropic's cloud and do NOT inherit MCP servers
-#    you OAuthed locally via the CLI — they pick up connectors from
-#    your claude.ai account.
+# 4. Make Linear's MCP server reachable from the routine. Cloud routines
+#    do NOT inherit MCP servers you added locally via `claude mcp add` —
+#    those live on your machine, not on your claude.ai account. Pick one
+#    of the two documented paths:
+#
+#    (a) Account-level connector (recommended for Linear since OAuth flow
+#        is web-only): set up at
+#        https://claude.ai/customize/connectors → Linear → OAuth.
+#        The routine form's Connectors tab will list it; toggle on.
+#
+#    (b) Repo-committed `.mcp.json`: declare the server in a `.mcp.json`
+#        at the consumer repo root and commit it. Anything in the cloned
+#        repo is part of the routine's environment, so the MCP server
+#        loads on every fire.
+#
+#    The same constraint applies to any other MCP servers Cadence
+#    subagents need (e.g. extra read-only data sources). User-level
+#    settings.json and local `claude mcp add` configurations do NOT
+#    carry over to cloud routines.
 
 # 5. Create a /schedule routine (manage at https://claude.ai/code/routines):
 #       Schedule:    */1 * * * *
@@ -119,6 +132,12 @@ Fully autonomous. No operator presence required between fires.
 #       Env vars:    GH_TOKEN  (set on the routine's cloud environment:
 #                               cloud-env icon → settings →
 #                               Update cloud environment → Environment variables)
+#       Setup script: if your repo has expensive setup (npm install,
+#                    native deps, large schema generation), bake it into
+#                    the cloud environment's setup script rather than
+#                    running it on every fire — the result is cached.
+#                    Same dialog as Environment variables, "Setup script"
+#                    field. See the routines docs § "Setup scripts."
 #       Permissions: set Linear MCP tools + Agent + Bash + Read/Write/Edit
 #                    to Always Allow. Unattended routines have no human to
 #                    answer permission prompts, so anything that prompts
@@ -433,9 +452,6 @@ restrict the report by running it against a Linear filter view.
   bootstrap prose, sweep / status logic, and subagent templates. The
   consumer owns `.claude/workflow.yaml`, `.claude/agents/*.md`, and
   `.claude/prompts/global.md`.
-
-For the full design, read [PLAN.md](./PLAN.md). It is the single source of
-truth for the build.
 
 ---
 
