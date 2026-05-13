@@ -34,7 +34,7 @@ project after this run is the verification.
       (`claude --plugin-dir /path/to/cadence` or an installed
       marketplace listing).
 - [ ] Linear board has the six default columns set up:
-      `Backlog`, `Planning`, `Implementing`, `In Review`, `Approved`,
+      `Todo`, `Planning`, `Implementing`, `In Review`, `Approved`,
       `Needs Rework`, `Done`. (Adjust as you go if you rename in
       `workflow.yaml`.)
 - [ ] Two Linear labels exist: `cadence-active`, `cadence-needs-human`.
@@ -70,13 +70,13 @@ project after this run is the verification.
 
 ## Phase 2 — Single issue through the happy path
 
-7. [ ] In Linear, create issue `CADENCE-TEST-1` in `Backlog` with a
+7. [ ] In Linear, create issue `CADENCE-TEST-1` in `Todo` with a
        small, realistic description (e.g. "Add a `--version` flag to
        the CLI"). Set priority `Medium` (2).
 8. [ ] Run `/cadence:tick` interactively (one-shot, not
        looped).
        **Expect**:
-       - The issue moves `Backlog → Planning`.
+       - The issue moves `Todo → Planning`.
        - `cadence-active` label is added during the fire and removed
          at the end.
        - One `<!-- cadence:state {"state":"plan","attempt":1,...} -->`
@@ -121,7 +121,7 @@ project after this run is the verification.
 
 ## Phase 4 — Gate rework
 
-14. [ ] In Linear, create issue `CADENCE-TEST-2` in `Backlog`. Run
+14. [ ] In Linear, create issue `CADENCE-TEST-2` in `Todo`. Run
         `/cadence:tick` twice to drive it to `In Review`
         (Planning fire, then Implementing fire — same shape as
         Phase 2).
@@ -176,7 +176,7 @@ project after this run is the verification.
 ## Phase 6 — Sweeper
 
 21. [ ] In Linear, manually add the `cadence-active` label to a
-        `Backlog` issue (any one). Wait until that issue's
+        `Todo` issue (any one). Wait until that issue's
         `updatedAt` is older than `limits.stale_after_minutes`
         (default 30 — for testing, temporarily set
         `stale_after_minutes: 1` in `workflow.yaml`).

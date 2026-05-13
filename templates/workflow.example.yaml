@@ -25,7 +25,7 @@ linear:
 
   # Required. The Linear state new issues land in. Issues here are eligible
   # for pickup; on first fire they move to the entry state's linear_state.
-  pickup_state: "Backlog"
+  pickup_state: "Todo"
 
 label:
   # Soft lock label. Added at the start of every fire and removed at the

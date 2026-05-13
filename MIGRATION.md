@@ -47,7 +47,7 @@ result for a `plan → implement → review → done` workflow:
 
 | Workflow state | New Linear column      |
 |----------------|------------------------|
-| (pickup)       | Backlog                |
+| (pickup)       | Todo                   |
 | plan           | Planning               |
 | implement      | Implementing           |
 | review (waiting) | In Review            |
@@ -68,7 +68,7 @@ shape):
 linear:
   team: ENG
   project_slug: abc123
-  pickup_state: "Backlog"
+  pickup_state: "Todo"
 
 label:
   cadence_active: "cadence-active"

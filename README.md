@@ -281,7 +281,7 @@ Sample output for a small workflow with three live issues:
 ```markdown
 ## Cadence status — 2026-05-11T14:23:01Z
 
-Team: **ENG**   Project: **acme-platform**   Pickup: **Backlog**
+Team: **ENG**   Project: **acme-platform**   Pickup: **Todo**
 
 ### Issues in workflow
 
@@ -290,12 +290,12 @@ Team: **ENG**   Project: **acme-platform**   Pickup: **Backlog**
 | ENG-204 | Add OAuth callback retry on transient 5xx          | Implementing  | implement         | 2       | 🔒   |             |
 | ENG-198 | Migrate analytics worker to BullMQ                 | In Review     | review (waiting)  | 1       |      |             |
 | ENG-187 | Crash on empty rate-limit header                   | Needs Rework  | review (rework)   | 2       |      |             |
-| ENG-176 | Tighten auth middleware regex                      | Backlog       | (pickup)          | —       |      |             |
+| ENG-176 | Tighten auth middleware regex                      | Todo          | (pickup)          | —       |      |             |
 | ENG-149 | Reindex legacy events                              | Implementing  | implement         | 3       |      | 🛑          |
 
 ### Per-state counts
 
-- **(pickup)** (`Backlog`) — 1 issues
+- **(pickup)** (`Todo`) — 1 issues
 - **plan** (`Planning`) — 0 issues
 - **implement** (`Implementing`) — 2 issues   🔒 1 locked   🛑 1 needs-human
 - **review** (gate)

@@ -209,8 +209,8 @@ python scripts/validate_workflow.py [--workflow-path PATH] [--evidence]
   "valid": true,
   "entry_state_name": "plan",
   "entry_subagent": "planner",
-  "workflow_linear_states": ["Backlog", "Planning", "Implementing", "In Review", "Approved", "Needs Rework", "Done"],
-  "pickup_state": "Backlog",
+  "workflow_linear_states": ["Todo", "Planning", "Implementing", "In Review", "Approved", "Needs Rework", "Done"],
+  "pickup_state": "Todo",
   "states": { "plan": {...}, "implement": {...}, ... }
 }
 ```
