@@ -20,50 +20,23 @@ plan are captured in [GUIDEPOSTS.md](./GUIDEPOSTS.md).
 
 ## Design principles (charter)
 
-Condensed from [GUIDEPOSTS.md](./GUIDEPOSTS.md). Every phase in this plan
-exists to serve one or more of these. If a proposed change doesn't
-clearly serve one, it doesn't belong here.
+The principles that frame this plan live in [GUIDEPOSTS.md](./GUIDEPOSTS.md)
+(§1–§8, plus its anti-goals) and are not restated here. Every phase exists to
+serve one or more; if a proposed change doesn't, it doesn't belong.
 
-1. **Ticket quality is upstream of everything.** A vague ticket cannot be
-   rescued by a good orchestrator. The ticket is the contract; treat
-   acceptance criteria as the agent-facing test the work must pass.
-   *(P3.)*
-2. **Stage the work; don't lump it.** Investigate / implement / review
-   are different concerns with different optimal models. Cadence already
-   stages; P5 sharpens the staging by separating reviewer context and
-   model class from the implementer's. *(P5.)*
-3. **Adversarial review with no shared context.** Reviewers that share
-   context with implementers are sycophantic. Cadence's subagent-per-
-   stage architecture already gives a fresh context window per stage
-   (verified against Stokowski's `session: fresh`); P5 leverages that by
-   composing a minimal reviewer prompt and using a different model
-   class. *(P5.)*
-4. **Humans gate where machines can't judge.** The `review` gate and
-   `max_rework` escalation already implement this. *(Preserve. P4
-   changes the gate's decision-signaling mechanism — a label, not a
-   column move — without weakening the gate itself.)*
-5. **The tracker IS the workflow.** State, locks, attempt history,
-   escalation flags — all in Linear. No external DB, no in-memory state,
-   no parallel dashboard. *(Preserve. P6 stays inside this constraint:
-   per-state concurrency caps read Linear, not a sidecar store.)*
-6. **Mechanical guardrails beat agent discipline.** Anything that
-   depends on the agent remembering will eventually fail under context
-   pressure. Bake guardrails into helpers (P1) and hooks (P2).
-7. **Build for forensic debugging.** Audit log (P2.3), dry-run mode
-   (already shipped), caps and escalation (already shipped), drift
-   reconciliation (already shipped). Failures must be reconstructable
-   after the fact.
-8. **The codebase teaches the agent.** Subagent templates, CLAUDE.md,
-   and the ticket-template scaffold (P3) are first-class engineering
-   artifacts.
+| Guidepost | How this plan serves it |
+|---|---|
+| §1 Ticket quality upstream | P3 — acceptance-criteria contract + planner backstop. |
+| §2 Stage the work | P5 — separates reviewer context and model class from the implementer's. |
+| §3 Adversarial review | P5 — minimal reviewer prompt, Opus-class model, no implementer narrative carried forward. |
+| §4 Humans gate | Already implemented (`review` gate, `max_rework`). P4 changes how a gate's verdict is *signaled* (a label, not a column move) without weakening the gate. |
+| §5 The tracker IS the workflow | Preserved. P6's concurrency caps read Linear column counts, not a sidecar store. |
+| §6 Mechanical guardrails | P1 (helper scripts) + P2 (hooks) move bookkeeping out of LLM prose. |
+| §7 Forensic debugging | P2.3 audit log. Dry-run, caps/escalation, drift reconciliation already shipped. |
+| §8 The codebase teaches the agent | P3 ticket scaffold + subagent templates + `CLAUDE.md`. |
 
-**Anti-goals** (also from GUIDEPOSTS.md):
-- More concurrent agents ≠ more software shipped. Per-state caps (P6)
-  exist for coordination, not throughput.
-- End-to-end autonomy is not the goal. The human gates are the quality
-  mechanism, not friction to remove.
-- No custom UI/dashboard. Linear and GitHub are the UIs.
-- No expressive workflow DSL. `workflow.yaml` should fit on one screen.
+GUIDEPOSTS' anti-goals apply unchanged; this plan's phase-specific non-goals
+are below.
 
 ---
 
@@ -129,6 +102,24 @@ revisit unless the implementing session hits a concrete blocker.
 ---
 
 ## Architecture
+
+### Target workflow (after P5)
+
+The default workflow once every phase has landed — `plan_review` and
+`agent_review` are added in P5; until then the shipped default is
+`plan → implement → review → done`.
+
+```mermaid
+flowchart TD
+    todo([todo]) --> plan
+    plan --> plan_review{plan_review}
+    plan_review -->|approve| implement
+    plan_review -->|reject| plan
+    implement --> agent_review
+    agent_review --> human_review{human_review}
+    human_review -->|approve| done([Done])
+    human_review -->|reject| implement
+```
 
 ### Where files live
 
@@ -1531,7 +1522,7 @@ adds value with un-AC'd tickets; the reviewer just falls back to "does
 the diff match the plan").
 
 **Outcome**: the default workflow gains two review points, both mirroring
-[workflow-diagram.md](./workflow-diagram.md):
+the [Target workflow](#target-workflow-after-p5) diagram above:
 
 1. A `plan_review` **human gate** between `plan` and `implement` — the
    planner's output is approved before implementation burns budget.
@@ -1615,8 +1606,8 @@ to remove. An operator who wants the old behaviour can delete the
 
 ## P5.1 — `templates/workflow.example.yaml` — add `plan_review` gate, `agent_review` state, rename `review` → `human_review`
 
-State names mirror [workflow-diagram.md](./workflow-diagram.md). The
-full edited `states:` block:
+State names mirror the [Target workflow](#target-workflow-after-p5) diagram.
+The full edited `states:` block:
 
 ```yaml
 states:
@@ -1651,7 +1642,7 @@ states:
     next: human_review
 
   # ----------- human review gate -----------
-  human_review:                      # ← renamed from `review` to match workflow-diagram.md
+  human_review:                      # ← renamed from `review` to match the Target workflow diagram
     type: gate
     linear_state: "In Review"        # single waiting column (gate signaling is label-based since P4)
     on_approve: done
@@ -1907,18 +1898,13 @@ this for attempt-counting); the additional key is free.
 
 ## P5.6 — Workflow-state catalog update
 
-[workflow-diagram.md](./workflow-diagram.md) already shows the P5 shape
-(`plan_review` gate between `plan` and `implement`; `agent_review`
-between `implement` and `human_review`). The implementing session should:
-
-1. Verify the existing diagram still matches the P5.1 YAML byte-for-byte
-   (state names, transitions, gate-vs-agent shapes — including the
-   `plan_review` approve→`implement` / reject→`plan` edges).
-2. If a README "Default workflow" section embeds or links the diagram,
-   confirm the link still resolves.
-
-No diagram regeneration is required unless the implementing session
-chooses different state names than P5.1.
+The [Target workflow](#target-workflow-after-p5) diagram in the Architecture
+section already shows the P5 shape (`plan_review` gate between `plan` and
+`implement`; `agent_review` between `implement` and `human_review`). The
+implementing session should verify that diagram still matches the P5.1 YAML
+byte-for-byte (state names, transitions, gate-vs-agent shapes — including the
+`plan_review` approve→`implement` / reject→`plan` edges), and update it if it
+chose different state names than P5.1.
 
 ## P5 acceptance criteria
 
@@ -1951,8 +1937,8 @@ chooses different state names than P5.1.
       key with `pr_url` and `branch` fields.
 - [ ] README.md "Required Linear columns" list updated to include
       `Plan Review` and `Reviewing`.
-- [ ] `workflow-diagram.md` continues to reflect the workflow (the
-      existing diagram already uses `agent_review` / `human_review`
+- [ ] The [Target workflow](#target-workflow-after-p5) diagram still
+      reflects the workflow (it already uses `agent_review` / `human_review`
       labels — no update required, but verify it still matches).
 - [ ] `.claude-plugin/plugin.json` version bumped.
 - [ ] CHANGELOG.md entry under `## [Unreleased]`, with a clear
@@ -2183,8 +2169,8 @@ necessary.
 use Codex instead of Claude. Distinct architectural shift. Out of scope.
 
 **Workflow visualization.** A `/cadence:graph` command that emits Mermaid
-from `workflow.yaml`. The user already has `workflow-diagram.md` for the
-current shape; a generator is sugar.
+from `workflow.yaml`. The [Target workflow](#target-workflow-after-p5) diagram
+covers the default shape; a generator is sugar.
 
 ---
 
@@ -2290,7 +2276,7 @@ extension)*
 26. **P5.4** (tick.md Step 13 adversarial-context variant) — last,
     because it depends on P5.3 (the subagent shape), P5.4a (validator
     accepts the flag), and P5.5 (the new helper-script output).
-27. **P5.6** (workflow-diagram verification) — docs only; trivial.
+27. **P5.6** (Target workflow diagram verification) — docs only; trivial.
 28. **Land P5** as one PR. Run smoke tests M and N. N is load-bearing:
     confirm pre-P5 consumer repos still work with their unchanged
     `workflow.yaml`.
