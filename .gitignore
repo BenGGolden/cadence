@@ -15,6 +15,10 @@ Desktop.ini
 .claude/
 !.claude-plugin/
 
+# Python
+__pycache__/
+*.py[cod]
+
 # Logs and scratch
 *.log
 .tmp/
