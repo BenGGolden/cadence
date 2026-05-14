@@ -145,7 +145,7 @@ prose, adjust accordingly.
 | Tool        | Why                                                          |
 |-------------|--------------------------------------------------------------|
 | `Read`      | Read `.claude/workflow.yaml`, `.claude/prompts/global.md`, subagent files. |
-| `Bash`      | Generate the current UTC timestamp for tracking-comment JSON (`date -u …` or `Get-Date …` — step 12 of `tick.md`). |
+| `Bash`      | Generate the current UTC timestamp for tracking-comment JSON (`date -u …` or `Get-Date …`), and run the three Python helper scripts under the plugin's `scripts/` directory (config validation, comment parsing, tracking-comment emission). |
 | `Agent`     | Invoke planner / implementer / reviewer subagents.           |
 | `TodoWrite` | Optional — only if you want progress visibility on long fires. |
 

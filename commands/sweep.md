@@ -53,9 +53,15 @@ From the parsed config, extract:
 - `limits.stale_after_minutes` — the activity window. If absent, null, or
   not a positive number, use **30**.
 
-This sweeper does **not** validate the full workflow schema (no need —
-it never invokes a subagent and never advances state). If the file
-exists and the four values above are present and well-formed, proceed.
+Then invoke Bash: `python ${CLAUDE_PLUGIN_ROOT}/scripts/validate_workflow.py`.
+This sweeper does **not** require a valid workflow schema — it never invokes a
+subagent and never advances state, and it must still be able to clear stranded
+locks even when the workflow is misconfigured. So treat the script's result as
+**advisory**: if it exits non-zero, print a single-line warning
+(`Cadence sweep: workflow.yaml validation reported issues — proceeding anyway;
+the sweeper does not require a valid schema.`) and continue. If it exits zero,
+print nothing extra. Either way, proceed as long as the four values above are
+present and well-formed.
 
 ## Step 2 — Resolve "now"
 

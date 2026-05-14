@@ -6,6 +6,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `scripts/` — three deterministic Python helper scripts plus a shared
+  `_common.py` module, invoked from command prose via `Bash`
+  (hardening plan, Phase 1):
+  - `validate_workflow.py` — enforces the five `.claude/workflow.yaml`
+    config rules in code; `--evidence` emits per-rule evidence for the
+    dry-run report.
+  - `parse_comments.py` — deterministic counting and classification of a
+    Linear issue's tracking comments (attempt count, rework count, rework
+    context, latest tracking comment).
+  - `emit_tracking_comment.py` — produces canonical tracking-comment
+    bodies so the embedded JSON is always well-formed.
+
+### Changed
+- `commands/tick.md` — steps 0, 3, 4, 9, 10c, 11, 12, 16 and the Failure
+  path now delegate config validation, comment counting, and tracking-comment
+  emission to the `scripts/` helpers instead of doing the bookkeeping in LLM
+  prose.
+- `commands/sweep.md` and `commands/status.md` — now call
+  `validate_workflow.py` for config validation; `status.md` also uses
+  `parse_comments.py` for per-issue attempt counts.
+
 ## [0.1.0] — 2026-05-11
 
 Initial scaffolding release. The plugin compiles, all four slash commands
