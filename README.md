@@ -185,15 +185,40 @@ Cadence makes a small, fixed set of Linear calls — three read-only (list
 issues, read an issue, list comments) and two write (post a comment, update an
 issue). Tool names vary by MCP vendor; match by intent.
 
+**A note on namespaces.** Claude Code MCP tool names take the form
+`mcp__<server-name>__<tool-name>`, where `<server-name>` is whatever the
+operator passed to `claude mcp add` (or named in `.mcp.json`, or what the
+claude.ai connector exposes). Three namespaces show up in the wild for
+Linear:
+
+- `mcp__linear__*` — the official Linear MCP server when installed under
+  the name `linear`.
+- `mcp__linear-server__*` — same server, installed under the name
+  `linear-server` (common on Windows installs that follow Linear's docs).
+- `mcp__claude_ai_Linear__*` — the claude.ai workspace connector.
+
+Plus the bare names (`save_comment`, `get_issue`, etc.) some bridges
+expose without an `mcp__<server>__` prefix.
+
+The shipped Cadence hook matchers in `templates/settings.example.json`
+catch all of these via the regex pattern
+`mcp__[A-Za-z0-9_-]*[Ll]inear[A-Za-z0-9_-]*__<tool>` — any namespace
+containing `linear` or `Linear`. **The Claude Code permission allowlist
+does not.** Pre-allow rules are evaluated against exact tool names, so
+the tables below are illustrative — substitute the names your specific
+MCP server actually exposes. Check `claude mcp list` and look at the
+permission prompt the first time a Cadence subagent tries to read or
+write Linear.
+
 **Read tools — pre-allow only what Cadence calls.**
 The prose reaches for exactly three read-only tools. Set these to
-Always Allow:
+Always Allow (using whichever namespace prefix your server exposes):
 
-| Intent          | Common names                                                  |
-|-----------------|---------------------------------------------------------------|
-| List issues     | `list_issues`, `mcp__linear__list_issues`, `search_issues`    |
-| Read an issue   | `get_issue`, `mcp__linear__get_issue`                         |
-| List comments   | `list_comments`, `mcp__linear__list_comments`                 |
+| Intent          | Example names — substitute your namespace                                                          |
+|-----------------|----------------------------------------------------------------------------------------------------|
+| List issues     | `list_issues`, `mcp__linear__list_issues`, `mcp__linear-server__list_issues`, `search_issues`      |
+| Read an issue   | `get_issue`, `mcp__linear__get_issue`, `mcp__linear-server__get_issue`                             |
+| List comments   | `list_comments`, `mcp__linear__list_comments`, `mcp__linear-server__list_comments`                 |
 
 Leave the rest of the read-only category on Ask. "Read-only" is not
 "harmless" — `get_document`, `list_users`, `list_projects`, etc. read
@@ -203,12 +228,18 @@ Bulk-allowing the whole category is fine in a throwaway test workspace; on any
 workspace with real data, pre-allow narrowly.
 
 **Write tools — pre-allow only what Cadence calls.**
-Set these to Always Allow:
+Set these to Always Allow (using whichever namespace prefix your server
+exposes):
 
-| Intent                       | Common names                                                                                          |
-|------------------------------|-------------------------------------------------------------------------------------------------------|
-| Post a comment               | `save_comment`, `mcp__linear__create_comment`                                                         |
-| Update issue (state, labels) | `save_issue`, `mcp__linear__update_issue`, `mcp__linear__add_label`, `mcp__linear__remove_label`      |
+| Intent                       | Example names — substitute your namespace                                                                                          |
+|------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| Post a comment               | `save_comment`, `mcp__linear__create_comment`, `mcp__linear-server__save_comment`                                                  |
+| Update issue (state, labels) | `save_issue`, `mcp__linear__update_issue`, `mcp__linear-server__save_issue`, `mcp__linear__add_label`, `mcp__linear__remove_label` |
+
+If your MCP server uses a namespace whose prefix does **not** contain
+"linear" (case-insensitive), you also need to extend the matcher regex in
+`.claude/settings.json` so the Cadence hooks see those tool calls — the
+shipped regex assumes `linear` appears somewhere in the server name.
 
 Leave every other write/delete tool on Ask (or off) — `create_attachment`,
 `delete_comment`, `create_issue_label` (labels are created up front per SMOKE

@@ -53,6 +53,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   scripts plus `validate_workflow.py` and `_common.py` alongside them, and
   merges Cadence's hook entries into `.claude/settings.json`.
 - `.claude-plugin/plugin.json` — version bumped to `0.2.0`.
+- `README.md` — "Linear MCP tools" section now opens with a namespace
+  primer (`mcp__linear__*` vs. `mcp__linear-server__*` vs.
+  `mcp__claude_ai_Linear__*` vs. bare), and the read/write allowlist
+  tables include the `mcp__linear-server__*` variants. Notes that
+  Claude Code's permission allowlist matches by exact tool name (unlike
+  the shipped hook regex), so operators must substitute the namespace
+  their MCP server actually exposes.
 
 ## [0.1.0] — 2026-05-11
 
