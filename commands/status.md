@@ -51,16 +51,20 @@ From the parsed config, extract:
 - `linear.team`, `linear.project_slug`, `linear.pickup_state` — required.
 - `label.cadence_active` — required.
 - `label.cadence_needs_human` — required.
-- The full `states:` map and `entry` value — for state-to-Linear mapping
-  and for the per-state summary.
 
-This reporter does **not** enforce the full validation rules from
-`/cadence:tick` step 3. It will tolerate (and report on) a
-misconfigured workflow — that's often exactly what a human wants to see.
-If the YAML is structurally invalid (parser error), print the error and
-exit; otherwise proceed even if a uniqueness rule or target rule would
-fail at tick time. Mention any obvious issues in a **Config warnings**
-section at the end of the report (step 5).
+Then invoke Bash:
+`python ${CLAUDE_PLUGIN_ROOT}/scripts/validate_workflow.py --evidence`.
+
+- If it exits **1**, the YAML is structurally unreadable — print the script's
+  stderr verbatim and exit.
+- If it exits **0 or 2**, parse the JSON on stdout. Use its `states` map,
+  `workflow_linear_states`, `pickup_state`, `entry_state_name`, and
+  `entry_subagent` for the rest of this report (state-to-Linear mapping and
+  the per-state summary). An exit code of **2** means one or more validation
+  rules failed; this reporter still proceeds — a human often runs
+  `/cadence:status` *because* the workflow is misconfigured. Keep the
+  `evidence` array's `FAIL` blocks for the **Config warnings** section
+  (step 5).
 
 ---
 
@@ -68,10 +72,10 @@ section at the end of the report (step 5).
 
 Construct two structures:
 
-1. `workflowLinearStates` — the set used to filter the query. Contains:
-   - `linear.pickup_state`
-   - Every state's `linear_state`
-   - Every gate's `approved_linear_state` and `rework_linear_state`
+1. `workflowLinearStates` — the set used to filter the query. This is the
+   `workflow_linear_states` array from the validator output in step 1
+   (`linear.pickup_state`, then every state's `linear_state`, then every
+   gate's `approved_linear_state` and `rework_linear_state`).
 
 2. `linearToWorkflow` — a map from each Linear column **back** to its
    role in the workflow. Each entry is one of:
@@ -117,21 +121,27 @@ is better than one per state).
 
 ---
 
-## Step 4 — Fetch each issue's latest attempt marker
+## Step 4 — Fetch each issue's latest tracking comment
 
-For **each** issue from step 3, query its comments. Find the **latest**
-tracking comment whose body begins with `<!-- cadence:state` or
-`<!-- stokowski:state` (the gate / reconcile / sweep variants are
-ignored here). Parse its JSON and pull:
+For **each** issue from step 3:
 
-- `state` — the workflow state the last attempt was at.
-- `attempt` (or legacy `run`) — the attempt number.
-- `started_at` (or legacy `timestamp`) — when the attempt began.
-- `status` — present (`"failed"`) on failure records, absent on attempt
-  markers.
+1. Query its comments via the Linear MCP and write them verbatim as a JSON
+   array to a temporary file (you may reuse one path, overwriting it per
+   issue).
+2. Determine the issue's workflow-state name from its `linearToWorkflow`
+   entry (step 2). For a `pickup` entry there is no workflow state — use
+   `entry_state_name` from step 1. Invoke Bash:
+   `python ${CLAUDE_PLUGIN_ROOT}/scripts/parse_comments.py --input <commentsFile> --target-state <workflow-state name>`
+3. From the JSON on stdout, read `attempt_count` and `latest_tracking_comment`
+   (`kind`, `state`, `attempt`, `status`). Render the issue's **Attempt**
+   column from `attempt_count`. Record `last_state` as
+   `latest_tracking_comment.state`, or `(none yet)` when `attempt_count` is 0
+   and `latest_tracking_comment.kind` is `null`. If `parse_errors` is
+   non-empty, note it for the **Config warnings** section.
 
-If the issue has **no** `cadence:state` / `stokowski:state` comments at
-all, record `attempt = 0` and `last_state = "(none yet)"`.
+The script counts only `cadence:state` / legacy `stokowski:state` attempt
+markers (failure records and gate / reconcile / sweep comments do not count
+toward `attempt_count`).
 
 If your MCP makes per-issue comment fetches expensive and the issue
 count is high, you may degrade gracefully: skip the per-issue fetch and
@@ -213,15 +223,13 @@ Also emit a single line for `pickup_state`:
 If any of the following hold, append a **Config warnings** section after
 the summary:
 
-- Duplicate Linear column across states (the conflict recorded in
-  step 2). Name both states and the duplicated column.
-- A state's `subagent` references a file that does not exist under
-  `.claude/agents/`. List the missing path. *(Optional best-effort
-  check: read `.claude/agents/` and compare names. If the read fails,
-  skip silently.)*
-- A `next` / `on_approve` / `on_rework` target does not appear in
-  `states:`. Name the source state and the dangling target.
-- Per-issue comment fetch was degraded (per step 4's fallback).
+- The validator (step 1) exited **2** — one or more rules failed. For each
+  `FAIL` block in its `evidence` array, print the rule `title` and its
+  `failure` string. This covers duplicate Linear columns, an invalid `entry`,
+  dangling `next` / `on_approve` / `on_rework` targets, and missing subagent
+  files — all checked deterministically by the script.
+- A per-issue comment fetch was degraded or returned `parse_errors`
+  (per step 4).
 
 If none, omit the section entirely.
 

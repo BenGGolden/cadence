@@ -54,8 +54,14 @@ in your available tool list — the verbs below describe intent, not exact names
 Trim `$ARGUMENTS` of surrounding whitespace. If the trimmed value matches `dry-run`
 case-insensitively (i.e. the user typed `/cadence:tick dry-run`):
 
-1. Run steps 1–4 below exactly as written (read config, read global prompt,
-   validate, build the workflow-Linear-states set).
+1. Run step 1 (read config) and step 2 (read global prompt) below exactly as
+   written. Then invoke Bash:
+   `python ${CLAUDE_PLUGIN_ROOT}/scripts/validate_workflow.py --evidence`
+   This replaces the prose validation (step 3) and the workflow-Linear-states
+   build (step 4) for the dry-run path — the script emits both the per-rule
+   evidence and the `workflow_linear_states` set as JSON on stdout. Parse that
+   JSON; if the script's stdout is not parseable, print stderr verbatim and
+   exit.
 2. Do **NOT** call any Linear MCP tool. Do **NOT** invoke any subagent. Do **NOT**
    write to any file.
 3. Compose the **Lifecycle Context block** (see step 13) for a *hypothetical* issue
@@ -70,40 +76,24 @@ case-insensitively (i.e. the user typed `/cadence:tick dry-run`):
    - `labels`: `(none)`
    - `description`: `No description provided.`
    - No rework section.
-4. Print a single Markdown report. Start with a **Validation** section that
-   walks step 3's five rules **in order**. For each rule, you MUST show your
-   work — list the specific values you collected and the references you
-   dereferenced from the YAML you just read in step 1. A bare "passed" without
-   listed evidence is a bug; the point of dry-run is to make the validation
-   work visible. Required shape per rule:
+4. Print a single Markdown report. Start with a **Validation** section built
+   from the script's JSON output. The `evidence` array has one block per rule,
+   each with `rule`, `title`, `lines` (pre-formatted bullet strings),
+   `result` (`PASS` / `FAIL`), and `failure`. For each block **in order**,
+   print the `title`, every string in `lines` as a bullet, and the `result`.
+   If a block's `result` is `FAIL`, also print its `failure` string. Do not
+   re-derive any of this — the script already did the work; your job is to
+   render it.
 
-   - **Rule 1 — Linear-state uniqueness.** List every collected
-     `linear_state` / `approved_linear_state` / `rework_linear_state` value as
-     a bullet of the form `` `<value>` ← states.<name>.<field> ``. Then state
-     the result: PASS if all values are distinct; FAIL naming both
-     `states.X.field` paths and the duplicated string.
-   - **Rule 2 — Entry.** Print the `entry` value, whether the named state
-     exists in `states:`, and its `type`. PASS only if it exists and has
-     `type: agent`.
-   - **Rule 3 — Targets.** List every `next` / `on_approve` / `on_rework`
-     reference in the config as a bullet of the form
-     `` states.<name>.<field> → `<target>` → <exists | MISSING> ``. PASS only
-     if every target resolves to a state defined in `states:`.
-   - **Rule 4 — Subagent files.** For each `type: agent` state, list a bullet
-     of the form
-     `` states.<name>.subagent → `.claude/agents/<name>.md` → <exists | MISSING> ``.
-     PASS only if every file is present.
-   - **Rule 5 — Pickup state.** Print the `linear.pickup_state` value. PASS if
-     non-empty.
+   If the script exited non-zero (`valid` is `false`): stop after printing the
+   evidence for every rule up to and including the first `FAIL`, end with
+   `DRY RUN — no side effects.`, and exit. Skip the rest of the report.
 
-   If any rule fails: stop after printing that rule's evidence and failure
-   message, end with `DRY RUN — no side effects.`, and exit. Skip the rest of
-   the report.
-
-   If all five rules pass, follow the Validation section with:
-   - **Workflow Linear states queried:** the full set from step 4, one per line.
-   - **Entry state:** the workflow state name plus the subagent that would be
-     invoked.
+   If the script exited zero, follow the Validation section with:
+   - **Workflow Linear states queried:** the `workflow_linear_states` array
+     from the script output, one per line.
+   - **Entry state:** `entry_state_name` plus `entry_subagent` from the script
+     output.
    - **Lifecycle Context (composed):** the block, fenced exactly as a normal
      subagent invocation would receive it. Append `.claude/prompts/global.md`
      content (or `(empty)`) after the block.
@@ -124,33 +114,30 @@ Hold the contents in memory as `globalPrompt` for step 13.
 
 ## Step 3 — Validate config
 
-Validate the YAML and check every rule. On the **first** failure, print a clear
-message naming the offending keys and exit (no Linear writes):
+Invoke Bash: `python ${CLAUDE_PLUGIN_ROOT}/scripts/validate_workflow.py`.
 
-1. **Uniqueness.** Collect every `linear_state` value across `states:`, plus every
-   gate's `approved_linear_state` and `rework_linear_state`. They must all be
-   distinct, and none may equal any other's value. If two states share a Linear
-   column, report both names and the duplicated string.
-2. **Entry.** `entry` must be a string naming a defined state in `states:`. That
-   state must have `type: agent`.
-3. **Targets.** For each state of `type: agent`, `next` must reference a defined
-   state. For each `type: gate`, `on_approve` and `on_rework` must each reference
-   a defined state.
-4. **Subagent files.** For each `type: agent` state, `subagent` must name a file
-   at `.claude/agents/{subagent}.md` that exists. If missing, name both the state
-   and the expected file path in the error.
-5. **Pickup state.** `linear.pickup_state` must be a non-empty string. It need not
-   appear in `states:` (it's the inbox column).
+This script enforces the five config rules deterministically (uniqueness of
+every `linear_state` / `approved_linear_state` / `rework_linear_state`; `entry`
+resolves to a `type: agent` state; every `next` / `on_approve` / `on_rework`
+resolves; every `subagent` resolves to `.claude/agents/{name}.md` on disk;
+`linear.pickup_state` non-empty).
+
+- If the exit code is **non-zero**, print the script's stderr verbatim and
+  exit. **Do not write to Linear.** (Exit 1 means the YAML was unreadable;
+  exit 2 means one or more rules failed.)
+- If the exit code is **zero**, parse the JSON on stdout. Use it as the
+  validated workflow config for the rest of the fire — in particular
+  `workflow_linear_states`, `entry_state_name`, `entry_subagent`, and
+  `pickup_state`. The raw config you read in step 1 still supplies
+  `linear.team` / `linear.project_slug` / `label.*` / `limits.*`.
 
 ## Step 4 — Build the workflow Linear-states set
 
-Construct an ordered set containing:
-- `linear.pickup_state`
-- Every state's `linear_state`
-- Every gate's `approved_linear_state` and `rework_linear_state`
-
-Keep this set in memory as `workflowLinearStates`. Step 5 uses it to filter the
-query; step 8 uses it to map a Linear column back to a workflow state.
+The validator in step 3 already produced this. Keep its `workflow_linear_states`
+array in memory as `workflowLinearStates` (ordered: `linear.pickup_state`, then
+every state's `linear_state`, then every gate's `approved_linear_state` and
+`rework_linear_state`). Step 5 uses it to filter the query; step 8 uses it to
+map a Linear column back to a workflow state.
 
 ---
 
@@ -231,35 +218,42 @@ Remove the `cadence_active` label and exit.
 
 ## Step 9 — Drift check via tracking comments
 
-Fetch the issue's comments (newest-first or all, as the MCP supports). Find the
-**latest** tracking comment — i.e. the most recent comment whose body begins with
-`<!-- cadence:state` or `<!-- cadence:gate` (also accepting the legacy `stokowski:`
-prefixes; see Vocabulary).
+Fetch the issue's full comment list via the Linear MCP. Write it verbatim as a
+JSON array to a temporary file — call it `commentsFile` (use the Write tool;
+any writable path works, an OS temp directory is fine). Each array element
+should carry whatever `id` / `body` / `createdAt` / `user` fields the MCP
+returns; `parse_comments.py` tolerates both camelCase and snake_case keys.
+Keep `commentsFile` for reuse in steps 10c and 11.
 
-Parse its JSON. Note the `state` field — this is the workflow-state name the
-*last* Cadence fire was working on.
+Invoke Bash:
+`python ${CLAUDE_PLUGIN_ROOT}/scripts/parse_comments.py --input <commentsFile> --target-state <matched workflow state>`
+— and append `--gate-name <matched workflow state>` if the matched state from
+step 8 is a gate (this makes step 9's output also carry the `rework_count` and
+`rework_context` that step 10c needs, so it does not have to re-run the script).
 
-Compare it to the matched workflow state from step 8 (the workflow state **name**,
-not its `linear_state` string):
+Parse the JSON on stdout. Read `latest_tracking_comment` — its `state` field is
+the workflow-state name the *last* Cadence fire was working on. It is `null`
+when there is no prior `cadence:state` / `cadence:gate` / `cadence:reconcile`
+comment, or when the latest such comment is a reconcile (which carries no
+`state`). If `parse_errors` is non-empty, note it in your run output but
+proceed.
 
-- **Match**: no drift. Proceed.
-- **Mismatch**: drift. A human (or another tool) reassigned the issue. Post a
-  reconcile comment:
+Compare `latest_tracking_comment.state` to the matched workflow state from
+step 8 (the workflow state **name**, not its `linear_state` string):
 
-  ```
-  <!-- cadence:reconcile {"observed_linear_state":"<current Linear column>","expected_state":"<state name from last tracking comment>","reason":"human reassigned"} -->
-  **[Cadence]** Detected human-driven state change; proceeding from Linear's state.
-  ```
-
-  Then continue using the matched workflow state from step 8.
+- **Match**, or `latest_tracking_comment.state` is `null` (brand-new issue, or
+  the last tracking comment was a reconcile): no drift. Proceed.
+- **Mismatch**: drift. A human (or another tool) reassigned the issue. Build
+  the reconcile comment by invoking Bash:
+  `python ${CLAUDE_PLUGIN_ROOT}/scripts/emit_tracking_comment.py --kind reconcile --observed-linear-state "<current Linear column>" --expected-state "<latest_tracking_comment.state>" --reason "human reassigned"`
+  Post the script's stdout as a Linear comment verbatim. Then continue using
+  the matched workflow state from step 8.
 
 - **Special case — gate sitting in approved/rework**: if the matched workflow state
   is a gate and Linear's current column is that gate's `approved_linear_state` or
   `rework_linear_state`, the matched workflow state name is **still** the gate's
-  own name. If the last tracking comment also names the gate (e.g. a prior
-  `cadence:gate {"state":"<gate>","status":"waiting"}`), this is **not** drift.
-
-- **No tracking comment yet** (brand-new issue, first fire): no drift. Proceed.
+  own name. If `latest_tracking_comment.state` also names the gate (e.g. a prior
+  `cadence:gate` comment with `status: "waiting"`), this is **not** drift.
 
 ---
 
@@ -293,34 +287,28 @@ The human approved. Look up `<gate>.on_approve` in the config; call it
 The human is sending the work back. Look up `<gate>.on_rework` in the config; call
 it `reworkTarget`. `<gate>.max_rework` may or may not be defined.
 
-1. Count prior `cadence:gate` (or legacy `stokowski:gate`) tracking comments on
-   this issue whose JSON has `"status": "rework"` **and** whose `state` equals the
-   current gate's name. Call this `reworkCount`.
+1. From step 9's `parse_comments.py` output (step 9 passed `--gate-name`
+   because the matched state is a gate), read `rework_count` — the number of
+   prior `cadence:gate` / legacy `stokowski:gate` comments with
+   `"status": "rework"` whose `state` equals this gate's name. Call it
+   `reworkCount`.
 
 2. If `<gate>.max_rework` is defined and `reworkCount >= max_rework`, escalate:
-   - Post: `<!-- cadence:gate {"state":"<gate>","status":"escalated"} -->`
-     followed by `**[Cadence]** Rework limit reached at gate **<gate>**. Needs human intervention.`
+   - Build the escalation comment by invoking Bash:
+     `python ${CLAUDE_PLUGIN_ROOT}/scripts/emit_tracking_comment.py --kind gate --state <gate> --status escalated`
+     Post its stdout as a Linear comment verbatim.
    - Add the `label.cadence_needs_human` label.
    - Remove the `cadence_active` label and exit.
 
-3. **Gather rework context before posting the new gate comment.** Collect every
-   Linear comment that:
-   - Was posted *after* the most recent tracking comment (cadence:state /
-     cadence:gate / cadence:reconcile, including legacy stokowski:); and
-   - Is not itself a tracking comment; and
-   - Was authored by a human (not by the Linear MCP integration account / not
-     a bot / not the cadence-active bot — best effort, lean on author identity
-     fields the MCP exposes; if uncertain, include it and let the implementer
-     judge).
+3. **Gather rework context.** From the same step 9 `parse_comments.py` output,
+   read the `rework_context` array — comments posted after the most recent
+   tracking comment, excluding tracking comments and obvious bots, oldest-first,
+   each with `body` / `author` / `createdAt`. Keep this as `reworkComments` for
+   step 13.
 
-   Keep these as `reworkComments` — each with body + createdAt + author display
-   name — for step 13.
-
-4. Post a new gate comment:
-   ```
-   <!-- cadence:gate {"state":"<gate>","status":"rework","rework_to":"<reworkTarget>"} -->
-   **[Cadence]** Rework requested; routing to **<reworkTarget>** (attempt counts toward <reworkTarget>'s max_attempts).
-   ```
+4. Build the rework gate comment by invoking Bash:
+   `python ${CLAUDE_PLUGIN_ROOT}/scripts/emit_tracking_comment.py --kind gate --state <gate> --status rework --rework-to <reworkTarget>`
+   Post its stdout as a Linear comment verbatim.
 
 5. Move the issue to `reworkTarget`'s `linear_state` via Linear MCP.
 
@@ -333,11 +321,14 @@ it `reworkTarget`. `<gate>.max_rework` may or may not be defined.
 Let `targetState` be the target state from step 10 (or step 8 if the matched
 workflow state was `type: agent`).
 
-Count the **attempt markers** for `targetState` on this issue: every `cadence:state`
-(or legacy `stokowski:state`) tracking comment whose JSON `state` equals
-`targetState` **and** whose JSON has **no** `status` field. Comments with
-`"status": "failed"` (failure records) do **not** count here. Call this
-`attemptCount`.
+Determine `attemptCount` by invoking Bash:
+`python ${CLAUDE_PLUGIN_ROOT}/scripts/parse_comments.py --input <commentsFile> --target-state <targetState>`
+and reading `attempt_count` from the JSON on stdout. Re-run the script here
+rather than reusing step 9's output: `targetState` may differ from the matched
+workflow state — e.g. after a gate routed this fire to `reworkTarget`. The
+script counts only `cadence:state` / legacy `stokowski:state` attempt markers
+whose JSON `state` equals `targetState` **and** that have **no** `status` field;
+failure records (`"status": "failed"`) do not count.
 
 If `attemptCount >= limits.max_attempts_per_issue`:
 1. Post a plain comment:
@@ -358,15 +349,11 @@ include a reliable current time, invoke Bash to run
 `date -u +%Y-%m-%dT%H:%M:%SZ` (POSIX) or, on Windows PowerShell,
 `Get-Date -AsUTC -Format yyyy-MM-ddTHH:mm:ssZ` and use the output.
 
-Post a Linear comment with body:
-
-```
-<!-- cadence:state {"state":"<targetState>","attempt":<attempt>,"started_at":"<ISO8601>"} -->
-**[Cadence]** Entering state: **<targetState>** (attempt <attempt>)
-```
-
-(Omit any `status` field — this comment **is** the attempt marker counted by
-step 11 on future fires.)
+Build the attempt-marker comment by invoking Bash:
+`python ${CLAUDE_PLUGIN_ROOT}/scripts/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --started-at <ISO8601>`
+Post its stdout as a Linear comment verbatim. The script emits no `status`
+field — this comment **is** the attempt marker counted by step 11 on future
+fires.
 
 ---
 
@@ -486,15 +473,11 @@ Look up `targetState.next` in the config. Find the next state's config block.
 Then:
 
 - If `next` is `type: agent`: move the issue's Linear state to `next.linear_state`.
-- If `next` is `type: gate`: first post the gate's waiting marker:
-
-  ```
-  <!-- cadence:gate {"state":"<next>","status":"waiting"} -->
-  **[Cadence]** Awaiting human review at **<next>**.
-  ```
-
-  Then move the issue's Linear state to `next.linear_state` (the gate's waiting
-  column).
+- If `next` is `type: gate`: first build the gate's waiting marker by invoking
+  Bash:
+  `python ${CLAUDE_PLUGIN_ROOT}/scripts/emit_tracking_comment.py --kind gate --state <next> --status waiting`
+  Post its stdout as a Linear comment verbatim. Then move the issue's Linear
+  state to `next.linear_state` (the gate's waiting column).
 
 - If `next` is `type: terminal`: move the issue's Linear state to
   `next.linear_state` (e.g. "Done"). Post no further comment.
@@ -533,18 +516,15 @@ Exit. Do not loop. Do not pick up another issue.
 
 If the Agent invocation in step 14 raises an exception:
 
-1. Compose a short error string (the exception message, truncated to ~400 chars,
-   with newlines collapsed to spaces).
-2. Post a Linear comment with body:
+1. Take the subagent's exception message as the error string.
+2. Build the failure record by invoking Bash:
+   `python ${CLAUDE_PLUGIN_ROOT}/scripts/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --status failed --error "<exception message>" --subagent <subagent>`
+   (The script collapses newlines to spaces and truncates the error to 400
+   chars itself.) Post its stdout as a Linear comment verbatim.
 
-   ```
-   <!-- cadence:state {"state":"<targetState>","attempt":<attempt>,"status":"failed","error":"<error string>"} -->
-   **[Cadence]** Subagent **<subagent>** failed at attempt <attempt>: <error string>
-   ```
-
-   (Same `attempt` number as the attempt marker from step 12, **plus** a
-   `status: "failed"` field. This is a failure **record**, not a new attempt
-   marker; step 11 on the next fire will not count it.)
+   This uses the same `attempt` number as the attempt marker from step 12,
+   **plus** a `status: "failed"` field. It is a failure **record**, not a new
+   attempt marker; step 11 on the next fire will not count it.
 3. Remove the `cadence_active` label.
 4. Exit. The next fire will retry — `attempt` will be the same `attemptCount + 1`
    value (the marker from step 12 is what's counted, and it remains).
