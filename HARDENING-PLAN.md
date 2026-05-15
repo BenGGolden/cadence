@@ -1466,6 +1466,49 @@ gates" section:
    them back to the gate's waiting column and apply the matching label,
    or move them straight to the target state.
 
+## P4.4a — Linear label group for verdict mutual exclusion
+
+The two verdict labels (`cadence-approve`, `cadence-rework`) should live
+in a **Linear label group** so the workspace UI enforces that at most
+one is set at a time. Without a group, Linear's label picker shows the
+two as independent toggles — a reviewer can set both, which P4.2's step
+10 has to treat as "both present → fall back to rework." With a group,
+Linear renders the verdict as a single-select control (radio-style
+picker), and the dual-label state becomes structurally unreachable from
+the human UI.
+
+This is a **Linear-side configuration** the consumer does once, not a
+plugin code change:
+
+1. In Linear workspace settings → Labels, create a label group named
+   `Cadence: Decision` (or any operator-chosen name).
+2. Move `cadence-approve` and `cadence-rework` into that group. The
+   labels keep their canonical names — Cadence's prose matches by name,
+   not by group membership.
+3. Linear now renders the verdict on each issue as a single-select field
+   instead of two independent toggles.
+
+**Cadence prose impact: none.** P4.2's step 10 "both verdict labels
+present" fallback stays in `tick.md` as a defensive guard — the group is
+a UI-level constraint, not an API-level one, and we want the bootstrap
+to behave sanely even if a future API caller bypasses it. The group
+just makes the dual-label state unreachable via the path it was designed
+for.
+
+**Doc edits** (in addition to P4.4's edits):
+
+- `README.md` Mode A setup, "Gate labels" note added in P4.4 — append
+  one sentence recommending operators put the two labels into a Linear
+  label group for single-select UX.
+- `MIGRATION.md` "Upgrading to label-based gates" section — add a step
+  "(Recommended) create a label group containing both labels" alongside
+  step 1 (creating the labels).
+
+Cadence does not validate that the group exists — it is purely an
+ergonomic / safety recommendation in the docs. A consumer on a Linear
+plan without label groups still gets a working system, just with the
+two labels as independent toggles.
+
 ## P4.5 — `commands/status.md`
 
 `/cadence:status` summarizes issues by Linear column. With gates now on
@@ -1495,6 +1538,9 @@ processed on next fire" signal). Keep that addition minimal.
       `approved_linear_state` / `rework_linear_state`.
 - [ ] `README.md` "Required Linear columns" list drops `Approved` and
       `Needs Rework`, and documents the two new gate labels.
+- [ ] `README.md` + `MIGRATION.md` recommend placing
+      `cadence-approve` / `cadence-rework` into a Linear label group for
+      single-select verdict UX (P4.4a). No code-level enforcement.
 - [ ] `MIGRATION.md` + `CHANGELOG.md` have an "Upgrading to label-based
       gates" section.
 - [ ] `.claude-plugin/plugin.json` version bumped.
