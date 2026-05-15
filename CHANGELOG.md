@@ -18,6 +18,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     context, latest tracking comment).
   - `emit_tracking_comment.py` — produces canonical tracking-comment
     bodies so the embedded JSON is always well-formed.
+- `templates/hooks/` — three Claude Code hook scripts, scaffolded into the
+  consumer's `.claude/hooks/` directory by `/cadence:init` (hardening plan,
+  Phase 2):
+  - `validate_tracking_json.py` — `PreToolUse` hook that blocks Linear
+    comment-create calls whose Cadence tracking-comment JSON does not parse.
+  - `validate_workflow_on_prompt.py` — `UserPromptSubmit` hook that runs
+    `validate_workflow.py` before `/cadence:tick` proceeds, blocking the
+    prompt on a broken `.claude/workflow.yaml`.
+  - `audit_linear_writes.py` — `PostToolUse` hook that appends one JSONL
+    line per Linear write to `.cadence/audit.log`, for forensic debugging
+    of a fire after the fact.
+- `templates/settings.example.json` — canonical Cadence hooks block,
+  merged into the consumer's `.claude/settings.json` by `/cadence:init`.
+- `scripts/merge_settings_hooks.py` — plugin-only helper invoked by
+  `/cadence:init` to perform an idempotent merge of the hooks block into
+  the consumer's `.claude/settings.json`. Non-Cadence hook entries are
+  preserved; existing Cadence entries are replaced rather than duplicated.
 
 ### Changed
 - `commands/tick.md` — steps 0, 3, 4, 9, 10c, 11, 12, 16 and the Failure
@@ -27,6 +44,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `commands/sweep.md` and `commands/status.md` — now call
   `validate_workflow.py` for config validation; `status.md` also uses
   `parse_comments.py` for per-issue attempt counts.
+- `commands/init.md` — creates `.claude/hooks/`, copies the three hook
+  scripts plus `validate_workflow.py` and `_common.py` alongside them, and
+  merges Cadence's hook entries into `.claude/settings.json`.
+- `.claude-plugin/plugin.json` — version bumped to `0.2.0`.
 
 ## [0.1.0] — 2026-05-11
 
