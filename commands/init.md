@@ -37,6 +37,13 @@ Check whether `.claude/workflow.yaml` already exists.
     - .claude/agents/planner.md
     - .claude/agents/implementer.md
     - .claude/agents/reviewer.md
+    - .claude/hooks/validate_tracking_json.py
+    - .claude/hooks/validate_workflow_on_prompt.py
+    - .claude/hooks/audit_linear_writes.py
+    - .claude/hooks/validate_workflow.py
+    - .claude/hooks/_common.py
+  Cadence's hook entries in .claude/settings.json will also be re-merged
+  (non-Cadence entries are preserved).
   ```
 
 - **If it does not exist, or `--force` was supplied**: proceed to step 3.
@@ -48,6 +55,7 @@ Create (if not already present):
 - `.claude/`
 - `.claude/agents/`
 - `.claude/prompts/`
+- `.claude/hooks/`
 
 ## Step 4 — Copy templates
 
@@ -62,16 +70,50 @@ actual plugin root at runtime.
 | `${CLAUDE_PLUGIN_ROOT}/templates/agents/planner.md`               | `.claude/agents/planner.md`  |
 | `${CLAUDE_PLUGIN_ROOT}/templates/agents/implementer.md`           | `.claude/agents/implementer.md` |
 | `${CLAUDE_PLUGIN_ROOT}/templates/agents/reviewer.md`              | `.claude/agents/reviewer.md` |
+| `${CLAUDE_PLUGIN_ROOT}/templates/hooks/validate_tracking_json.py` | `.claude/hooks/validate_tracking_json.py` |
+| `${CLAUDE_PLUGIN_ROOT}/templates/hooks/validate_workflow_on_prompt.py` | `.claude/hooks/validate_workflow_on_prompt.py` |
+| `${CLAUDE_PLUGIN_ROOT}/templates/hooks/audit_linear_writes.py`    | `.claude/hooks/audit_linear_writes.py` |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/validate_workflow.py`              | `.claude/hooks/validate_workflow.py` |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/_common.py`                        | `.claude/hooks/_common.py`   |
 
 The agent templates already carry their final `name:` (`planner`,
 `implementer`, `reviewer`) in their frontmatter — copy them verbatim. The
 consumer's `workflow.yaml` references these short names.
 
+The five files copied into `.claude/hooks/` are always overwritten on init
+(including without `--force`). They are plugin-owned executables, not user
+config; keeping them in sync with the installed plugin is the point.
+`validate_workflow.py` and `_common.py` are siblings of the hook scripts so
+that the `UserPromptSubmit` hook can call them without resolving a plugin
+path at runtime.
+
 If `--force` was supplied and a destination already exists, overwrite it.
 If `--force` was NOT supplied (which means step 2 fell through because
 `.claude/workflow.yaml` was absent), still avoid clobbering any of the
 agent or prompt destinations that happen to exist already — print a warning
-naming each one you skipped, but continue with the rest.
+naming each one you skipped, but continue with the rest. The five files
+under `.claude/hooks/` are always copied regardless (see paragraph above).
+
+## Step 4b — Merge hook entries into .claude/settings.json
+
+After the file copies succeed, run this command via Bash to merge Cadence's
+hook entries into the consumer's `.claude/settings.json` (creating it if
+absent):
+
+```
+python "${CLAUDE_PLUGIN_ROOT}/scripts/merge_settings_hooks.py" \
+  --settings-path .claude/settings.json \
+  --template-path "${CLAUDE_PLUGIN_ROOT}/templates/settings.example.json"
+```
+
+The merge is idempotent: re-running on a settings file that already contains
+Cadence's hook entries replaces them rather than duplicating, and any
+non-Cadence hook entries the consumer added are left untouched.
+
+If the script exits non-zero, print its stderr and stop — partial
+scaffolding is acceptable (file copies have already happened), and the
+consumer can fix the underlying problem (usually a hand-broken
+`.claude/settings.json`) and re-run with `--force`.
 
 ## Step 5 — Print next steps
 
@@ -86,6 +128,12 @@ Files written:
   .claude/agents/planner.md
   .claude/agents/implementer.md
   .claude/agents/reviewer.md
+  .claude/hooks/validate_tracking_json.py
+  .claude/hooks/validate_workflow_on_prompt.py
+  .claude/hooks/audit_linear_writes.py
+  .claude/hooks/validate_workflow.py
+  .claude/hooks/_common.py
+  .claude/settings.json (Cadence hook entries merged in)
 
 Next steps:
   1. Edit .claude/workflow.yaml to point at your Linear team/project and
