@@ -27,8 +27,13 @@ Matcher contract (kept in sync with templates/settings.example.json):
   tool (`create_comment`, `save_comment`, `save_issue`, `update_issue`,
   `add_label`, `remove_label`) regardless of MCP server namespace prefix,
   as long as the prefix contains "linear" or "Linear". Bare tool names
-  (no `mcp__<server>__` prefix) are also matched. An MCP server with an
-  unusual namespace must be added to the matcher manually.
+  (no `mcp__<server>__` prefix) are also matched.
+
+  Confirmed in the wild: `mcp__linear-server__*` (Linear's documented
+  `claude mcp add` name). Speculative-but-cheap-to-cover: `mcp__linear__*`,
+  `mcp__claude_ai_Linear__*`, bare names — see the matching rationale in
+  validate_tracking_json.py. An MCP server with an unusual namespace must
+  be added to the matcher manually.
 """
 
 import json

@@ -28,15 +28,23 @@ Matcher contract (kept in sync with templates/settings.example.json):
   namespace prefix, as long as the prefix contains "linear" or "Linear".
   Bare tool names (no `mcp__<server>__` prefix) are also matched.
 
-  Known names this catches in the wild:
-    mcp__linear__create_comment              (linear-official MCP)
-    mcp__linear-server__save_comment         (locally-named `linear-server`)
-    mcp__claude_ai_Linear__save_comment      (claude.ai connector)
-    save_comment / create_comment            (bare)
+  Confirmed in the wild:
+    mcp__linear-server__save_comment         (Linear's documented
+                                             `claude mcp add` name, per
+                                             https://mcp.linear.app/mcp)
 
-  An MCP server whose namespace does NOT contain "linear" (case-insensitive
-  for the leading character) will not match — operators with an unusual
-  namespace must extend the matcher manually in .claude/settings.json.
+  Speculative-but-cheap-to-cover (no concrete sighting; included because the
+  regex breadth costs only a few no-op hook invocations against unrelated
+  tools, and rediscovering the bug if a namespace varies is more painful):
+    mcp__linear__*                           (operator-renamed local install)
+    mcp__claude_ai_Linear__*                 (assumed claude.ai connector
+                                             namespace — not verified)
+    save_comment / create_comment            (bare; legacy bridges may
+                                             strip the mcp__ prefix)
+
+  An MCP server whose namespace does NOT contain "linear" (case-insensitive)
+  will not match — operators with an unusual namespace must extend the
+  matcher manually in .claude/settings.json.
 """
 
 import json
