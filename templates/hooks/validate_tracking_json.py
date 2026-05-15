@@ -22,11 +22,21 @@ Behaviour:
 Stdin payload (PreToolUse):
   {"tool_name": "...", "tool_input": {"body": "..."}, "tool_use_id": "..."}
 
-Known matching tool names (kept in sync with templates/settings.example.json):
-  mcp__linear__create_comment
-  mcp__claude_ai_Linear__save_comment
-  save_comment
-  create_comment
+Matcher contract (kept in sync with templates/settings.example.json):
+  The settings.json matcher is a regex that catches any Linear MCP tool
+  named `create_comment` or `save_comment` regardless of the MCP server's
+  namespace prefix, as long as the prefix contains "linear" or "Linear".
+  Bare tool names (no `mcp__<server>__` prefix) are also matched.
+
+  Known names this catches in the wild:
+    mcp__linear__create_comment              (linear-official MCP)
+    mcp__linear-server__save_comment         (locally-named `linear-server`)
+    mcp__claude_ai_Linear__save_comment      (claude.ai connector)
+    save_comment / create_comment            (bare)
+
+  An MCP server whose namespace does NOT contain "linear" (case-insensitive
+  for the leading character) will not match — operators with an unusual
+  namespace must extend the matcher manually in .claude/settings.json.
 """
 
 import json

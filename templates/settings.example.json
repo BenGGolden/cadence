@@ -2,7 +2,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "mcp__linear__create_comment|mcp__claude_ai_Linear__save_comment|save_comment|create_comment",
+        "matcher": "mcp__[A-Za-z0-9_-]*[Ll]inear[A-Za-z0-9_-]*__(create_comment|save_comment)|save_comment|create_comment",
         "hooks": [
           {
             "type": "command",
@@ -23,7 +23,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "mcp__linear__create_comment|mcp__linear__update_issue|mcp__linear__add_label|mcp__linear__remove_label|mcp__claude_ai_Linear__save_comment|mcp__claude_ai_Linear__save_issue|save_comment|save_issue|update_issue|add_label|remove_label",
+        "matcher": "mcp__[A-Za-z0-9_-]*[Ll]inear[A-Za-z0-9_-]*__(create_comment|save_comment|save_issue|update_issue|add_label|remove_label)|save_comment|save_issue|update_issue|add_label|remove_label|create_comment",
         "hooks": [
           {
             "type": "command",

@@ -31,6 +31,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     of a fire after the fact.
 - `templates/settings.example.json` — canonical Cadence hooks block,
   merged into the consumer's `.claude/settings.json` by `/cadence:init`.
+  Matchers are namespace-flexible regexes that catch any Linear MCP tool
+  whose server namespace contains `linear` / `Linear` (e.g.
+  `mcp__linear__*`, `mcp__linear-server__*`, `mcp__claude_ai_Linear__*`),
+  plus bare-named variants. Unrelated MCP servers (GitHub, Notion, etc.)
+  are excluded.
 - `scripts/merge_settings_hooks.py` — plugin-only helper invoked by
   `/cadence:init` to perform an idempotent merge of the hooks block into
   the consumer's `.claude/settings.json`. Non-Cadence hook entries are
