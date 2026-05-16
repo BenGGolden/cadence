@@ -92,3 +92,87 @@ highest-value pieces. Worth scoping when a specific step starts showing
 flakiness, or when prose grows long enough to be hard to audit.
 
 **Discussed in**: conversation on 2026-05-15.
+
+---
+
+## Scaffold the Linear permissions allowlist during `/cadence:init`
+
+**Idea**: extend `/cadence:init` to detect the Linear MCP server in use
+and pre-populate `.claude/settings.local.json` (or a chosen settings file)
+with `permissions.allow` entries for the read/write tools Cadence calls.
+
+**Why**: today an operator has to:
+
+1. Run `/cadence:init`.
+2. Read the README's "Linear MCP tools" section.
+3. Figure out which MCP namespace their installation uses
+   (`mcp__linear-server__*` vs. `mcp__linear__*` vs.
+   `mcp__claude_ai_Linear__*`).
+4. Hand-edit `.claude/settings.local.json` (or the routine's permissions
+   panel in /schedule mode) with the right tool names.
+5. Discover gaps the hard way — every missing tool surfaces as an
+   auto-mode classifier denial at fire time, often mid-loop, sometimes
+   inside a runaway cron that has to be killed manually.
+
+This is the single biggest setup wart surfaced by Phase 2 smoke testing.
+Smokes D, E, and F each tripped over a different facet of the same root
+cause: the README tells operators what to allow, but nothing automates it.
+
+**Sketch of the fix**:
+
+- `/cadence:init` runs `claude mcp list` (or reads `.mcp.json`) to find
+  the Linear server's namespace.
+- Generates a `permissions.allow` list using that namespace plus the
+  canonical Cadence verbs (`save_comment`, `save_issue`, `list_issues`,
+  `get_issue`, `list_comments`).
+- Writes/merges that list into `.claude/settings.local.json` (untracked,
+  per-operator) with the same idempotent merge contract
+  `merge_settings_hooks.py` already uses for the hooks block.
+- For `/schedule`, prints the same list at the end of init so the operator
+  can paste it into the routine's permissions panel — cloud routines
+  don't read local settings.
+
+**Open questions**:
+
+- Detection: is `claude mcp list` machine-readable? Falls back to "ask
+  the operator" if not.
+- Should this live in `/cadence:init` or a dedicated
+  `/cadence:permissions` command? The latter is more focused and can be
+  re-run when an operator adds new MCP servers; the former keeps the
+  one-command setup story.
+- Account-level claude.ai connectors (the recommended /schedule path)
+  expose tools to routines via the connector toggle, not via
+  `permissions.allow` — does the scaffold still help, or just mislead?
+
+**Why not now**: not in Phase 2 scope (which is hook plumbing only);
+also wants verification that the detection path works against all three
+known Linear MCP variants. Captured here so the next consumer doesn't
+hit the same setup tax.
+
+**Discussed in**: Phase 2 smoke testing, 2026-05-16. Auto-mode classifier
+denials on `mcp__linear-server__save_issue` triggered the conversation.
+
+---
+
+## Make `linear.project_slug` optional in `workflow.yaml`
+
+**Idea**: drop `linear.project_slug` from the required field set.
+Absent → bootstrap queries team-wide; present → narrows to that project.
+
+**Why**: Linear's data model treats team as the primary organizational
+unit and project as an optional facet on issues. Forcing a project means
+operators either create a project they don't otherwise want, or silently
+get zero hits in step 5 if they have any issues that aren't assigned to
+the configured project.
+
+**Scope**: small. Touches `templates/workflow.example.yaml` (mark
+optional), `scripts/validate_workflow.py` (no enforcement to add — it
+already doesn't validate `project_slug`; just document), and
+`commands/tick.md` step 5 (query team-only when absent, narrow when
+present).
+
+**Why not now**: surfaced during Phase 2 smoke testing; not a hooks
+concern. Land as a standalone PR off `main` once Phase 2 is in.
+
+**Discussed in**: Phase 2 smoke testing, 2026-05-16. A test issue
+without a project assignment never matched step 5's query.
