@@ -83,6 +83,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   to specify the project's name or UUID, and warn against using the URL
   suffix (Linear URLs end in `<name>-<hash>`, but the hashed form is not
   accepted as an MCP filter value).
+- `linear.project_slug` is now **optional**. Absent → `/cadence:tick`,
+  `/cadence:sweep`, and `/cadence:status` query team-wide; present →
+  the query narrows to that project (existing behaviour). Linear's data
+  model treats team as primary and project as an optional facet, so
+  forcing a project meant operators either created a project they did
+  not otherwise want or silently got zero pickup hits for issues that
+  were not assigned to the configured project. Touches
+  `templates/workflow.example.yaml` (placeholder commented out, doc
+  rewritten as optional), `commands/tick.md` step 5, `commands/sweep.md`
+  steps 1 and 3, and `commands/status.md` steps 1, 3, and 5. The
+  validator already did not enforce `project_slug`, so no script change
+  was needed.
 - `.claude-plugin/plugin.json` — version bumped to `0.2.0`.
 - `README.md` — "Linear MCP tools" section now opens with a namespace
   primer (`mcp__linear__*` vs. `mcp__linear-server__*` vs.

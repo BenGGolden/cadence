@@ -48,7 +48,9 @@ error naming the path and exit.
 
 From the parsed config, extract:
 
-- `linear.team`, `linear.project_slug`, `linear.pickup_state` — required.
+- `linear.team`, `linear.pickup_state` — required.
+- `linear.project_slug` — optional; narrows the query to one project
+  when set, otherwise the report is team-wide.
 - `label.cadence_active` — required.
 - `label.cadence_needs_human` — required.
 
@@ -97,9 +99,10 @@ Construct two structures:
 
 ## Step 3 — Query workflow issues
 
-Using the Linear MCP, query the team/project named in `linear.team` /
-`linear.project_slug` for issues where Linear state ∈
-`workflowLinearStates`. For each issue, capture:
+Using the Linear MCP, query the team named in `linear.team` (narrowed
+to `linear.project_slug` when that field is present in the config) for
+issues where Linear state ∈ `workflowLinearStates`. For each issue,
+capture:
 
 - `identifier` (e.g. `ENG-123`)
 - `title`
@@ -159,7 +162,7 @@ entire user-visible output.
 ```markdown
 ## Cadence status — <now in UTC ISO 8601>
 
-Team: **<linear.team>**   Project: **<linear.project_slug>**   Pickup: **<linear.pickup_state>**
+Team: **<linear.team>**   Project: **<linear.project_slug, or "(any)" if unset>**   Pickup: **<linear.pickup_state>**
 
 ### Issues in workflow
 

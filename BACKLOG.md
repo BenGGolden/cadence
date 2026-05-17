@@ -152,27 +152,3 @@ hit the same setup tax.
 **Discussed in**: Phase 2 smoke testing, 2026-05-16. Auto-mode classifier
 denials on `mcp__linear-server__save_issue` triggered the conversation.
 
----
-
-## Make `linear.project_slug` optional in `workflow.yaml`
-
-**Idea**: drop `linear.project_slug` from the required field set.
-Absent → bootstrap queries team-wide; present → narrows to that project.
-
-**Why**: Linear's data model treats team as the primary organizational
-unit and project as an optional facet on issues. Forcing a project means
-operators either create a project they don't otherwise want, or silently
-get zero hits in step 5 if they have any issues that aren't assigned to
-the configured project.
-
-**Scope**: small. Touches `templates/workflow.example.yaml` (mark
-optional), `scripts/validate_workflow.py` (no enforcement to add — it
-already doesn't validate `project_slug`; just document), and
-`commands/tick.md` step 5 (query team-only when absent, narrow when
-present).
-
-**Why not now**: surfaced during Phase 2 smoke testing; not a hooks
-concern. Land as a standalone PR off `main` once Phase 2 is in.
-
-**Discussed in**: Phase 2 smoke testing, 2026-05-16. A test issue
-without a project assignment never matched step 5's query.
