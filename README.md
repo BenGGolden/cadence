@@ -75,11 +75,20 @@ Review, Approved, Needs Rework, Done — reshape via `workflow.yaml`).
 
 Fully autonomous. No operator presence required between fires.
 
-1. Install the plugin (see above).
+1. Install the plugin locally (see above). Cloud `/schedule` routines do
+   **not** load Claude Code plugins — plugins are local-only. Cadence works
+   around this by having `/cadence:init` copy the dispatch prose
+   (`.claude/commands/cadence/{tick,sweep,status}.md`) and helper scripts
+   (`.claude/hooks/*.py`) into the consumer repo, so the cloud session
+   reads them as project-scoped slash commands. The local install only
+   exists to run `/cadence:init` once and to drive `/loop` if you also
+   want Mode B.
 2. Run `/cadence:init` in the consuming repo's Claude Code session.
 3. Edit the scaffolded files under `.claude/` — `workflow.yaml` (Linear team,
    project, state names), `agents/*.md` (model, tools, system prompt),
-   `prompts/global.md` (shared preamble).
+   `prompts/global.md` (shared preamble). Commit the whole `.claude/`
+   directory — the cloud routine reads the dispatch prose, hooks, and
+   `settings.json` from the checked-out repo.
 4. **Make Linear's MCP server reachable from the routine.** Cloud routines do
    NOT inherit MCP servers added locally via `claude mcp add`. Either set up an
    account-level connector ([claude.ai/customize/connectors][connectors] →

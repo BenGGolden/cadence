@@ -52,6 +52,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `commands/init.md` — creates `.claude/hooks/`, copies the three hook
   scripts plus `validate_workflow.py` and `_common.py` alongside them, and
   merges Cadence's hook entries into `.claude/settings.json`.
+- `commands/init.md` — also copies `parse_comments.py` and
+  `emit_tracking_comment.py` into `.claude/hooks/`, and copies the
+  dispatch prose `commands/{tick,sweep,status}.md` into
+  `.claude/commands/cadence/`. `commands/{tick,sweep,status}.md` now
+  reference helper scripts via `$CLAUDE_PROJECT_DIR/.claude/hooks/...`
+  rather than `${CLAUDE_PLUGIN_ROOT}/scripts/...`. This makes
+  `/cadence:tick` runnable from a `/schedule` cloud routine, which
+  previously had no path to find either the dispatch prose or the
+  helper scripts (the plugin is not installed in the cloud session).
 - `.claude-plugin/plugin.json` — version bumped to `0.2.0`.
 - `README.md` — "Linear MCP tools" section now opens with a namespace
   primer (`mcp__linear__*` vs. `mcp__linear-server__*` vs.
