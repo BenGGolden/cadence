@@ -61,6 +61,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `/cadence:tick` runnable from a `/schedule` cloud routine, which
   previously had no path to find either the dispatch prose or the
   helper scripts (the plugin is not installed in the cloud session).
+- `commands/tick.md` step 9 (drift detection) — no longer treats normal
+  agent→agent forward progression as drift. After a successful fire that
+  advanced Linear from state X to state X.next (an agent state), the next
+  fire would see `latest_tracking_comment.state = X` and matched state =
+  X.next and incorrectly post a reconcile comment claiming a human
+  reassignment. Step 9 now treats `matched == config.states[latest.state].next`
+  as the expected pattern. Gate transitions were already handled
+  correctly because step 16's gate-next branch emits a fresh tracking
+  comment when advancing into a gate; only the agent→agent path lacked
+  the corresponding update, which the smarter drift check now compensates
+  for without adding extra comments.
 - `commands/tick.md` step 5 — added explicit query-shape requirements:
   pass `linear.project_slug` to the MCP project filter verbatim, do not
   transform it, and do not fall back to broader queries (team-only, ID

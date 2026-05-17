@@ -255,21 +255,44 @@ comment, or when the latest such comment is a reconcile (which carries no
 proceed.
 
 Compare `latest_tracking_comment.state` to the matched workflow state from
-step 8 (the workflow state **name**, not its `linear_state` string):
+step 8 (the workflow state **name**, not its `linear_state` string). Apply
+these checks in order — the first one that holds wins:
 
-- **Match**, or `latest_tracking_comment.state` is `null` (brand-new issue, or
-  the last tracking comment was a reconcile): no drift. Proceed.
-- **Mismatch**: drift. A human (or another tool) reassigned the issue. Build
-  the reconcile comment by invoking Bash:
+- **`latest_tracking_comment.state` is `null`**: no drift (brand-new issue,
+  or the latest tracking comment is a reconcile which carries no `state`).
+  Proceed.
+
+- **Match** (`latest_tracking_comment.state` equals the matched state): no
+  drift. The previous fire didn't advance — either its subagent failed and
+  Linear stayed where it was, or this fire is the next pickup of a gate
+  sitting in any of its three columns (the gate's name matches via
+  `linear_state`, `approved_linear_state`, or `rework_linear_state`).
+  Proceed.
+
+- **Normal forward progression**: the matched state equals
+  `config.states[latest_tracking_comment.state].next`. This is the
+  expected pattern after a successful agent→agent transition — the prior
+  fire ran the subagent for state X, advanced Linear to X's successor at
+  its step 16, and exited; this fire is now picking up X's successor for
+  the first time. (Step 16 emits a fresh tracking comment only when
+  advancing into a gate, not when advancing into another agent state — so
+  for agent→agent the latest tracking comment legitimately lags one state
+  behind Linear's column.) Proceed without posting a reconcile.
+
+  This check only applies when `latest_tracking_comment.state` names an
+  agent state with a defined `next` field. Gate states use `on_approve` /
+  `on_rework` instead of `next`, but in practice gate predecessors are
+  always handled by the **Match** rule above (Linear stays in one of the
+  gate's three columns until a human moves it, and any successful gate
+  transition emits its own tracking comment that updates `latest` to the
+  new target state).
+
+- **Drift otherwise**: a human (or another tool) reassigned the issue to a
+  column that isn't reachable from where it last was via one workflow
+  edge. Build the reconcile comment by invoking Bash:
   `python "$CLAUDE_PROJECT_DIR"/.claude/hooks/emit_tracking_comment.py --kind reconcile --observed-linear-state "<current Linear column>" --expected-state "<latest_tracking_comment.state>" --reason "human reassigned"`
-  Post the script's stdout as a Linear comment verbatim. Then continue using
-  the matched workflow state from step 8.
-
-- **Special case — gate sitting in approved/rework**: if the matched workflow state
-  is a gate and Linear's current column is that gate's `approved_linear_state` or
-  `rework_linear_state`, the matched workflow state name is **still** the gate's
-  own name. If `latest_tracking_comment.state` also names the gate (e.g. a prior
-  `cadence:gate` comment with `status: "waiting"`), this is **not** drift.
+  Post the script's stdout as a Linear comment verbatim. Then continue
+  using the matched workflow state from step 8.
 
 ---
 
