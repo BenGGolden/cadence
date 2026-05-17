@@ -61,6 +61,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `/cadence:tick` runnable from a `/schedule` cloud routine, which
   previously had no path to find either the dispatch prose or the
   helper scripts (the plugin is not installed in the cloud session).
+- `commands/tick.md` step 5 — added explicit query-shape requirements:
+  pass `linear.project_slug` to the MCP project filter verbatim, do not
+  transform it, and do not fall back to broader queries (team-only, ID
+  lookups) if the filtered query returns empty. Without this, the
+  bootstrap LLM would sometimes improvise a fallback that masked a
+  misconfigured `project_slug`, producing inconsistent fire-to-fire
+  behavior.
+- `templates/workflow.example.yaml` — `project_slug` comment corrected
+  to specify the project's name or UUID, and warn against using the URL
+  suffix (Linear URLs end in `<name>-<hash>`, but the hashed form is not
+  accepted as an MCP filter value).
 - `.claude-plugin/plugin.json` — version bumped to `0.2.0`.
 - `README.md` — "Linear MCP tools" section now opens with a namespace
   primer (`mcp__linear__*` vs. `mcp__linear-server__*` vs.

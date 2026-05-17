@@ -18,10 +18,13 @@ linear:
   # bootstrap when querying for eligible issues.
   team: ENG
 
-  # Required. The Linear project to scope issues to. Use the project slug
-  # (the bit after /project/ in the Linear URL) or the project's UUID,
-  # whichever your Linear MCP server accepts.
-  project_slug: replace-with-your-project-slug
+  # Required. The Linear project to scope issues to. Use the project's
+  # NAME as it appears in Linear (e.g. "cadence-testing") or its UUID.
+  # Do NOT use the URL suffix — Linear's project URLs look like
+  # /project/cadence-testing-25c5db300551, but the trailing hash is not
+  # accepted as a filter value by Linear's MCP; only the name or UUID
+  # work. UUID is more stable across renames.
+  project_slug: replace-with-your-project-name
 
   # Required. The Linear state new issues land in. Issues here are eligible
   # for pickup; on first fire they move to the entry state's linear_state.

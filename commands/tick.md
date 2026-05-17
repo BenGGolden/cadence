@@ -154,6 +154,22 @@ Using the Linear MCP, query the team/project named in `linear.team` /
   state like "Done" or "Cancelled", or one not modelled by this workflow). If
   blocker data is not available from the MCP query, skip this filter and proceed.
 
+**Query shape requirements** (do not deviate):
+
+- Pass `linear.team` to the MCP tool's team filter parameter (commonly
+  named `team`) verbatim.
+- Pass `linear.project_slug` to the MCP tool's project filter parameter
+  (commonly named `project`) verbatim. Do **not** transform the value,
+  strip suffixes, attempt to resolve it to a different identifier, or
+  split it. If the consumer wrote a malformed value, the empty result
+  below is the correct response.
+- If the query returns zero issues, that is the answer. Do **NOT** retry
+  with a broader query (e.g. team only, no project filter) and do **NOT**
+  fall back to per-issue lookups by identifier. A misconfigured
+  `project_slug` or `team` must surface as "no eligible issues" so the
+  operator notices and fixes the config, rather than being papered over
+  by an improvised fallback that masks the misconfiguration.
+
 Sort the results by Linear priority ascending (lower numeric = higher priority;
 treat null / "No priority" as the worst), then by `createdAt` ascending. Keep
 the result as an ordered list, `candidates`.
