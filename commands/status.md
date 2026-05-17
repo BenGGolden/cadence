@@ -53,7 +53,7 @@ From the parsed config, extract:
 - `label.cadence_needs_human` — required.
 
 Then invoke Bash:
-`python ${CLAUDE_PLUGIN_ROOT}/scripts/validate_workflow.py --evidence`.
+`python "$CLAUDE_PROJECT_DIR"/.claude/hooks/validate_workflow.py --evidence`.
 
 - If it exits **1**, the YAML is structurally unreadable — print the script's
   stderr verbatim and exit.
@@ -131,7 +131,7 @@ For **each** issue from step 3:
 2. Determine the issue's workflow-state name from its `linearToWorkflow`
    entry (step 2). For a `pickup` entry there is no workflow state — use
    `entry_state_name` from step 1. Invoke Bash:
-   `python ${CLAUDE_PLUGIN_ROOT}/scripts/parse_comments.py --input <commentsFile> --target-state <workflow-state name>`
+   `python "$CLAUDE_PROJECT_DIR"/.claude/hooks/parse_comments.py --input <commentsFile> --target-state <workflow-state name>`
 3. From the JSON on stdout, read `attempt_count` and `latest_tracking_comment`
    (`kind`, `state`, `attempt`, `status`). Render the issue's **Attempt**
    column from `attempt_count`. Record `last_state` as

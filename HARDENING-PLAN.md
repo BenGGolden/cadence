@@ -845,9 +845,14 @@ the manifest (the plan no longer ships hooks via plugin metadata).
 - [ ] Plugin manifest `.claude-plugin/plugin.json` version bumped to
       `0.2.0`. CI (`.github/workflows/validate.yml`) still passes.
 - [ ] Smoke A — **fresh init in a new throwaway consumer repo**: run
-      `/cadence:init`. Confirm `.claude/hooks/` exists with all five files
-      and `.claude/settings.json` contains the three hook event blocks
-      pointing at `$CLAUDE_PROJECT_DIR/.claude/hooks/*`.
+      `/cadence:init`. Confirm `.claude/hooks/` exists with all seven
+      Python files (`validate_tracking_json.py`,
+      `validate_workflow_on_prompt.py`, `audit_linear_writes.py`,
+      `validate_workflow.py`, `_common.py`, `parse_comments.py`,
+      `emit_tracking_comment.py`); `.claude/commands/cadence/` exists with
+      `tick.md`, `sweep.md`, `status.md`; and `.claude/settings.json`
+      contains the three hook event blocks pointing at
+      `$CLAUDE_PROJECT_DIR/.claude/hooks/*`.
 - [ ] Smoke B — **idempotent re-init**: run `/cadence:init --force` again.
       Confirm no duplicate hook entries in settings.json, hook files
       timestamped newer.
@@ -863,15 +868,22 @@ the manifest (the plan no longer ships hooks via plugin metadata).
 - [ ] Smoke E — **audit log present**: after a successful `/cadence:tick`
       fire in `/loop` mode, confirm `.cadence/audit.log` exists with one
       JSON object per Linear write made during the fire.
-- [ ] Smoke F — **`/schedule` activation**: create a throwaway routine
-      running `/cadence:tick`, fire it once against a test Linear project,
-      and inspect the resulting cloud session in
-      claude.ai/code/sessions. Confirm at least one of the hooks ran
-      (look for `validate_workflow_on_prompt.py` invocation in the session
+- [ ] Smoke F — **`/schedule` activation**: install the plugin locally,
+      run `/cadence:init` in the throwaway consumer repo, and commit
+      `.claude/` (including the newly-scaffolded
+      `.claude/commands/cadence/{tick,sweep,status}.md` and
+      `.claude/hooks/*.py`). Create a throwaway routine running
+      `/cadence:tick`, fire it once against a test Linear project, and
+      inspect the resulting cloud session in claude.ai/code/sessions.
+      Confirm `/cadence:tick` resolved (the routine logs the dispatch prose
+      executing — it found the project-scoped slash command in the repo,
+      since Claude Code plugins are not available in remote sessions), and
+      confirm at least one of the hooks ran (look for
+      `validate_workflow_on_prompt.py` invocation in the session
       transcript, or for `.cadence/audit.log` entries written during the
-      fire). If hooks do NOT fire in `/schedule` despite the docs
-      suggesting they should, escalate to README troubleshooting and
-      reconsider plugin-shipped activation as fallback.
+      fire). If `/cadence:tick` is not found in the routine, the consumer
+      forgot to commit `.claude/commands/cadence/`; if hooks did not fire,
+      they forgot to commit `.claude/settings.json`.
 - [ ] README.md "Required permissions" section updated to mention the
       audit log path (`.cadence/audit.log`) and the new hook scripts.
 - [ ] CHANGELOG.md entry under `## [Unreleased]`.

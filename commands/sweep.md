@@ -53,7 +53,7 @@ From the parsed config, extract:
 - `limits.stale_after_minutes` — the activity window. If absent, null, or
   not a positive number, use **30**.
 
-Then invoke Bash: `python ${CLAUDE_PLUGIN_ROOT}/scripts/validate_workflow.py`.
+Then invoke Bash: `python "$CLAUDE_PROJECT_DIR"/.claude/hooks/validate_workflow.py`.
 This sweeper does **not** require a valid workflow schema — it never invokes a
 subagent and never advances state, and it must still be able to clear stranded
 locks even when the workflow is misconfigured. So treat the script's result as

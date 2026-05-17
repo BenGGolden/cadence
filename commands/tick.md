@@ -56,7 +56,7 @@ case-insensitively (i.e. the user typed `/cadence:tick dry-run`):
 
 1. Run step 1 (read config) and step 2 (read global prompt) below exactly as
    written. Then invoke Bash:
-   `python ${CLAUDE_PLUGIN_ROOT}/scripts/validate_workflow.py --evidence`
+   `python "$CLAUDE_PROJECT_DIR"/.claude/hooks/validate_workflow.py --evidence`
    This replaces the prose validation (step 3) and the workflow-Linear-states
    build (step 4) for the dry-run path — the script emits both the per-rule
    evidence and the `workflow_linear_states` set as JSON on stdout. Parse that
@@ -114,7 +114,7 @@ Hold the contents in memory as `globalPrompt` for step 13.
 
 ## Step 3 — Validate config
 
-Invoke Bash: `python ${CLAUDE_PLUGIN_ROOT}/scripts/validate_workflow.py`.
+Invoke Bash: `python "$CLAUDE_PROJECT_DIR"/.claude/hooks/validate_workflow.py`.
 
 This script enforces the five config rules deterministically (uniqueness of
 every `linear_state` / `approved_linear_state` / `rework_linear_state`; `entry`
@@ -153,6 +153,22 @@ Using the Linear MCP, query the team/project named in `linear.team` /
   in a Linear state **outside** `workflowLinearStates` (i.e. a foreign terminal
   state like "Done" or "Cancelled", or one not modelled by this workflow). If
   blocker data is not available from the MCP query, skip this filter and proceed.
+
+**Query shape requirements** (do not deviate):
+
+- Pass `linear.team` to the MCP tool's team filter parameter (commonly
+  named `team`) verbatim.
+- Pass `linear.project_slug` to the MCP tool's project filter parameter
+  (commonly named `project`) verbatim. Do **not** transform the value,
+  strip suffixes, attempt to resolve it to a different identifier, or
+  split it. If the consumer wrote a malformed value, the empty result
+  below is the correct response.
+- If the query returns zero issues, that is the answer. Do **NOT** retry
+  with a broader query (e.g. team only, no project filter) and do **NOT**
+  fall back to per-issue lookups by identifier. A misconfigured
+  `project_slug` or `team` must surface as "no eligible issues" so the
+  operator notices and fixes the config, rather than being papered over
+  by an improvised fallback that masks the misconfiguration.
 
 Sort the results by Linear priority ascending (lower numeric = higher priority;
 treat null / "No priority" as the worst), then by `createdAt` ascending. Keep
@@ -226,7 +242,7 @@ returns; `parse_comments.py` tolerates both camelCase and snake_case keys.
 Keep `commentsFile` for reuse in steps 10c and 11.
 
 Invoke Bash:
-`python ${CLAUDE_PLUGIN_ROOT}/scripts/parse_comments.py --input <commentsFile> --target-state <matched workflow state>`
+`python "$CLAUDE_PROJECT_DIR"/.claude/hooks/parse_comments.py --input <commentsFile> --target-state <matched workflow state>`
 — and append `--gate-name <matched workflow state>` if the matched state from
 step 8 is a gate (this makes step 9's output also carry the `rework_count` and
 `rework_context` that step 10c needs, so it does not have to re-run the script).
@@ -239,21 +255,44 @@ comment, or when the latest such comment is a reconcile (which carries no
 proceed.
 
 Compare `latest_tracking_comment.state` to the matched workflow state from
-step 8 (the workflow state **name**, not its `linear_state` string):
+step 8 (the workflow state **name**, not its `linear_state` string). Apply
+these checks in order — the first one that holds wins:
 
-- **Match**, or `latest_tracking_comment.state` is `null` (brand-new issue, or
-  the last tracking comment was a reconcile): no drift. Proceed.
-- **Mismatch**: drift. A human (or another tool) reassigned the issue. Build
-  the reconcile comment by invoking Bash:
-  `python ${CLAUDE_PLUGIN_ROOT}/scripts/emit_tracking_comment.py --kind reconcile --observed-linear-state "<current Linear column>" --expected-state "<latest_tracking_comment.state>" --reason "human reassigned"`
-  Post the script's stdout as a Linear comment verbatim. Then continue using
-  the matched workflow state from step 8.
+- **`latest_tracking_comment.state` is `null`**: no drift (brand-new issue,
+  or the latest tracking comment is a reconcile which carries no `state`).
+  Proceed.
 
-- **Special case — gate sitting in approved/rework**: if the matched workflow state
-  is a gate and Linear's current column is that gate's `approved_linear_state` or
-  `rework_linear_state`, the matched workflow state name is **still** the gate's
-  own name. If `latest_tracking_comment.state` also names the gate (e.g. a prior
-  `cadence:gate` comment with `status: "waiting"`), this is **not** drift.
+- **Match** (`latest_tracking_comment.state` equals the matched state): no
+  drift. The previous fire didn't advance — either its subagent failed and
+  Linear stayed where it was, or this fire is the next pickup of a gate
+  sitting in any of its three columns (the gate's name matches via
+  `linear_state`, `approved_linear_state`, or `rework_linear_state`).
+  Proceed.
+
+- **Normal forward progression**: the matched state equals
+  `config.states[latest_tracking_comment.state].next`. This is the
+  expected pattern after a successful agent→agent transition — the prior
+  fire ran the subagent for state X, advanced Linear to X's successor at
+  its step 16, and exited; this fire is now picking up X's successor for
+  the first time. (Step 16 emits a fresh tracking comment only when
+  advancing into a gate, not when advancing into another agent state — so
+  for agent→agent the latest tracking comment legitimately lags one state
+  behind Linear's column.) Proceed without posting a reconcile.
+
+  This check only applies when `latest_tracking_comment.state` names an
+  agent state with a defined `next` field. Gate states use `on_approve` /
+  `on_rework` instead of `next`, but in practice gate predecessors are
+  always handled by the **Match** rule above (Linear stays in one of the
+  gate's three columns until a human moves it, and any successful gate
+  transition emits its own tracking comment that updates `latest` to the
+  new target state).
+
+- **Drift otherwise**: a human (or another tool) reassigned the issue to a
+  column that isn't reachable from where it last was via one workflow
+  edge. Build the reconcile comment by invoking Bash:
+  `python "$CLAUDE_PROJECT_DIR"/.claude/hooks/emit_tracking_comment.py --kind reconcile --observed-linear-state "<current Linear column>" --expected-state "<latest_tracking_comment.state>" --reason "human reassigned"`
+  Post the script's stdout as a Linear comment verbatim. Then continue
+  using the matched workflow state from step 8.
 
 ---
 
@@ -295,7 +334,7 @@ it `reworkTarget`. `<gate>.max_rework` may or may not be defined.
 
 2. If `<gate>.max_rework` is defined and `reworkCount >= max_rework`, escalate:
    - Build the escalation comment by invoking Bash:
-     `python ${CLAUDE_PLUGIN_ROOT}/scripts/emit_tracking_comment.py --kind gate --state <gate> --status escalated`
+     `python "$CLAUDE_PROJECT_DIR"/.claude/hooks/emit_tracking_comment.py --kind gate --state <gate> --status escalated`
      Post its stdout as a Linear comment verbatim.
    - Add the `label.cadence_needs_human` label.
    - Remove the `cadence_active` label and exit.
@@ -307,7 +346,7 @@ it `reworkTarget`. `<gate>.max_rework` may or may not be defined.
    step 13.
 
 4. Build the rework gate comment by invoking Bash:
-   `python ${CLAUDE_PLUGIN_ROOT}/scripts/emit_tracking_comment.py --kind gate --state <gate> --status rework --rework-to <reworkTarget>`
+   `python "$CLAUDE_PROJECT_DIR"/.claude/hooks/emit_tracking_comment.py --kind gate --state <gate> --status rework --rework-to <reworkTarget>`
    Post its stdout as a Linear comment verbatim.
 
 5. Move the issue to `reworkTarget`'s `linear_state` via Linear MCP.
@@ -322,7 +361,7 @@ Let `targetState` be the target state from step 10 (or step 8 if the matched
 workflow state was `type: agent`).
 
 Determine `attemptCount` by invoking Bash:
-`python ${CLAUDE_PLUGIN_ROOT}/scripts/parse_comments.py --input <commentsFile> --target-state <targetState>`
+`python "$CLAUDE_PROJECT_DIR"/.claude/hooks/parse_comments.py --input <commentsFile> --target-state <targetState>`
 and reading `attempt_count` from the JSON on stdout. Re-run the script here
 rather than reusing step 9's output: `targetState` may differ from the matched
 workflow state — e.g. after a gate routed this fire to `reworkTarget`. The
@@ -350,7 +389,7 @@ include a reliable current time, invoke Bash to run
 `Get-Date -AsUTC -Format yyyy-MM-ddTHH:mm:ssZ` and use the output.
 
 Build the attempt-marker comment by invoking Bash:
-`python ${CLAUDE_PLUGIN_ROOT}/scripts/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --started-at <ISO8601>`
+`python "$CLAUDE_PROJECT_DIR"/.claude/hooks/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --started-at <ISO8601>`
 Post its stdout as a Linear comment verbatim. The script emits no `status`
 field — this comment **is** the attempt marker counted by step 11 on future
 fires.
@@ -475,7 +514,7 @@ Then:
 - If `next` is `type: agent`: move the issue's Linear state to `next.linear_state`.
 - If `next` is `type: gate`: first build the gate's waiting marker by invoking
   Bash:
-  `python ${CLAUDE_PLUGIN_ROOT}/scripts/emit_tracking_comment.py --kind gate --state <next> --status waiting`
+  `python "$CLAUDE_PROJECT_DIR"/.claude/hooks/emit_tracking_comment.py --kind gate --state <next> --status waiting`
   Post its stdout as a Linear comment verbatim. Then move the issue's Linear
   state to `next.linear_state` (the gate's waiting column).
 
@@ -518,7 +557,7 @@ If the Agent invocation in step 14 raises an exception:
 
 1. Take the subagent's exception message as the error string.
 2. Build the failure record by invoking Bash:
-   `python ${CLAUDE_PLUGIN_ROOT}/scripts/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --status failed --error "<exception message>" --subagent <subagent>`
+   `python "$CLAUDE_PROJECT_DIR"/.claude/hooks/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --status failed --error "<exception message>" --subagent <subagent>`
    (The script collapses newlines to spaces and truncates the error to 400
    chars itself.) Post its stdout as a Linear comment verbatim.
 
