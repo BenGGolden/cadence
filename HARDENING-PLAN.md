@@ -845,9 +845,14 @@ the manifest (the plan no longer ships hooks via plugin metadata).
 - [ ] Plugin manifest `.claude-plugin/plugin.json` version bumped to
       `0.2.0`. CI (`.github/workflows/validate.yml`) still passes.
 - [ ] Smoke A — **fresh init in a new throwaway consumer repo**: run
-      `/cadence:init`. Confirm `.claude/hooks/` exists with all five files
-      and `.claude/settings.json` contains the three hook event blocks
-      pointing at `$CLAUDE_PROJECT_DIR/.claude/hooks/*`.
+      `/cadence:init`. Confirm `.claude/hooks/` exists with all seven
+      Python files (`validate_tracking_json.py`,
+      `validate_workflow_on_prompt.py`, `audit_linear_writes.py`,
+      `validate_workflow.py`, `_common.py`, `parse_comments.py`,
+      `emit_tracking_comment.py`); `.claude/commands/cadence/` exists with
+      `tick.md`, `sweep.md`, `status.md`; and `.claude/settings.json`
+      contains the three hook event blocks pointing at
+      `$CLAUDE_PROJECT_DIR/.claude/hooks/*`.
 - [ ] Smoke B — **idempotent re-init**: run `/cadence:init --force` again.
       Confirm no duplicate hook entries in settings.json, hook files
       timestamped newer.
