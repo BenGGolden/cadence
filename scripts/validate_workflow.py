@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate .claude/workflow.yaml against Cadence's five config rules.
+"""Validate .claude/workflow.yaml against Cadence's config rules.
 
 Caller(s):
   - commands/tick.md step 3 (live validation) — a non-zero exit blocks the
@@ -10,15 +10,19 @@ Caller(s):
     before either command touches Linear.
 
 Failure mode eliminated:
-  "Validation skim" — the five rules in tick.md step 3 were LLM prose an
-  agent could gloss as "passed" without showing its work. This script makes
-  the checks deterministic and emits structured per-rule evidence.
+  "Validation skim" — the rules in tick.md step 3 were LLM prose an agent
+  could gloss as "passed" without showing its work. This script makes the
+  checks deterministic and emits structured per-rule evidence.
+
+Rules implemented in this script: 1, 2, 3, 4, 5, 8. Rule numbers are not
+ship-order — rules 6 and 7 are defined by later hardening-plan phases
+(P6.2 and P5.4a respectively) and will land here when those phases ship.
 
 CLI:
   python validate_workflow.py [--workflow-path PATH] [--evidence]
 
 Exit codes:
-  0  all five rules pass
+  0  all rules pass
   2  one or more rules fail
   1  the YAML could not be read or parsed at all
 """
@@ -30,22 +34,28 @@ from pathlib import Path
 
 from _common import load_workflow
 
-LINEAR_STATE_FIELDS = ("linear_state", "approved_linear_state", "rework_linear_state")
+LEGACY_GATE_KEYS = ("approved_linear_state", "rework_linear_state")
 
 
-def _collect_linear_states(states):
-    """Yield (value, "states.<name>.<field>") for every linear-column field."""
+def _collect_linear_states(states, pickup):
+    """Yield (value, "<path>") for every workflow Linear column.
+
+    Covers `linear.pickup_state` plus each state's `linear_state`. The
+    legacy per-gate `approved_linear_state` / `rework_linear_state` fields
+    were removed in P4 (rule 8 rejects them).
+    """
+    if isinstance(pickup, str) and pickup:
+        yield str(pickup), "linear.pickup_state"
     for name, body in states.items():
         if not isinstance(body, dict):
             continue
-        for field in LINEAR_STATE_FIELDS:
-            val = body.get(field)
-            if val is not None:
-                yield str(val), f"states.{name}.{field}"
+        val = body.get("linear_state")
+        if val is not None:
+            yield str(val), f"states.{name}.linear_state"
 
 
-def _rule1_uniqueness(states):
-    collected = list(_collect_linear_states(states))
+def _rule1_uniqueness(states, pickup):
+    collected = list(_collect_linear_states(states, pickup))
     lines = [f"`{val}` <- {path}" for val, path in collected]
     seen = {}
     failures = []
@@ -163,9 +173,40 @@ def _rule5_pickup_state(linear):
     }
 
 
+def _rule8_legacy_gate_keys(states):
+    """Reject the pre-P4 per-gate columns. Gates now signal verdicts via the
+    cadence_approve / cadence_rework labels — the two legacy keys exist only
+    as an upgrade-time diagnostic."""
+    lines = []
+    failures = []
+    for name, body in states.items():
+        if not isinstance(body, dict) or body.get("type") != "gate":
+            continue
+        for key in LEGACY_GATE_KEYS:
+            if key in body:
+                line = f"states.{name}.{key} -> PRESENT (legacy)"
+                lines.append(line)
+                failures.append(
+                    f"states.{name}.{key} is no longer supported (removed in P4). "
+                    "Gates now signal verdicts via the cadence_approve / cadence_rework "
+                    "labels. See CHANGELOG \"Upgrading to label-based gates\"."
+                )
+            else:
+                lines.append(f"states.{name}.{key} -> absent")
+    if not lines:
+        lines.append("(no gate states defined)")
+    return {
+        "rule": 8,
+        "title": "Legacy gate keys",
+        "lines": lines,
+        "result": "PASS" if not failures else "FAIL",
+        "failure": None if not failures else " ".join(failures),
+    }
+
+
 def _build_linear_states_set(states, pickup):
-    """Ordered set: pickup, then each state's linear_state, then each gate's
-    approved/rework columns. Mirrors tick.md step 4."""
+    """Ordered set: pickup, then each state's linear_state. Mirrors
+    tick.md step 4. Per-gate approved/rework columns are gone (P4)."""
     ordered = []
     seen = set()
 
@@ -178,10 +219,6 @@ def _build_linear_states_set(states, pickup):
     for body in states.values():
         if isinstance(body, dict):
             add(body.get("linear_state"))
-    for body in states.values():
-        if isinstance(body, dict) and body.get("type") == "gate":
-            add(body.get("approved_linear_state"))
-            add(body.get("rework_linear_state"))
     return ordered
 
 
@@ -203,18 +240,20 @@ def main():
         print("Cadence: `states:` is missing or not a mapping.", file=sys.stderr)
         sys.exit(2)
 
+    pickup = linear.get("pickup_state") if isinstance(linear, dict) else None
+
     evidence = [
-        _rule1_uniqueness(states),
+        _rule1_uniqueness(states, pickup),
         _rule2_entry(entry, states),
         _rule3_targets(states),
         _rule4_subagent_files(states),
         _rule5_pickup_state(linear),
+        _rule8_legacy_gate_keys(states),
     ]
 
     failures = [ev for ev in evidence if ev["result"] == "FAIL"]
     valid = not failures
 
-    pickup = linear.get("pickup_state") if isinstance(linear, dict) else None
     entry_body = states.get(entry) if isinstance(entry, str) else None
     result = {
         "valid": valid,
