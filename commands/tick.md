@@ -56,7 +56,7 @@ case-insensitively (i.e. the user typed `/cadence:tick dry-run`):
 
 1. Run step 1 (read config) and step 2 (read global prompt) below exactly as
    written. Then invoke Bash:
-   `python "$CLAUDE_PROJECT_DIR"/.claude/hooks/validate_workflow.py --evidence`
+   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/validate_workflow.py --evidence`
    This replaces the prose validation (step 3) and the workflow-Linear-states
    build (step 4) for the dry-run path — the script emits both the per-rule
    evidence and the `workflow_linear_states` set as JSON on stdout. Parse that
@@ -114,7 +114,7 @@ Hold the contents in memory as `globalPrompt` for step 13.
 
 ## Step 3 — Validate config
 
-Invoke Bash: `python "$CLAUDE_PROJECT_DIR"/.claude/hooks/validate_workflow.py`.
+Invoke Bash: `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/validate_workflow.py`.
 
 This script enforces the five config rules deterministically (uniqueness of
 every `linear_state` / `approved_linear_state` / `rework_linear_state`; `entry`
@@ -247,7 +247,7 @@ returns; `parse_comments.py` tolerates both camelCase and snake_case keys.
 Keep `commentsFile` for reuse in steps 10c and 11.
 
 Invoke Bash:
-`python "$CLAUDE_PROJECT_DIR"/.claude/hooks/parse_comments.py --input <commentsFile> --target-state <matched workflow state>`
+`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/parse_comments.py --input <commentsFile> --target-state <matched workflow state>`
 — and append `--gate-name <matched workflow state>` if the matched state from
 step 8 is a gate (this makes step 9's output also carry the `rework_count` and
 `rework_context` that step 10c needs, so it does not have to re-run the script).
@@ -295,7 +295,7 @@ these checks in order — the first one that holds wins:
 - **Drift otherwise**: a human (or another tool) reassigned the issue to a
   column that isn't reachable from where it last was via one workflow
   edge. Build the reconcile comment by invoking Bash:
-  `python "$CLAUDE_PROJECT_DIR"/.claude/hooks/emit_tracking_comment.py --kind reconcile --observed-linear-state "<current Linear column>" --expected-state "<latest_tracking_comment.state>" --reason "human reassigned"`
+  `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind reconcile --observed-linear-state "<current Linear column>" --expected-state "<latest_tracking_comment.state>" --reason "human reassigned"`
   Post the script's stdout as a Linear comment verbatim. Then continue
   using the matched workflow state from step 8.
 
@@ -339,7 +339,7 @@ it `reworkTarget`. `<gate>.max_rework` may or may not be defined.
 
 2. If `<gate>.max_rework` is defined and `reworkCount >= max_rework`, escalate:
    - Build the escalation comment by invoking Bash:
-     `python "$CLAUDE_PROJECT_DIR"/.claude/hooks/emit_tracking_comment.py --kind gate --state <gate> --status escalated`
+     `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind gate --state <gate> --status escalated`
      Post its stdout as a Linear comment verbatim.
    - Add the `label.cadence_needs_human` label.
    - Remove the `cadence_active` label and exit.
@@ -351,7 +351,7 @@ it `reworkTarget`. `<gate>.max_rework` may or may not be defined.
    step 13.
 
 4. Build the rework gate comment by invoking Bash:
-   `python "$CLAUDE_PROJECT_DIR"/.claude/hooks/emit_tracking_comment.py --kind gate --state <gate> --status rework --rework-to <reworkTarget>`
+   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind gate --state <gate> --status rework --rework-to <reworkTarget>`
    Post its stdout as a Linear comment verbatim.
 
 5. Move the issue to `reworkTarget`'s `linear_state` via Linear MCP.
@@ -366,7 +366,7 @@ Let `targetState` be the target state from step 10 (or step 8 if the matched
 workflow state was `type: agent`).
 
 Determine `attemptCount` by invoking Bash:
-`python "$CLAUDE_PROJECT_DIR"/.claude/hooks/parse_comments.py --input <commentsFile> --target-state <targetState>`
+`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/parse_comments.py --input <commentsFile> --target-state <targetState>`
 and reading `attempt_count` from the JSON on stdout. Re-run the script here
 rather than reusing step 9's output: `targetState` may differ from the matched
 workflow state — e.g. after a gate routed this fire to `reworkTarget`. The
@@ -394,7 +394,7 @@ include a reliable current time, invoke Bash to run
 `Get-Date -AsUTC -Format yyyy-MM-ddTHH:mm:ssZ` and use the output.
 
 Build the attempt-marker comment by invoking Bash:
-`python "$CLAUDE_PROJECT_DIR"/.claude/hooks/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --started-at <ISO8601>`
+`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --started-at <ISO8601>`
 Post its stdout as a Linear comment verbatim. The script emits no `status`
 field — this comment **is** the attempt marker counted by step 11 on future
 fires.
@@ -519,7 +519,7 @@ Then:
 - If `next` is `type: agent`: move the issue's Linear state to `next.linear_state`.
 - If `next` is `type: gate`: first build the gate's waiting marker by invoking
   Bash:
-  `python "$CLAUDE_PROJECT_DIR"/.claude/hooks/emit_tracking_comment.py --kind gate --state <next> --status waiting`
+  `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind gate --state <next> --status waiting`
   Post its stdout as a Linear comment verbatim. Then move the issue's Linear
   state to `next.linear_state` (the gate's waiting column).
 
@@ -562,7 +562,7 @@ If the Agent invocation in step 14 raises an exception:
 
 1. Take the subagent's exception message as the error string.
 2. Build the failure record by invoking Bash:
-   `python "$CLAUDE_PROJECT_DIR"/.claude/hooks/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --status failed --error "<exception message>" --subagent <subagent>`
+   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --status failed --error "<exception message>" --subagent <subagent>`
    (The script collapses newlines to spaces and truncates the error to 400
    chars itself.) Post its stdout as a Linear comment verbatim.
 
