@@ -109,6 +109,21 @@ Anything the reviewer should pay attention to: trade-offs taken,
 follow-ups deferred, places where the plan was adapted.
 ```
 
+### Acceptance criteria
+
+Before returning, walk the ticket's `## Acceptance Criteria` block. For
+each item, include in your summary:
+
+- [x] **AC-N** — <criterion text>
+  - **Verified by:** <test file:line, manual smoke step, or "covered by
+    existing test <path>">
+- [ ] **AC-N** — <criterion text>
+  - **Not addressed because:** <reason — out of scope, blocked by
+    another ticket, etc.>
+
+If you cannot mark every AC `[x]`, say so prominently at the top of your
+summary. The reviewer will check this list against the diff.
+
 The PR URL is mandatory. If you cannot open a PR (e.g. push failed), error
 out before returning — do not return a summary that pretends the PR
 exists.

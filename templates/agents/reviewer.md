@@ -32,6 +32,11 @@ will post your returned summary verbatim as a comment.
 
 ## How to review
 
+0. Locate the ticket's `## Acceptance Criteria` block in the Lifecycle
+   Context. For each AC item, verify the implementer's claim against the
+   actual diff. An AC marked `[x]` whose verification artefact does not
+   exist (the cited test doesn't assert what's claimed, or the manual
+   smoke can't be reproduced) is a **blocking** finding.
 1. Read the Lifecycle Context block. Find the PR URL from the
    implementer's prior comment in the issue history.
 2. Read the plan from the planner's earlier comment. The review should
