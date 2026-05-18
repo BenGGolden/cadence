@@ -49,7 +49,9 @@ From the parsed config, extract:
 - `label.cadence_active` — the soft-lock label name. Required; if missing,
   print an error and exit.
 - `linear.team` — the team key used to scope the Linear query. Required.
-- `linear.project_slug` — the project to scope to. Required.
+- `linear.project_slug` — the project to narrow the scope to. Optional;
+  omit to scan team-wide. Must match whatever `/cadence:tick` uses, so
+  the sweeper sees the same issue set.
 - `limits.stale_after_minutes` — the activity window. If absent, null, or
   not a positive number, use **30**.
 
@@ -79,9 +81,10 @@ Hold this as `now`. Compute `cutoff = now - stale_after_minutes minutes`
 
 ## Step 3 — Query locked issues
 
-Using the Linear MCP, query the team/project named in `linear.team` /
-`linear.project_slug` for issues where the `label.cadence_active` label
-is currently set. Capture for each:
+Using the Linear MCP, query the team named in `linear.team` (narrowed to
+`linear.project_slug` when that field is present in the config) for
+issues where the `label.cadence_active` label is currently set. Capture
+for each:
 
 - `identifier` (e.g. `ENG-123`)
 - `title`
@@ -93,9 +96,9 @@ is currently set. Capture for each:
 Sort by `updatedAt` ascending (oldest first). If the result is empty,
 print `No cadence-active locks found.` and exit cleanly.
 
-**Scope.** Only query issues in the configured `linear.team` /
-`linear.project_slug`. Do **not** scan workspace-wide — another team may
-use the same label name for a different purpose.
+**Scope.** Only query issues in the configured `linear.team` (and
+`linear.project_slug` if it is set). Do **not** scan workspace-wide —
+another team may use the same label name for a different purpose.
 
 ---
 

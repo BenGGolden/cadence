@@ -143,8 +143,8 @@ map a Linear column back to a workflow state.
 
 ## Step 5 — Pick work
 
-Using the Linear MCP, query the team/project named in `linear.team` /
-`linear.project_slug` for issues where:
+Using the Linear MCP, query the team named in `linear.team` (narrowed to
+`linear.project_slug` when that field is present) for issues where:
 
 - Linear state ∈ `workflowLinearStates`.
 - The `label.cadence_active` label is **NOT** set.
@@ -158,17 +158,22 @@ Using the Linear MCP, query the team/project named in `linear.team` /
 
 - Pass `linear.team` to the MCP tool's team filter parameter (commonly
   named `team`) verbatim.
-- Pass `linear.project_slug` to the MCP tool's project filter parameter
-  (commonly named `project`) verbatim. Do **not** transform the value,
-  strip suffixes, attempt to resolve it to a different identifier, or
-  split it. If the consumer wrote a malformed value, the empty result
-  below is the correct response.
+- If `linear.project_slug` is present in the config, pass its value to
+  the MCP tool's project filter parameter (commonly named `project`)
+  verbatim. Do **not** transform the value, strip suffixes, attempt to
+  resolve it to a different identifier, or split it. If the consumer
+  wrote a malformed value, the empty result below is the correct
+  response.
+- If `linear.project_slug` is **absent** (omitted, null, or empty
+  string), do **not** pass any project filter — the query is team-wide
+  and picks up eligible issues regardless of project assignment.
 - If the query returns zero issues, that is the answer. Do **NOT** retry
-  with a broader query (e.g. team only, no project filter) and do **NOT**
-  fall back to per-issue lookups by identifier. A misconfigured
-  `project_slug` or `team` must surface as "no eligible issues" so the
-  operator notices and fixes the config, rather than being papered over
-  by an improvised fallback that masks the misconfiguration.
+  with a broader query (e.g. dropping the project filter when one was
+  configured, or removing the team filter) and do **NOT** fall back to
+  per-issue lookups by identifier. A misconfigured `project_slug` or
+  `team` must surface as "no eligible issues" so the operator notices
+  and fixes the config, rather than being papered over by an improvised
+  fallback that masks the misconfiguration.
 
 Sort the results by Linear priority ascending (lower numeric = higher priority;
 treat null / "No priority" as the worst), then by `createdAt` ascending. Keep
