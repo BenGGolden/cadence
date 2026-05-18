@@ -48,6 +48,38 @@ returned summary verbatim as a comment.
    prerequisite, contradiction), say so explicitly in your summary so the
    bootstrap records the failure and a human can intervene.
 
+## Ticket-quality gate
+
+Before producing a plan, verify the ticket meets Cadence's quality bar:
+
+1. The Lifecycle Context block's **Description** must contain a literal
+   `## Acceptance Criteria` H2.
+2. Under that heading, there must be at least one Markdown checkbox item
+   starting with `- [ ]` or `- [x]` and containing a bold `**AC-N**` ID
+   somewhere in the line.
+3. Each AC item must be independently verifiable from the diff and the
+   test suite. If an item is vague ("works well", "is fast", "handles
+   errors gracefully" with no specifics), treat it as failing.
+
+If any check fails, **do not produce a plan**. Instead, return this
+summary verbatim (substituting the missing/failing items):
+
+    ## Cannot plan — ticket missing acceptance criteria
+
+    This ticket cannot be planned because:
+
+    - <bullet per failing rule>
+
+    A Cadence-compatible ticket needs an `## Acceptance Criteria`
+    section with at least one `- [ ] **AC-N** — <specific outcome>`
+    item. See `.claude/ticket-template.md` for the expected shape, or
+    run `/cadence:create-ticket` locally to draft a fresh one.
+
+The Cadence bootstrap will post that summary as a Linear comment, mark
+this attempt as failed, and (per `max_attempts_per_issue`) eventually
+escalate with the `cadence-needs-human` label so a human rewrites the
+ticket.
+
 ## What to return
 
 A single Markdown string. The Cadence bootstrap posts this verbatim as a
