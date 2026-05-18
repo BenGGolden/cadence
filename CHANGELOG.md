@@ -95,6 +95,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   steps 1 and 3, and `commands/status.md` steps 1, 3, and 5. The
   validator already did not enforce `project_slug`, so no script change
   was needed.
+- `commands/{tick,sweep,status}.md` — every helper-script Bash
+  invocation now uses `"${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/...`
+  instead of `"$CLAUDE_PROJECT_DIR"/.claude/hooks/...`. The variable is
+  reliably set in hook subprocess environments (which
+  `templates/settings.example.json` still depends on) but not always in
+  the Bash tool environment of a local Claude Code session — when
+  unset, Git Bash on Windows expanded the leading `/` against its own
+  install root (`C:\Program Files\Git\.claude\hooks\...`) and the
+  script failed to open. The fallback resolves to cwd `.`, which the
+  harness keeps at the project root.
 - `.claude-plugin/plugin.json` — version bumped to `0.2.0`.
 - `README.md` — "Linear MCP tools" section now opens with a namespace
   primer (`mcp__linear__*` vs. `mcp__linear-server__*` vs.
