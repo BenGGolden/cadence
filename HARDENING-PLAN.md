@@ -1509,6 +1509,99 @@ ergonomic / safety recommendation in the docs. A consumer on a Linear
 plan without label groups still gets a working system, just with the
 two labels as independent toggles.
 
+## P4.4b — Scaffold the Linear permissions allowlist during `/cadence:init`
+
+Phase 2's smoke testing surfaced a recurring wart: an operator runs
+`/cadence:init`, but Cadence's first Linear MCP call at fire time hits
+an auto-mode classifier denial because the consumer's
+`.claude/settings.local.json` has no `permissions.allow` entry for the
+tool. In `/loop` mode this surfaces mid-loop; in `/schedule` mode a
+runaway routine has to be killed by hand. The README tells the operator
+which tools to allow, but nothing automates it.
+
+P4 is the right phase to fix this. P4.4 already edits `/cadence:init`'s
+Linear-side docs to drop the `Approved` / `Needs Rework` columns and to
+introduce the `cadence-approve` / `cadence-rework` labels — which means
+the canonical Cadence MCP verb list reaches its final P4-era shape in
+this phase (the label-write verbs become load-bearing here). Scaffolding
+the allowlist alongside that change avoids two rounds of "touch init.md,
+re-test init.md."
+
+**Sketch**:
+
+1. `/cadence:init` runs `claude mcp list` (or reads `.mcp.json` if the
+   CLI output is not machine-readable) and looks for a Linear MCP
+   server. Three known namespaces in the wild today:
+   `mcp__linear-server__*`, `mcp__linear__*`, `mcp__claude_ai_Linear__*`.
+2. If a namespace is detected, generate a `permissions.allow` list using
+   that namespace plus the canonical Cadence verbs. The verb list is
+   the union of what `commands/tick.md`, `commands/sweep.md`, and
+   `commands/status.md` actually call — reads (`list_issues`,
+   `get_issue`, `list_comments`) and writes (`save_issue`,
+   `save_comment`; plus `add_label` / `remove_label` if the detected
+   namespace exposes them as separate verbs rather than via
+   `save_issue`). The implementing session derives the verb list from
+   the current `commands/*.md` at implementation time — do not hardcode
+   it in this plan.
+3. Merge that list into `.claude/settings.local.json` (untracked,
+   per-operator — distinct from the `.claude/settings.json` that P2.4's
+   merge writes to). Use the same idempotent merge contract
+   `merge_settings_hooks.py` already implements: existing Cadence-owned
+   entries are replaced, non-Cadence entries are left alone, re-running
+   never duplicates.
+4. If detection fails (no Linear MCP server found, or namespace
+   unrecognised), do not write the file. Print the canonical verb list
+   with a `<your-linear-mcp-namespace>__` placeholder and a one-line
+   pointer to the README, then continue with the rest of init. A failed
+   detection is not a fatal error — the consumer can still hand-edit.
+5. Regardless of mode, append the same permissions block to the "Next
+   steps" output in step 5 of `init.md` under a heading like
+   `Permissions for /schedule routines (paste into the routine's
+   permissions panel)`. Cloud routines do not read local settings, so
+   `/schedule` operators need the list in copy-pasteable form even when
+   the local merge succeeded.
+
+**Mechanism**: a new sibling script
+`scripts/merge_settings_permissions.py`, modelled on
+`merge_settings_hooks.py` (same Python, same merge semantics, different
+top-level key — `permissions.allow` instead of `hooks`). Plugin-only;
+not scaffolded to the consumer. The implementing session may instead
+extend `merge_settings_hooks.py` to take a `--block-kind` argument if
+the two scripts end up sharing more than they differ; decide at
+implementation time.
+
+**Constraints inherited from P2's settings-merge work**:
+
+- The merge must touch `.claude/settings.local.json`, not
+  `.claude/settings.json`. The hooks block lives in the tracked
+  settings file (it is plugin behaviour, the same for every operator);
+  the permissions allowlist is operator-specific (different MCP
+  installations, different namespaces) and belongs in the untracked
+  per-operator file.
+- Stdlib-only, matching the existing helpers.
+- Exit non-zero with stderr on a hand-broken settings.local.json;
+  partial scaffolding is acceptable.
+
+**Open questions to resolve at implementation time** (carried over from
+the backlog discussion):
+
+- Is `claude mcp list` machine-readable across current CLI versions? If
+  not, fall back to parsing `.mcp.json`. If neither is available, the
+  failed-detection branch (step 4 above) is the safety net.
+- Account-level claude.ai connectors (the `/schedule`-friendly path)
+  expose Linear tools to routines via the connector toggle, not via
+  `permissions.allow`. Does the printed paste-into-routine block still
+  help in that case, or does it mislead? The implementing session
+  should test against a real `/schedule` routine and adjust the wording
+  of the printed block to match what the connector path actually
+  requires.
+
+**Why this lives in `/cadence:init` and not a new `/cadence:permissions`
+command**: keeps the one-command setup story intact. If we later need
+to re-detect (operator adds a new Linear MCP server, swaps namespaces),
+re-running `/cadence:init --force` already re-runs the merge
+idempotently — same shape as the P2.4 hooks merge.
+
 ## P4.5 — `commands/status.md`
 
 `/cadence:status` summarizes issues by Linear column. With gates now on
@@ -1541,6 +1634,23 @@ processed on next fire" signal). Keep that addition minimal.
 - [ ] `README.md` + `MIGRATION.md` recommend placing
       `cadence-approve` / `cadence-rework` into a Linear label group for
       single-select verdict UX (P4.4a). No code-level enforcement.
+- [ ] `scripts/merge_settings_permissions.py` present (plugin-only, not
+      scaffolded to consumers), implementing the same idempotent merge
+      contract as `merge_settings_hooks.py` against
+      `.claude/settings.local.json`'s `permissions.allow` list.
+- [ ] `commands/init.md` runs the permissions merge after the hooks
+      merge: detects the Linear MCP namespace, writes the canonical
+      Cadence verb list to `.claude/settings.local.json`, and prints
+      the same block in the "Next steps" output for `/schedule`
+      operators to paste into the routine's permissions panel.
+- [ ] `/cadence:init` with a Linear MCP server installed produces a
+      `.claude/settings.local.json` whose `permissions.allow` contains
+      every Linear MCP verb that `commands/tick.md`, `commands/sweep.md`,
+      and `commands/status.md` invoke; re-running with `--force` does
+      not duplicate entries.
+- [ ] `/cadence:init` with no detectable Linear MCP server prints the
+      canonical verb list with a `<namespace>__` placeholder and
+      continues (does not fail init).
 - [ ] `MIGRATION.md` + `CHANGELOG.md` have an "Upgrading to label-based
       gates" section.
 - [ ] `.claude-plugin/plugin.json` version bumped.
@@ -1559,6 +1669,16 @@ processed on next fire" signal). Keep that addition minimal.
       `workflow.yaml` whose gate still has `approved_linear_state`. Run
       `/cadence:tick`. Confirm the validation step exits with a Rule 8
       failure naming the state, with no Linear writes.
+- [ ] Smoke M — **permissions scaffold in a fresh consumer**:
+      `/cadence:init` in a throwaway repo whose only configured Linear
+      MCP server is one of the three known namespaces. Confirm
+      `.claude/settings.local.json` is written with a
+      `permissions.allow` block matching that namespace; confirm the
+      "Next steps" output also prints the block under a
+      `/schedule`-paste heading. Re-run with `--force` and confirm no
+      duplicate entries. Then unregister the Linear MCP server and run
+      `/cadence:init --force` again — confirm init does not fail and
+      prints the placeholder verb list with a one-line README pointer.
 
 ## P4 commit guidance
 
@@ -1566,6 +1686,8 @@ processed on next fire" signal). Keep that addition minimal.
 - One commit for `validate_workflow.py` (Rule 1 amendment + Rule 8).
 - One commit for `commands/tick.md` (Step 10 rewrite + Steps 3/8/9 +
   `workflowLinearStates`).
+- One commit for `commands/init.md` + `scripts/merge_settings_permissions.py`
+  (P4.4b — permissions scaffold).
 - One commit for the docs (README + MIGRATION + CHANGELOG).
 - Do not bundle P4 with P1, P2, P3, P5, or P6.
 
