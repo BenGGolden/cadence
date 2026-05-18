@@ -17,13 +17,17 @@ any time, from anywhere, with no side effects.
 - **Workflow state**: a state defined in `.claude/workflow.yaml` under
   `states:`. Each has a `type` of `agent`, `gate`, or `terminal`.
 - **Linear state**: a Linear board column. Workflow states declare their
-  `linear_state`; gates additionally declare `approved_linear_state` and
-  `rework_linear_state`.
-- **Workflow Linear states**: the set of every `linear_state`, every
-  gate's `approved_linear_state`, every gate's `rework_linear_state`,
-  plus `linear.pickup_state`. The same set `/cadence:tick`
-  step 4 builds. Issues sitting in any of these columns are "in the
-  workflow" for status purposes.
+  `linear_state`. A gate declares only its waiting `linear_state` —
+  verdicts are signalled by the `cadence_approve` / `cadence_rework`
+  labels (P4), not by additional columns.
+- **Workflow Linear states**: the set of every `linear_state` plus
+  `linear.pickup_state`. The same set `/cadence:tick` step 4 builds.
+  Issues sitting in any of these columns are "in the workflow" for
+  status purposes.
+- **Verdict labels**: `label.cadence_approve` and `label.cadence_rework`.
+  When an issue at a gate carries one of these labels, the next
+  `/cadence:tick` fire will act on it. The summary highlights pending
+  verdict labels so the human can see what is queued up.
 - **Tracking comment**: a Linear comment whose body begins with
   `<!-- cadence:state`, `<!-- cadence:gate`, `<!-- cadence:reconcile`, or
   the legacy `<!-- stokowski:state` / `<!-- stokowski:gate` prefixes.
@@ -76,8 +80,7 @@ Construct two structures:
 
 1. `workflowLinearStates` — the set used to filter the query. This is the
    `workflow_linear_states` array from the validator output in step 1
-   (`linear.pickup_state`, then every state's `linear_state`, then every
-   gate's `approved_linear_state` and `rework_linear_state`).
+   (`linear.pickup_state`, then every state's `linear_state`).
 
 2. `linearToWorkflow` — a map from each Linear column **back** to its
    role in the workflow. Each entry is one of:
@@ -86,10 +89,6 @@ Construct two structures:
      terminal state's `linear_state`.
    - `{ kind: "gate_waiting", workflow_state: "<gate>" }` for a gate's
      `linear_state`.
-   - `{ kind: "gate_approved", workflow_state: "<gate>" }` for a gate's
-     `approved_linear_state`.
-   - `{ kind: "gate_rework", workflow_state: "<gate>" }` for a gate's
-     `rework_linear_state`.
 
    If two configs would produce two entries for the same Linear column
    (a uniqueness violation), keep the first and remember the conflict
@@ -109,8 +108,9 @@ capture:
 - `state.name` (current Linear column)
 - `priority` (numeric; null/"No priority" treated as worst)
 - `updatedAt`
-- `labels` (array of label names) — used to detect `cadence_active` and
-  `cadence_needs_human`
+- `labels` (array of label names) — used to detect `cadence_active`,
+  `cadence_needs_human`, and the two verdict labels (`cadence_approve` /
+  `cadence_rework`) for the Verdict column on gate rows
 - Any field your MCP exposes that identifies the issue for the comment
   fetch in step 4
 
@@ -166,9 +166,9 @@ Team: **<linear.team>**   Project: **<linear.project_slug, or "(any)" if unset>*
 
 ### Issues in workflow
 
-| ID | Title | Linear column | Workflow state | Attempt | Lock | Needs human |
-|----|-------|---------------|----------------|---------|------|-------------|
-| <identifier> | <title truncated to ~50 chars> | <state.name> | <workflow_state from linearToWorkflow, formatted per below> | <attempt or "—"> | <"🔒" if cadence_active label present, else ""> | <"🛑" if cadence_needs_human label present, else ""> |
+| ID | Title | Linear column | Workflow state | Attempt | Lock | Needs human | Verdict |
+|----|-------|---------------|----------------|---------|------|-------------|---------|
+| <identifier> | <title truncated to ~50 chars> | <state.name> | <workflow_state from linearToWorkflow, formatted per below> | <attempt or "—"> | <"🔒" if cadence_active label present, else ""> | <"🛑" if cadence_needs_human label present, else ""> | <verdict cell per below> |
 ```
 
 **Workflow-state column formatting** (per `linearToWorkflow` entry):
@@ -178,8 +178,19 @@ Team: **<linear.team>**   Project: **<linear.project_slug, or "(any)" if unset>*
 | `pickup`            | `(pickup)`                      |
 | `state`             | the workflow state name         |
 | `gate_waiting`      | `<gate> (waiting)`              |
-| `gate_approved`     | `<gate> (approved)`             |
-| `gate_rework`       | `<gate> (rework)`               |
+
+**Verdict column** (only meaningful for `gate_waiting` rows; otherwise
+leave empty):
+
+- `cadence-approve` if the `label.cadence_approve` label is present and
+  `label.cadence_rework` is not — the next fire will route this issue
+  to the gate's `on_approve` target.
+- `cadence-rework` if the `label.cadence_rework` label is present and
+  `label.cadence_approve` is not — the next fire will route to
+  `on_rework`.
+- `both (→ rework)` if both labels are present — the next fire's
+  defensive guard treats this as rework.
+- empty if neither is present — the gate is still waiting for a human.
 
 **Row ordering**: by Linear priority ascending, then `updatedAt`
 descending (newest first within a priority). This mirrors the order in
@@ -201,15 +212,19 @@ map in declaration order and emit one line per state:
 - **<state name>** (`<linear_state>`) — N issues   ...
 ```
 
-For **gates**, emit three lines instead of one (waiting, approved,
-rework):
+For **gates**, render the single waiting column plus a verdict-label
+breakdown so the human can see what is queued up for the next fire:
 
 ```markdown
-- **<gate name>** (gate)
-  - waiting (`<linear_state>`) — N issues
-  - approved (`<linear_state>`) — N issues
-  - rework (`<linear_state>`) — N issues
+- **<gate name>** (gate, `<linear_state>`) — N issues
+  - awaiting verdict — N issues
+  - 👍 cadence-approve — N issues
+  - 👎 cadence-rework — N issues
+  - ⚠️ both labels (treated as rework) — N issues
 ```
+
+Omit any breakdown line whose count is 0. If all N issues are in the
+"awaiting verdict" bucket, collapse to the single-line form.
 
 For **terminal** states, render as the single-line form. Include them
 even when count is 0 — the empty terminal column tells the reader the

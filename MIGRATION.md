@@ -45,19 +45,24 @@ Audit your current Stokowski `workflow.yaml`. For every internal state
 that maps to a shared Linear state, add a new Linear column. Typical
 result for a `plan → implement → review → done` workflow:
 
-| Workflow state | New Linear column      |
-|----------------|------------------------|
-| (pickup)       | Todo                   |
-| plan           | Planning               |
-| implement      | Implementing           |
-| review (waiting) | In Review            |
-| review (approved) | Approved             |
-| review (rework)  | Needs Rework         |
-| done           | Done                   |
+| Workflow state   | New Linear column      |
+|------------------|------------------------|
+| (pickup)         | Todo                   |
+| plan             | Planning               |
+| implement        | Implementing           |
+| review (waiting) | In Review              |
+| done             | Done                   |
 
 Create the missing columns in Linear before doing anything else. Issues
 mid-flight should be moved manually to the column matching their current
 internal state.
+
+Gates use a single column plus two labels (`cadence-approve` /
+`cadence-rework`), not three columns — reviewers signal their verdict by
+labelling an issue sitting in the gate's waiting column. Create the two
+labels alongside the existing `cadence-active` / `cadence-needs-human`
+labels. (Recommended: put both verdict labels into a Linear label group
+so the picker renders the verdict as a single-select control.)
 
 ### 2. Rewrite `workflow.yaml`
 
@@ -73,6 +78,8 @@ linear:
 label:
   cadence_active: "cadence-active"
   cadence_needs_human: "cadence-needs-human"
+  cadence_approve: "cadence-approve"
+  cadence_rework: "cadence-rework"
 
 limits:
   max_attempts_per_issue: 3
@@ -96,8 +103,6 @@ states:
   review:
     type: gate
     linear_state: "In Review"
-    approved_linear_state: "Approved"
-    rework_linear_state: "Needs Rework"
     on_approve: done
     on_rework: implement
     max_rework: 2
@@ -277,3 +282,62 @@ Claude Code level), so there's nothing extra to clean up there.
 - **`pickup_state` collision.** Cadence's bootstrap will refuse a config
   where `pickup_state` equals any state's `linear_state`. Pick a column
   Cadence does not otherwise reference.
+
+---
+
+## Upgrading to label-based gates
+
+Cadence 0.4.0 collapses each gate from three Linear columns
+(`linear_state` / `approved_linear_state` / `rework_linear_state`) to
+**one column plus two labels**. The waiting column stays; the verdict is
+carried by the new `cadence-approve` and `cadence-rework` labels. A
+workflow with three gates drops from nine gate columns to three plus two
+globally-shared labels.
+
+Run these steps once when you upgrade across this version boundary:
+
+1. **Create the two labels in Linear.** Add `cadence-approve` and
+   `cadence-rework` to your workspace's label set, alongside the
+   existing `cadence-active` / `cadence-needs-human`.
+
+2. **(Recommended) Put them in a label group.** Workspace settings →
+   Labels → New group, name it whatever you like (`Cadence: Decision`
+   is the obvious choice), drop the two verdict labels in. Linear then
+   renders the verdict as a single-select control on each issue — a
+   reviewer can't accidentally set both. The bootstrap still defends
+   against the dual-label state for safety, but the group makes it
+   unreachable from the UI.
+
+3. **Edit `.claude/workflow.yaml`.** For every `type: gate` state:
+   - Delete the `approved_linear_state` line.
+   - Delete the `rework_linear_state` line.
+   - Leave `linear_state`, `on_approve`, `on_rework`, and (if set)
+     `max_rework` untouched.
+
+   In the `label:` section, add:
+   ```yaml
+     cadence_approve: "cadence-approve"
+     cadence_rework: "cadence-rework"
+   ```
+
+4. **The Linear `Approved` and `Needs Rework` columns are no longer
+   needed.** Delete them, or leave them — Cadence treats them as foreign
+   columns and ignores any issues sitting in them.
+
+5. **In-flight issues.** Any issue sitting in a former `Approved` /
+   `Needs Rework` column when the upgrade lands must be handled once by
+   hand: either move it back to the gate's waiting column and apply the
+   matching label, or move it straight to the target state. The
+   bootstrap will refuse to pick up issues in unmapped columns (it logs
+   `Issue moved to unmapped Linear state ... releasing lock without
+   action.`) so nothing breaks; the issues just sit there until cleaned
+   up.
+
+6. **Re-run `/cadence:init` (optional).** If you want the scaffolded
+   workflow template updated for reference, re-run with `--force` — note
+   that this overwrites your `.claude/workflow.yaml`, so back it up
+   first. The migration above is the supported in-place path.
+
+7. **Validate.** Run `/cadence:tick dry-run`. The validator's Rule 8
+   will name any gate still carrying the legacy keys and refuse the
+   fire; fix and re-run.
