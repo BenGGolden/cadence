@@ -38,6 +38,7 @@ Check whether `.claude/workflow.yaml` already exists.
   Re-run with --force to overwrite. This will replace:
     - .claude/workflow.yaml
     - .claude/prompts/global.md
+    - .claude/ticket-template.md
     - .claude/agents/planner.md
     - .claude/agents/implementer.md
     - .claude/agents/reviewer.md
@@ -77,6 +78,7 @@ actual plugin root at runtime.
 |-------------------------------------------------------------------|------------------------------|
 | `${CLAUDE_PLUGIN_ROOT}/templates/workflow.example.yaml`           | `.claude/workflow.yaml`      |
 | `${CLAUDE_PLUGIN_ROOT}/templates/global-prompt.example.md`        | `.claude/prompts/global.md`  |
+| `${CLAUDE_PLUGIN_ROOT}/templates/ticket-template.md`              | `.claude/ticket-template.md` |
 | `${CLAUDE_PLUGIN_ROOT}/templates/agents/planner.md`               | `.claude/agents/planner.md`  |
 | `${CLAUDE_PLUGIN_ROOT}/templates/agents/implementer.md`           | `.claude/agents/implementer.md` |
 | `${CLAUDE_PLUGIN_ROOT}/templates/agents/reviewer.md`              | `.claude/agents/reviewer.md` |
@@ -146,6 +148,7 @@ Cadence initialised.
 Files written:
   .claude/workflow.yaml
   .claude/prompts/global.md
+  .claude/ticket-template.md
   .claude/agents/planner.md
   .claude/agents/implementer.md
   .claude/agents/reviewer.md
@@ -178,6 +181,11 @@ Next steps:
        • Local: from an interactive Claude Code session in this repo, run
          `claude /loop 1m /cadence:tick` (after `gh auth login`).
   5. Smoke test with /cadence:tick dry-run before going live.
+
+To create well-formed tickets, run `/cadence:create-ticket` in your
+local Claude Code session and paste the output into Linear's New
+Issue form. The planner subagent will refuse tickets that lack an
+`## Acceptance Criteria` block.
 
 See the plugin README for the full Consumer Setup walkthrough.
 ```
