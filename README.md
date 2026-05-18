@@ -11,10 +11,10 @@ projects install the plugin, run `/cadence:init`, edit one YAML
 file and three subagent prompts, point a scheduled routine at
 `/cadence:tick`, and watch Linear.
 
-> **Build status:** v1 scaffolding is complete. All four slash commands
-> (`/cadence:init`, `/cadence:tick`,
-> `/cadence:sweep`, `/cadence:status`) are implemented. End-to-end smoke
-> testing against a live Linear project happens once per consuming repo
+> **Build status:** v1 scaffolding is complete. All five slash commands
+> (`/cadence:init`, `/cadence:tick`, `/cadence:sweep`, `/cadence:status`,
+> `/cadence:create-ticket`) are implemented. End-to-end smoke testing
+> against a live Linear project happens once per consuming repo
 > ([SMOKE.md](./SMOKE.md) is the checklist).
 
 ---
@@ -55,8 +55,9 @@ in your consumer repo (wrapper script, shell alias, `.envrc`), or roll your own
 marketplace pointing at this repo and `claude plugin install cadence@<your-mp>`
 (see the [plugin marketplaces docs][marketplaces]).
 
-Once loaded, the four slash commands appear under the `cadence:` namespace:
-`/cadence:tick`, `/cadence:init`, `/cadence:sweep`, `/cadence:status`.
+Once loaded, the five slash commands appear under the `cadence:` namespace:
+`/cadence:tick`, `/cadence:init`, `/cadence:sweep`, `/cadence:status`,
+`/cadence:create-ticket`.
 
 [marketplaces]: https://code.claude.com/docs/en/plugin-marketplaces
 
@@ -109,6 +110,28 @@ Fully autonomous. No operator presence required between fires.
 
 [connectors]: https://claude.ai/customize/connectors
 [routines]: https://claude.ai/code/routines
+
+### Ticket quality
+
+Cadence treats every Linear issue as a contract. The planner subagent
+refuses to plan a ticket whose description does not contain an
+`## Acceptance Criteria` H2 with at least one
+`- [ ] **AC-N** — <specific outcome>` checkbox item — those refusals
+count toward `max_attempts_per_issue` and eventually escalate with the
+`cadence-needs-human` label.
+
+To draft well-formed tickets, run `/cadence:create-ticket` in your local
+Claude Code session. It walks you through the template at
+`.claude/ticket-template.md`, validates each AC against a vagueness
+heuristic, and emits a paste-ready Markdown blob you drop into Linear's
+"New Issue" form. The command does not touch Linear directly — keeping
+local sessions free of any Linear MCP requirement — and does not invoke
+any subagent.
+
+For tickets created outside this flow (in Linear's UI, or imported from
+another tracker), paste the contents of `.claude/ticket-template.md` into
+the description and fill in the sections; the planner's quality bar is
+the same either way.
 
 ### Mode B — Local (`/loop`)
 
@@ -415,6 +438,7 @@ See [GUIDEPOSTS.md](./GUIDEPOSTS.md) for why the system is shaped this way.
 <consumer-repo>/
 └── .claude/
     ├── workflow.yaml             # state machine config
+    ├── ticket-template.md        # Cadence ticket skeleton — paste into Linear
     ├── prompts/
     │   └── global.md             # shared subagent preamble
     └── agents/

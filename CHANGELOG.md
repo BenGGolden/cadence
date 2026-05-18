@@ -7,6 +7,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `templates/ticket-template.md` — paste-able skeleton an operator drops
+  into Linear's "Description" field for a new ticket. Scaffolded into the
+  consumer's `.claude/ticket-template.md` by `/cadence:init` (hardening
+  plan, Phase 3).
+- `commands/create-ticket.md` — new `/cadence:create-ticket` slash
+  command that walks the operator through filling the template
+  interactively and emits a paste-ready Markdown block. No Linear writes;
+  no subagent invocation. Validates that each acceptance-criterion is
+  specific enough to verify from the diff and the test suite.
+- `templates/agents/planner.md` — adds a "## Ticket-quality gate" section.
+  The planner now refuses to plan a ticket whose description lacks a
+  `## Acceptance Criteria` H2 with at least one `- [ ] **AC-N** —`
+  checkbox item, returning a fixed "Cannot plan" summary that the
+  bootstrap posts as a Linear comment and counts toward
+  `max_attempts_per_issue` (escalating to `cadence-needs-human` after the
+  configured number of fires).
+- `templates/agents/implementer.md` — adds an "### Acceptance criteria"
+  block to the required return-summary shape. The implementer must walk
+  the ticket's `## Acceptance Criteria` list and either tick each item
+  with a `Verified by:` artefact, or leave it unticked with a
+  `Not addressed because:` reason.
+- `templates/agents/reviewer.md` — adds step 0 to "How to review": locate
+  the ticket's `## Acceptance Criteria` block and verify the
+  implementer's per-AC claims against the actual diff; a `[x]` whose
+  verification artefact does not exist is a blocking finding.
 - `scripts/` — three deterministic Python helper scripts plus a shared
   `_common.py` module, invoked from command prose via `Bash`
   (hardening plan, Phase 1):
@@ -61,6 +86,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `/cadence:tick` runnable from a `/schedule` cloud routine, which
   previously had no path to find either the dispatch prose or the
   helper scripts (the plugin is not installed in the cloud session).
+- `commands/init.md` — also copies `templates/ticket-template.md` to
+  `.claude/ticket-template.md`, lists it in the overwrite-check block
+  and the "Files written" output, and appends `/cadence:create-ticket`
+  guidance to "Next steps" (hardening plan, Phase 3).
 - `commands/tick.md` step 9 (drift detection) — no longer treats normal
   agent→agent forward progression as drift. After a successful fire that
   advanced Linear from state X to state X.next (an agent state), the next
@@ -105,7 +134,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   install root (`C:\Program Files\Git\.claude\hooks\...`) and the
   script failed to open. The fallback resolves to cwd `.`, which the
   harness keeps at the project root.
-- `.claude-plugin/plugin.json` — version bumped to `0.2.0`.
+- `.claude-plugin/plugin.json` — version bumped to `0.3.0`.
 - `README.md` — "Linear MCP tools" section now opens with a namespace
   primer (`mcp__linear__*` vs. `mcp__linear-server__*` vs.
   `mcp__claude_ai_Linear__*` vs. bare), and the read/write allowlist
