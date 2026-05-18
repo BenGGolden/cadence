@@ -20,13 +20,18 @@ Invocation arguments (verbatim, may be empty): `$ARGUMENTS`
 - **Workflow state**: a state defined in `.claude/workflow.yaml` under `states:`
   (e.g. `plan`, `implement`, `review`, `done`). Each has a `type` of `agent`,
   `gate`, or `terminal`.
-- **Linear state**: a column on the Linear board (e.g. "Planning", "In Review",
-  "Approved"). Workflow states declare their `linear_state`. Gates additionally
-  declare `approved_linear_state` and `rework_linear_state`.
-- **Workflow Linear states**: the set of every `linear_state`, every gate's
-  `approved_linear_state`, every gate's `rework_linear_state`, plus
+- **Linear state**: a column on the Linear board (e.g. "Planning", "In Review").
+  Workflow states declare their `linear_state`. Gates declare a single
+  `linear_state` — the waiting column — and signal their verdict via labels
+  (see **Gate verdict labels** below), not via additional columns.
+- **Workflow Linear states**: the set of every `linear_state` plus
   `linear.pickup_state`. Linear columns *outside* this set are foreign to the
   workflow — Cadence does not pick up issues sitting in them.
+- **Gate verdict labels**: `label.cadence_approve` and `label.cadence_rework`.
+  A human adds one to an issue sitting in a gate's waiting column to signal
+  their decision. On the next fire the bootstrap reads the label, acts on it,
+  and removes it. Two labels cover every gate in the workflow — the column
+  identifies which gate; the label only carries the verdict.
 - **Tracking comment**: a Linear comment whose body begins with one of:
   - `<!-- cadence:state {...JSON...} -->`     workflow-state attempt marker or failure record
   - `<!-- cadence:gate {...JSON...} -->`      gate transition record
@@ -116,11 +121,13 @@ Hold the contents in memory as `globalPrompt` for step 13.
 
 Invoke Bash: `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/validate_workflow.py`.
 
-This script enforces the five config rules deterministically (uniqueness of
-every `linear_state` / `approved_linear_state` / `rework_linear_state`; `entry`
-resolves to a `type: agent` state; every `next` / `on_approve` / `on_rework`
-resolves; every `subagent` resolves to `.claude/agents/{name}.md` on disk;
-`linear.pickup_state` non-empty).
+This script enforces the config rules deterministically (uniqueness of every
+`linear_state` value plus `linear.pickup_state`; `entry` resolves to a
+`type: agent` state; every `next` / `on_approve` / `on_rework` resolves;
+every `subagent` resolves to `.claude/agents/{name}.md` on disk;
+`linear.pickup_state` non-empty; no gate state carries the legacy
+`approved_linear_state` / `rework_linear_state` keys — those were removed
+in P4 and the validator rejects them with a Rule 8 failure).
 
 - If the exit code is **non-zero**, print the script's stderr verbatim and
   exit. **Do not write to Linear.** (Exit 1 means the YAML was unreadable;
@@ -135,9 +142,8 @@ resolves; every `subagent` resolves to `.claude/agents/{name}.md` on disk;
 
 The validator in step 3 already produced this. Keep its `workflow_linear_states`
 array in memory as `workflowLinearStates` (ordered: `linear.pickup_state`, then
-every state's `linear_state`, then every gate's `approved_linear_state` and
-`rework_linear_state`). Step 5 uses it to filter the query; step 8 uses it to
-map a Linear column back to a workflow state.
+every state's `linear_state`). Step 5 uses it to filter the query; step 8 uses
+it to map a Linear column back to a workflow state.
 
 ---
 
@@ -219,13 +225,13 @@ Otherwise, leave the Linear state untouched.
 ## Step 8 — Determine the matched workflow state
 
 Re-read `issue`'s Linear state (after the possible move in step 7). Find the
-single workflow state whose:
-- `linear_state` equals it, **OR**
-- (for a gate) `approved_linear_state` equals it, **OR**
-- (for a gate) `rework_linear_state` equals it.
+single workflow state whose `linear_state` equals it. Call this the
+**matched workflow state**. By the uniqueness rule in step 3 exactly one
+match is possible.
 
-Call this the **matched workflow state**. By the uniqueness rule in step 3
-exactly one match is possible.
+A gate now lives in exactly one column (its `linear_state`, the waiting
+queue) — verdicts are signalled by labels, not by moving the card to a
+different column. Step 10 handles the label branch.
 
 If **no** state matches (the issue moved to a column outside the workflow set
 between step 5 and now — possible if a human dragged it), post a plain comment:
@@ -270,8 +276,7 @@ these checks in order — the first one that holds wins:
 - **Match** (`latest_tracking_comment.state` equals the matched state): no
   drift. The previous fire didn't advance — either its subagent failed and
   Linear stayed where it was, or this fire is the next pickup of a gate
-  sitting in any of its three columns (the gate's name matches via
-  `linear_state`, `approved_linear_state`, or `rework_linear_state`).
+  still sitting in its single waiting column awaiting a verdict label.
   Proceed.
 
 - **Normal forward progression**: the matched state equals
@@ -287,10 +292,10 @@ these checks in order — the first one that holds wins:
   This check only applies when `latest_tracking_comment.state` names an
   agent state with a defined `next` field. Gate states use `on_approve` /
   `on_rework` instead of `next`, but in practice gate predecessors are
-  always handled by the **Match** rule above (Linear stays in one of the
-  gate's three columns until a human moves it, and any successful gate
-  transition emits its own tracking comment that updates `latest` to the
-  new target state).
+  always handled by the **Match** rule above (Linear stays in the gate's
+  waiting column until the bootstrap routes the verdict on the next fire,
+  and any successful gate transition emits its own tracking comment that
+  updates `latest` to the new target state).
 
 - **Drift otherwise**: a human (or another tool) reassigned the issue to a
   column that isn't reachable from where it last was via one workflow
@@ -307,56 +312,75 @@ If the matched workflow state from step 8 is **not** a gate (it's `type: agent`)
 the **target state** for the rest of this fire equals the matched workflow state.
 Skip to step 11.
 
-If it **is** a gate, branch on which of the gate's three Linear columns the issue
-is in:
+If it **is** a gate, fetch the issue's current label list (re-read from the
+Linear MCP; the lock-acquisition read in step 6 covers it if your MCP returned
+labels on that response). Check for the two verdict labels
+(`label.cadence_approve` and `label.cadence_rework`) and branch:
 
-### 10a — Gate column is `linear_state` (waiting)
+### 10a — Neither verdict label present (waiting)
 
-The human has not made a decision yet. Remove the `cadence_active` label and exit.
-Do **not** invoke a subagent. Do not post any comment.
+The human has not decided yet. Remove the `cadence_active` label and exit.
+Do **not** invoke a subagent. Do **not** post any comment. The issue stays
+in the gate's waiting column until the human adds a verdict label, which
+the next fire will see.
 
-### 10b — Gate column is `approved_linear_state`
+### 10b — `label.cadence_approve` is present
 
 The human approved. Look up `<gate>.on_approve` in the config; call it
 `approveTarget`.
 
-1. Move the issue to `approveTarget`'s `linear_state`.
-2. If `approveTarget` is `type: terminal`: remove the `cadence_active` label and
-   exit. No subagent invocation; the Linear state change is the audit record.
-3. Otherwise: set the **target state** for the rest of this fire to
+1. Remove the `label.cadence_approve` label from the issue via Linear MCP.
+2. Move the issue to `approveTarget`'s `linear_state` via Linear MCP.
+3. If `approveTarget` is `type: terminal`: remove the `cadence_active` label
+   and exit. No subagent invocation; the Linear state change is the audit
+   record.
+4. Otherwise: set the **target state** for the rest of this fire to
    `approveTarget` and continue at step 11.
 
-### 10c — Gate column is `rework_linear_state`
+### 10c — `label.cadence_rework` is present
 
-The human is sending the work back. Look up `<gate>.on_rework` in the config; call
-it `reworkTarget`. `<gate>.max_rework` may or may not be defined.
+The human is sending the work back. Look up `<gate>.on_rework` in the config;
+call it `reworkTarget`. `<gate>.max_rework` may or may not be defined.
 
-1. From step 9's `parse_comments.py` output (step 9 passed `--gate-name`
+1. Remove the `label.cadence_rework` label from the issue via Linear MCP.
+
+2. From step 9's `parse_comments.py` output (step 9 passed `--gate-name`
    because the matched state is a gate), read `rework_count` — the number of
    prior `cadence:gate` / legacy `stokowski:gate` comments with
    `"status": "rework"` whose `state` equals this gate's name. Call it
    `reworkCount`.
 
-2. If `<gate>.max_rework` is defined and `reworkCount >= max_rework`, escalate:
+3. If `<gate>.max_rework` is defined and `reworkCount >= max_rework`, escalate:
    - Build the escalation comment by invoking Bash:
      `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind gate --state <gate> --status escalated`
      Post its stdout as a Linear comment verbatim.
    - Add the `label.cadence_needs_human` label.
    - Remove the `cadence_active` label and exit.
 
-3. **Gather rework context.** From the same step 9 `parse_comments.py` output,
+4. **Gather rework context.** From the same step 9 `parse_comments.py` output,
    read the `rework_context` array — comments posted after the most recent
    tracking comment, excluding tracking comments and obvious bots, oldest-first,
    each with `body` / `author` / `createdAt`. Keep this as `reworkComments` for
    step 13.
 
-4. Build the rework gate comment by invoking Bash:
+5. Build the rework gate comment by invoking Bash:
    `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind gate --state <gate> --status rework --rework-to <reworkTarget>`
    Post its stdout as a Linear comment verbatim.
 
-5. Move the issue to `reworkTarget`'s `linear_state` via Linear MCP.
+6. Move the issue to `reworkTarget`'s `linear_state` via Linear MCP.
 
-6. Set the **target state** to `reworkTarget` and continue at step 11.
+7. Set the **target state** to `reworkTarget` and continue at step 11.
+
+### Both verdict labels present
+
+Treat as **rework** — it is the safer verdict (routes the issue back for
+another human pass rather than advancing). Remove **both** verdict labels,
+then proceed exactly as 10c from step 2 onward.
+
+A Linear label group on the two verdict labels (recommended in the docs)
+makes this case structurally unreachable from the UI, but the bootstrap
+still guards against it for defence in depth — a future API caller can
+bypass the UI.
 
 ---
 
