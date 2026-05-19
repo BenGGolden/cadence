@@ -93,3 +93,69 @@ flakiness, or when prose grows long enough to be hard to audit.
 
 **Discussed in**: conversation on 2026-05-15.
 
+---
+
+## Optional `merge` state between `review` and `done`
+
+**Idea**: an opt-in workflow state that runs `gh pr merge` after the
+human approves at the `review` gate, before the issue lands in `done`.
+Today the bootstrap removes the `cadence-approve` label and moves the
+Linear card to the gate's `on_approve` target with no awareness of PR
+state — if the human approved without merging, the Linear card lands in
+Done while the PR sits open.
+
+**Why**: closes the "approved but PR not merged" gap that
+[tick.md step 10b](./commands/tick.md) currently leaves to convention.
+Linear and GitHub move together, end of story.
+
+**The setting is the state itself.** Cadence's workflow YAML already
+lets consumers add intermediate states. No new schema needed — a
+consumer who wants the auto-merge behaviour adds a `merge` state and a
+corresponding Linear column:
+
+```yaml
+review:
+  type: gate
+  linear_state: "In Review"
+  on_approve: merge        # was: done
+  on_rework: implement
+
+merge:
+  type: agent
+  subagent: merger         # new subagent template; runs `gh pr merge`
+  linear_state: "Merging"
+  next: done
+```
+
+Consumers who prefer the status-only signal omit the state and leave the
+gate pointed straight at `done` (today's behaviour). A status warning
+(`approved but PR still open`) could be a separate, smaller change that
+helps either camp without forcing the auto-merge path.
+
+**Open questions**:
+
+- Where does the `merger` subagent live — shipped as a template, or
+  documented in README as a recipe consumers paste in? Shipping it
+  makes the opt-in one YAML edit; recipe-only keeps the template set
+  smaller.
+- `gh pr merge` flag defaults: `--squash`? `--auto`? Configurable per
+  consumer via the subagent's body, probably — same pattern as the
+  rest of the agent templates.
+- Failure handling: if `gh pr merge` fails (CI red, conflicts, branch
+  protection), does the issue land in `cadence-needs-human` like any
+  other agent failure, or is there a dedicated failure path? Reuse the
+  `max_attempts_per_issue` escalation; it already covers this shape.
+- Status reporter: should it cross-reference PR state on the gate row
+  regardless of whether `merge` is in the workflow? A read-only "PR is
+  still open" signal is useful in both camps.
+
+**Why not now**: not blocking the current Phase 4 work; the
+convention-based approach ("approve after you merge") works for teams
+with a small reviewer set and tight feedback loops. Worth picking up
+when the manual coordination starts producing "approved cards with
+stale PRs" reports.
+
+**Discussed in**: conversation on 2026-05-18 about Phase 4 smoke
+testing — the question "does the approve flow expect the PR to be
+merged first?" surfaced the gap.
+
