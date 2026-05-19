@@ -159,3 +159,91 @@ stale PRs" reports.
 testing — the question "does the approve flow expect the PR to be
 merged first?" surfaced the gap.
 
+---
+
+## Surface routine failures to the operator
+
+**Idea**: when a `/schedule` routine fails before producing any
+Linear-visible side effect — hook block, container-setup error,
+unhandled exception during `/cadence:tick` step 1-5 — give the
+operator a signal somewhere they actually look. Today these failures
+end the routine quietly.
+
+**Why**: discovered during Phase 4 Smoke L. The
+`validate_workflow_on_prompt.py` hook correctly blocked a legacy-schema
+`/cadence:tick` prompt with a Rule 8 message on stderr. Locally this
+renders in the terminal and is obvious. In a cloud `/schedule` routine
+it goes nowhere:
+
+- claude.ai/code/sessions does NOT show routine sessions.
+- Routines do NOT have an exposed stderr view.
+- The routine just ends; the operator sees "nothing happened" and has
+  no way to find out why short of digging into internal logs.
+
+This generalises beyond the hook case. Anything that aborts before the
+bootstrap reaches its first Linear write — failed `claude mcp list`,
+unreachable Linear MCP, broken `.claude/settings.json`, container setup
+failure — has the same shape: invisible to the operator.
+
+**Constraints**:
+
+- Cadence runs inside someone else's compute (the routine platform).
+  It cannot directly write to the platform's UI; whatever signal it
+  produces has to ride out through a channel the platform exposes
+  (exit code, stdout, an explicit notification API if one exists) or
+  through an external channel the operator configures.
+- Cloud containers are ephemeral. A local status file won't survive.
+
+**Rejected alternatives** (settled in conversation, do not revisit):
+
+- **Post a tracking comment on a recently-touched Linear issue.** The
+  operator would have to hunt through Linear to find a maybe-comment
+  on a maybe-issue. The signal has to live in a known location, not
+  scattered across the workflow.
+
+**Candidate paths** (not yet chosen):
+
+1. **Routine-UI signal via exit code / stdout shape.** Investigate what
+   the routine platform actually surfaces when a routine exits
+   non-zero, or when it prints a recognisable pattern. If there's
+   anything operator-visible, route hook-block and bootstrap-error
+   output through it. This is the lowest-friction path *if* the
+   platform cooperates.
+2. **Configurable notification webhook.** Add an optional
+   `notifications.webhook_url` (or `.email`) to `workflow.yaml`. On
+   any fire-aborting failure, POST a small JSON payload (or send a
+   minimal email). Operator points it at Slack / PagerDuty / a forwarder
+   of their choice. Adds an external dependency but gives the operator
+   full control over the channel.
+3. **Claude Code in-session alert.** If the routine platform supports a
+   "session notification" primitive (TBD whether it does), use it.
+   Likely overlaps with path 1.
+4. **Self-monitoring routine.** A separate, less-frequent `/cadence:health`
+   that asserts the main tick routine has made forward progress
+   recently and surfaces failure through paths 1-3 if not. Useful as a
+   higher-level liveness check regardless of which of the others lands.
+
+**Open questions**:
+
+- What signals does the routine platform actually surface to operators
+  today? (`/schedule` routine logs are findable somewhere, just not
+  obviously — confirm before designing around them.)
+- Should the hook block path differ from the
+  bootstrap-error-during-`tick` path? Both have the same "no Linear
+  side effect happened" shape from the operator's POV; arguably they
+  should converge on one notification channel.
+- Failure modes during a fire that *did* produce some Linear side
+  effect (subagent crashed, attempt cap hit) are already comment- and
+  label-visible on the issue. Out of scope for this item — it covers
+  only the "fire produced nothing at all" class.
+
+**Why not now**: the hook block is the only failure class with a known
+trigger we hit during smoke testing. The wider gap exists but isn't
+acute. Pick this up when a second operator gets bitten, or when
+deciding the notification channel becomes part of the standard
+`/cadence:init` flow.
+
+**Discussed in**: conversation on 2026-05-18 — Phase 4 Smoke L: the
+hook correctly rejected a legacy schema but the operator saw a silent
+end on the cloud routine.
+
