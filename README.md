@@ -30,7 +30,7 @@ file and three subagent prompts, point a scheduled routine at
         +-- 1. Pick next eligible Linear issue
         +-- 2. Acquire soft lock (cadence-active label)
         +-- 3. Read current Linear state → workflow state
-        +-- 4. For gates: branch on waiting / approved / rework
+        +-- 4. For gates: read verdict labels (approve / rework / waiting)
         +-- 5. Invoke matching subagent in fresh context
         +-- 6. Post tracking comment, move Linear state, release lock
         +-- 7. Exit (next fire picks up the next issue, or continues this one)
@@ -70,7 +70,18 @@ command — they differ only in where the cron lives. You need: Claude Code with
 plugin support, a Linear MCP server, GitHub auth for the implementer subagent
 (`gh auth login` locally or `GH_TOKEN` on the routine), and a Linear board with
 one column per workflow stage (defaults: Todo, Planning, Implementing, In
-Review, Approved, Needs Rework, Done — reshape via `workflow.yaml`).
+Review, Done — reshape via `workflow.yaml`).
+
+Gates use **one column plus two labels**, not three columns. Create the
+`cadence-approve` and `cadence-rework` labels in Linear alongside the
+existing `cadence-active` / `cadence-needs-human` labels; a reviewer
+signals their verdict on an issue sitting in the gate's waiting column
+(`In Review` in the default workflow) by adding one of those labels.
+**Recommended:** put both labels into a Linear label group (workspace
+settings → Labels → New group) so the picker renders the verdict as a
+single-select control instead of two independent toggles. Cadence treats
+the dual-label case as rework as a defensive guard, but the group makes
+it structurally unreachable from the UI.
 
 ### Mode A — Remote (`/schedule`)
 
@@ -242,6 +253,15 @@ MCP server actually exposes. Check `claude mcp list` and look at the
 permission prompt the first time a Cadence subagent tries to read or
 write Linear.
 
+> **`/cadence:init` automates this for local sessions.** Step 4c
+> detects your Linear MCP namespace and writes the canonical Cadence
+> allowlist into `.claude/settings.local.json` so you don't have to
+> paste it yourself. **Cloud `/schedule` routines do NOT read
+> `.claude/settings.local.json`** — `/cadence:init`'s "Next steps"
+> output also prints the same block under a "Permissions for /schedule
+> routines" heading for you to paste into the routine's permissions
+> panel.
+
 **Read tools — pre-allow only what Cadence calls.**
 The prose reaches for exactly three read-only tools. Set these to
 Always Allow (using whichever namespace prefix your server exposes):
@@ -298,7 +318,7 @@ It's read-only and safe to run any time:
 $ claude /cadence:status
 ```
 
-Sample output for a small workflow with three live issues:
+Sample output for a small workflow with several live issues:
 
 ```markdown
 ## Cadence status — 2026-05-11T14:23:01Z
@@ -307,33 +327,39 @@ Team: **ENG**   Project: **acme-platform**   Pickup: **Todo**
 
 ### Issues in workflow
 
-| ID      | Title                                              | Linear column | Workflow state    | Attempt | Lock | Needs human |
-|---------|----------------------------------------------------|---------------|-------------------|---------|------|-------------|
-| ENG-204 | Add OAuth callback retry on transient 5xx          | Implementing  | implement         | 2       | 🔒   |             |
-| ENG-198 | Migrate analytics worker to BullMQ                 | In Review     | review (waiting)  | 1       |      |             |
-| ENG-187 | Crash on empty rate-limit header                   | Needs Rework  | review (rework)   | 2       |      |             |
-| ENG-176 | Tighten auth middleware regex                      | Todo          | (pickup)          | —       |      |             |
-| ENG-149 | Reindex legacy events                              | Implementing  | implement         | 3       |      | 🛑          |
+| ID      | Title                                              | Linear column | Workflow state    | Attempt | Lock | Needs human | Verdict          |
+|---------|----------------------------------------------------|---------------|-------------------|---------|------|-------------|------------------|
+| ENG-204 | Add OAuth callback retry on transient 5xx          | Implementing  | implement         | 2       | 🔒   |             |                  |
+| ENG-198 | Migrate analytics worker to BullMQ                 | In Review     | review (waiting)  | 1       |      |             |                  |
+| ENG-187 | Crash on empty rate-limit header                   | In Review     | review (waiting)  | 2       |      |             | cadence-rework   |
+| ENG-176 | Tighten auth middleware regex                      | Todo          | (pickup)          | —       |      |             |                  |
+| ENG-149 | Reindex legacy events                              | Implementing  | implement         | 3       |      | 🛑          |                  |
 
 ### Per-state counts
 
 - **(pickup)** (`Todo`) — 1 issues
 - **plan** (`Planning`) — 0 issues
 - **implement** (`Implementing`) — 2 issues   🔒 1 locked   🛑 1 needs-human
-- **review** (gate)
-  - waiting (`In Review`) — 1 issues
-  - approved (`Approved`) — 0 issues
-  - rework (`Needs Rework`) — 1 issues
+- **review** (gate, `In Review`) — 2 issues
+  - awaiting verdict — 1 issues
+  - 👎 cadence-rework — 1 issues
 - **done** (`Done`) — 0 issues
 
 Read-only — no Linear writes performed.
 ```
 
+The **Verdict** column shows which gate-verdict label (if any) is queued
+on each gate-waiting row. ENG-187 above will be routed back to
+`implement` on the next `/cadence:tick` fire; the bootstrap will then
+remove the label.
+
 The lock (🔒) and needs-human (🛑) columns are the operational signals.
 A lock means a tick is in flight (or a stale lock the sweeper hasn't
 caught yet). Needs-human means the issue hit the attempt cap or rework
 cap and is now sidelined until a human removes the
-`cadence-needs-human` label.
+`cadence-needs-human` label. The Verdict column is the gate signal —
+a value there means a reviewer has decided and the next fire will
+route the issue accordingly.
 
 ---
 

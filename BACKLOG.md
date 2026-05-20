@@ -93,3 +93,157 @@ flakiness, or when prose grows long enough to be hard to audit.
 
 **Discussed in**: conversation on 2026-05-15.
 
+---
+
+## Optional `merge` state between `review` and `done`
+
+**Idea**: an opt-in workflow state that runs `gh pr merge` after the
+human approves at the `review` gate, before the issue lands in `done`.
+Today the bootstrap removes the `cadence-approve` label and moves the
+Linear card to the gate's `on_approve` target with no awareness of PR
+state — if the human approved without merging, the Linear card lands in
+Done while the PR sits open.
+
+**Why**: closes the "approved but PR not merged" gap that
+[tick.md step 10b](./commands/tick.md) currently leaves to convention.
+Linear and GitHub move together, end of story.
+
+**The setting is the state itself.** Cadence's workflow YAML already
+lets consumers add intermediate states. No new schema needed — a
+consumer who wants the auto-merge behaviour adds a `merge` state and a
+corresponding Linear column:
+
+```yaml
+review:
+  type: gate
+  linear_state: "In Review"
+  on_approve: merge        # was: done
+  on_rework: implement
+
+merge:
+  type: agent
+  subagent: merger         # new subagent template; runs `gh pr merge`
+  linear_state: "Merging"
+  next: done
+```
+
+Consumers who prefer the status-only signal omit the state and leave the
+gate pointed straight at `done` (today's behaviour). A status warning
+(`approved but PR still open`) could be a separate, smaller change that
+helps either camp without forcing the auto-merge path.
+
+**Open questions**:
+
+- Where does the `merger` subagent live — shipped as a template, or
+  documented in README as a recipe consumers paste in? Shipping it
+  makes the opt-in one YAML edit; recipe-only keeps the template set
+  smaller.
+- `gh pr merge` flag defaults: `--squash`? `--auto`? Configurable per
+  consumer via the subagent's body, probably — same pattern as the
+  rest of the agent templates.
+- Failure handling: if `gh pr merge` fails (CI red, conflicts, branch
+  protection), does the issue land in `cadence-needs-human` like any
+  other agent failure, or is there a dedicated failure path? Reuse the
+  `max_attempts_per_issue` escalation; it already covers this shape.
+- Status reporter: should it cross-reference PR state on the gate row
+  regardless of whether `merge` is in the workflow? A read-only "PR is
+  still open" signal is useful in both camps.
+
+**Why not now**: not blocking the current Phase 4 work; the
+convention-based approach ("approve after you merge") works for teams
+with a small reviewer set and tight feedback loops. Worth picking up
+when the manual coordination starts producing "approved cards with
+stale PRs" reports.
+
+**Discussed in**: conversation on 2026-05-18 about Phase 4 smoke
+testing — the question "does the approve flow expect the PR to be
+merged first?" surfaced the gap.
+
+---
+
+## Surface routine failures to the operator
+
+**Idea**: when a `/schedule` routine fails before producing any
+Linear-visible side effect — hook block, container-setup error,
+unhandled exception during `/cadence:tick` step 1-5 — give the
+operator a signal somewhere they actually look. Today these failures
+end the routine quietly.
+
+**Why**: discovered during Phase 4 Smoke L. The
+`validate_workflow_on_prompt.py` hook correctly blocked a legacy-schema
+`/cadence:tick` prompt with a Rule 8 message on stderr. Locally this
+renders in the terminal and is obvious. In a cloud `/schedule` routine
+it goes nowhere:
+
+- claude.ai/code/sessions does NOT show routine sessions.
+- Routines do NOT have an exposed stderr view.
+- The routine just ends; the operator sees "nothing happened" and has
+  no way to find out why short of digging into internal logs.
+
+This generalises beyond the hook case. Anything that aborts before the
+bootstrap reaches its first Linear write — failed `claude mcp list`,
+unreachable Linear MCP, broken `.claude/settings.json`, container setup
+failure — has the same shape: invisible to the operator.
+
+**Constraints**:
+
+- Cadence runs inside someone else's compute (the routine platform).
+  It cannot directly write to the platform's UI; whatever signal it
+  produces has to ride out through a channel the platform exposes
+  (exit code, stdout, an explicit notification API if one exists) or
+  through an external channel the operator configures.
+- Cloud containers are ephemeral. A local status file won't survive.
+
+**Rejected alternatives** (settled in conversation, do not revisit):
+
+- **Post a tracking comment on a recently-touched Linear issue.** The
+  operator would have to hunt through Linear to find a maybe-comment
+  on a maybe-issue. The signal has to live in a known location, not
+  scattered across the workflow.
+
+**Candidate paths** (not yet chosen):
+
+1. **Routine-UI signal via exit code / stdout shape.** Investigate what
+   the routine platform actually surfaces when a routine exits
+   non-zero, or when it prints a recognisable pattern. If there's
+   anything operator-visible, route hook-block and bootstrap-error
+   output through it. This is the lowest-friction path *if* the
+   platform cooperates.
+2. **Configurable notification webhook.** Add an optional
+   `notifications.webhook_url` (or `.email`) to `workflow.yaml`. On
+   any fire-aborting failure, POST a small JSON payload (or send a
+   minimal email). Operator points it at Slack / PagerDuty / a forwarder
+   of their choice. Adds an external dependency but gives the operator
+   full control over the channel.
+3. **Claude Code in-session alert.** If the routine platform supports a
+   "session notification" primitive (TBD whether it does), use it.
+   Likely overlaps with path 1.
+4. **Self-monitoring routine.** A separate, less-frequent `/cadence:health`
+   that asserts the main tick routine has made forward progress
+   recently and surfaces failure through paths 1-3 if not. Useful as a
+   higher-level liveness check regardless of which of the others lands.
+
+**Open questions**:
+
+- What signals does the routine platform actually surface to operators
+  today? (`/schedule` routine logs are findable somewhere, just not
+  obviously — confirm before designing around them.)
+- Should the hook block path differ from the
+  bootstrap-error-during-`tick` path? Both have the same "no Linear
+  side effect happened" shape from the operator's POV; arguably they
+  should converge on one notification channel.
+- Failure modes during a fire that *did* produce some Linear side
+  effect (subagent crashed, attempt cap hit) are already comment- and
+  label-visible on the issue. Out of scope for this item — it covers
+  only the "fire produced nothing at all" class.
+
+**Why not now**: the hook block is the only failure class with a known
+trigger we hit during smoke testing. The wider gap exists but isn't
+acute. Pick this up when a second operator gets bitten, or when
+deciding the notification channel becomes part of the standard
+`/cadence:init` flow.
+
+**Discussed in**: conversation on 2026-05-18 — Phase 4 Smoke L: the
+hook correctly rejected a legacy schema but the operator saw a silent
+end on the cloud routine.
+

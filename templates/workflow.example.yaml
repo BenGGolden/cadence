@@ -6,12 +6,15 @@
 #
 # Validation rules (enforced at the top of every fire — invalid configs
 # never reach Linear):
-#   - Every linear_state / approved_linear_state / rework_linear_state value
-#     must be unique across the whole config.
+#   - Every linear_state value (plus linear.pickup_state) must be unique
+#     across the whole config.
 #   - Exactly one `entry` state; it must exist and be of type: agent.
 #   - Every `next`, `on_approve`, `on_rework` target must reference a
 #     defined state.
 #   - Every state.subagent must resolve to .claude/agents/{name}.md.
+#   - No gate state may carry the legacy `approved_linear_state` or
+#     `rework_linear_state` keys (removed in P4 — gates now signal
+#     verdicts via the cadence_approve / cadence_rework labels).
 
 linear:
   # Required. Your Linear team key (e.g. "ENG", "PROD"). Used by the
@@ -44,6 +47,21 @@ label:
   # Excludes the issue from pickup until a human removes the label.
   cadence_needs_human: "cadence-needs-human"
 
+  # Gate verdict labels. A human adds one of these to an issue sitting
+  # in a gate's waiting column to signal their decision. The bootstrap
+  # reads the label, acts on it, and removes it. Two labels cover every
+  # gate in the workflow — the gate's waiting column identifies which
+  # gate; the label only carries the verdict.
+  #
+  # Recommended: put both labels in a Linear label group (workspace
+  # settings → Labels → New group) so Linear renders the verdict as a
+  # single-select control. Without a group the two labels are
+  # independent toggles a reviewer can set simultaneously; the
+  # bootstrap treats that case as rework, but the group makes it
+  # structurally unreachable from the UI.
+  cadence_approve: "cadence-approve"
+  cadence_rework: "cadence-rework"
+
 limits:
   # Hard cap on consecutive attempts at any single workflow state for a
   # single issue. When exceeded, the bootstrap posts a needs-human comment
@@ -75,15 +93,17 @@ states:
   # ----------- human review gate -----------
   review:
     type: gate
-    # The three Linear columns the gate uses. All three MUST exist as
-    # distinct columns on your Linear board, and all three MUST be
-    # unique across the whole workflow config.
-    linear_state: "In Review"               # waiting — humans haven't decided
-    approved_linear_state: "Approved"       # human moves here to approve
-    rework_linear_state: "Needs Rework"     # human moves here to send back
+    # The single Linear column this gate uses — the waiting queue.
+    # Must exist as a column on your Linear board and be unique across
+    # the whole workflow config.
+    linear_state: "In Review"
 
-    on_approve: done                        # next state on approval
-    on_rework: implement                    # next state on rework
+    # A human signals their verdict by adding label.cadence_approve or
+    # label.cadence_rework to the issue while it sits in "In Review".
+    # The bootstrap reads the label on the next fire, removes it, and
+    # routes the issue to the corresponding target state.
+    on_approve: done                        # next state when cadence_approve is seen
+    on_rework: implement                    # next state when cadence_rework is seen
 
     # Optional. Max rework rounds before the bootstrap escalates with
     # cadence_needs_human. Omit for unlimited rework.

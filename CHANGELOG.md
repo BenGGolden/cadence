@@ -6,6 +6,75 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Phase 4: label-based gate signalling
+- `templates/workflow.example.yaml` `label:` section gains
+  `cadence_approve` / `cadence_rework` entries — the two new
+  config-defined verdict labels. A human signals their decision at a
+  gate by adding one of these labels to an issue sitting in the gate's
+  waiting column; the next `/cadence:tick` fire reads the label, routes
+  the issue accordingly, and removes the label.
+- `scripts/validate_workflow.py` Rule 8 — rejects any gate state still
+  carrying the legacy `approved_linear_state` / `rework_linear_state`
+  keys (removed in this phase) and points the operator at the
+  CHANGELOG migration note.
+- `scripts/merge_settings_permissions.py` — plugin-only helper invoked
+  by `/cadence:init` to perform an idempotent merge of the canonical
+  Cadence Linear MCP verb list into the consumer's
+  `.claude/settings.local.json` `permissions.allow` array. Three known
+  Linear MCP namespaces (`linear`, `linear-server`, `claude_ai_Linear`)
+  are supported via a `--namespace` argument the caller derives from
+  `claude mcp list` or `.mcp.json`. A `--print-only` mode emits the
+  block without writing, for the "Next steps" output `/schedule`
+  operators paste into the routine's permissions panel.
+
+### Changed — Phase 4: label-based gate signalling
+- `templates/workflow.example.yaml` — the `review` gate block drops
+  `approved_linear_state` and `rework_linear_state`. A gate now
+  declares a single Linear column (its waiting queue) plus
+  `on_approve` / `on_rework` targets and optional `max_rework`. This
+  collapses the per-gate Linear-column cost from three columns to one;
+  a workflow with three gates drops from nine gate columns to three
+  plus the two globally-shared verdict labels.
+- `scripts/validate_workflow.py` Rule 1 — uniqueness now collects only
+  `linear_state` values plus `linear.pickup_state`; the per-gate
+  approved/rework fields are no longer part of the set.
+  `_build_linear_states_set` and the `workflow_linear_states` JSON
+  field are amended in lockstep.
+- `commands/tick.md` — Vocabulary, Step 3 (validation prose), Step 4
+  (`workflowLinearStates` construction), Step 8 (matched state lookup),
+  and Step 9 (drift check Match rule) are updated for the single-column
+  gate. Step 10 is rewritten: 10a (neither label), 10b
+  (`cadence_approve` present → route to `on_approve`), 10c
+  (`cadence_rework` present → route to `on_rework`), plus a defensive
+  "both labels present" branch that falls back to rework. The bootstrap
+  removes the verdict label after acting.
+- `commands/status.md` — the reverse-lookup map drops `gate_approved`
+  and `gate_rework`; the table gains a **Verdict** column showing which
+  verdict label (if any) is queued on each gate-waiting row; the
+  per-state summary's gate rendering replaces the three-line breakdown
+  with one waiting-column line plus a verdict-label breakdown.
+- `commands/init.md` — adds **step 4c** (detect Linear MCP namespace +
+  invoke `merge_settings_permissions.py`); step 5's "Next steps"
+  output adds a **Gate labels** block (reminding the operator to create
+  the two labels and recommending the label group) and a
+  **Permissions for /schedule routines** block (the verb list in
+  copy-pasteable form for routines, which do not read
+  `.claude/settings.local.json`).
+- `README.md` — Consumer setup section's "Required Linear columns" list
+  drops `Approved` / `Needs Rework`; the sample `/cadence:status` output
+  reflects the single-column gate plus Verdict column; a callout under
+  "Linear MCP tools" notes that `/cadence:init` automates the local
+  allowlist write but `/schedule` routines still need the manual paste.
+- `MIGRATION.md` — Stokowski schema example drops the two legacy gate
+  keys; adds an **Upgrading to label-based gates** section walking
+  through the in-place migration.
+- `.claude-plugin/plugin.json` — version bumped to `0.4.0`.
+
+### Removed — Phase 4: label-based gate signalling
+- `approved_linear_state` and `rework_linear_state` from the gate
+  schema. `validate_workflow.py` Rule 8 rejects configs still carrying
+  them; tick / status / docs no longer reference them.
+
 ### Added
 - `templates/ticket-template.md` — paste-able skeleton an operator drops
   into Linear's "Description" field for a new ticket. Scaffolded into the
