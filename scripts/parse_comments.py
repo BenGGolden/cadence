@@ -6,6 +6,8 @@ Caller(s):
   - commands/tick.md step 10c.1 (rework_count)
   - commands/tick.md step 10c.3 (rework_context)
   - commands/tick.md step 11 (attempt_count)
+  - commands/tick.md step 13 (latest_implementer_summary — PR URL / branch
+    for the adversarial-context Lifecycle Context)
   - commands/status.md (per-issue attempt count / last state)
 
 Failure modes eliminated:
@@ -38,11 +40,20 @@ decisions either way.
 
 import argparse
 import json
+import re
 import sys
 
 TRACKING_KINDS = ("state", "gate", "reconcile")
 # A "tracking comment" for the latest-comment / boundary purposes.
 TRACKING_KIND_SET = set(TRACKING_KINDS)
+
+# A GitHub pull-request URL anywhere in a comment body.
+GITHUB_PR_RE = re.compile(r"https://github\.com/[^\s)]+/pull/\d+")
+# A `**Branch:**`-style line; tolerates "Branch (...)" and surrounding
+# backticks. Branch tokens are alphanumerics plus . _ - /.
+BRANCH_LINE_RE = re.compile(
+    r"\*\*Branch[^:*]*:\*\*\s*`?([A-Za-z0-9._/-]+)`?"
+)
 
 
 def _get(d, *keys, default=None):
@@ -158,6 +169,41 @@ def _coerce_int(v):
     return None
 
 
+def _find_implementer_summary(norm):
+    """Return {"pr_url": ..., "branch": ...} for the most recent implementer
+    summary, or nulls if none is found.
+
+    An implementer summary is a non-tracking comment that (a) contains a
+    GitHub PR URL and (b) immediately follows a `cadence:state` /
+    `stokowski:state` attempt marker for the `implement` state posted by
+    the same author (the bootstrap posts the attempt marker in step 12 and
+    the implementer's returned summary in step 15, back to back). Scanned
+    newest-first; the first match wins.
+    """
+    for idx in range(len(norm) - 1, 0, -1):
+        c = norm[idx]
+        body = c["body"]
+        if _is_cadence_comment(body):
+            continue
+        m = GITHUB_PR_RE.search(body)
+        if m is None:
+            continue
+        prev = norm[idx - 1]
+        kind, payload, err = _classify(prev["body"])
+        if kind != "state" or not isinstance(payload, dict):
+            continue
+        if payload.get("state") != "implement" or "status" in payload:
+            continue
+        if prev["author"] != c["author"]:
+            continue
+        branch = None
+        bm = BRANCH_LINE_RE.search(body)
+        if bm is not None:
+            branch = bm.group(1)
+        return {"pr_url": m.group(0), "branch": branch}
+    return {"pr_url": None, "branch": None}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--input", required=True,
@@ -262,6 +308,7 @@ def main():
         "attempt_count": attempt_count,
         "rework_count": rework_count,
         "rework_context": rework_context,
+        "latest_implementer_summary": _find_implementer_summary(norm),
         "parse_errors": parse_errors,
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))

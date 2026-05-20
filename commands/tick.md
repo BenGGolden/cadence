@@ -125,9 +125,11 @@ This script enforces the config rules deterministically (uniqueness of every
 `linear_state` value plus `linear.pickup_state`; `entry` resolves to a
 `type: agent` state; every `next` / `on_approve` / `on_rework` resolves;
 every `subagent` resolves to `.claude/agents/{name}.md` on disk;
-`linear.pickup_state` non-empty; no gate state carries the legacy
-`approved_linear_state` / `rework_linear_state` keys — those were removed
-in P4 and the validator rejects them with a Rule 8 failure).
+`linear.pickup_state` non-empty; any `adversarial_context` field is a
+boolean and appears only on `type: agent` states (Rule 7); no gate state
+carries the legacy `approved_linear_state` / `rework_linear_state` keys —
+those were removed in P4 and the validator rejects them with a Rule 8
+failure).
 
 - If the exit code is **non-zero**, print the script's stderr verbatim and
   exit. **Do not write to Linear.** (Exit 1 means the YAML was unreadable;
@@ -494,6 +496,48 @@ bootstrap will handle those.
 
 <!-- END CADENCE LIFECYCLE -->
 ```
+
+**Adversarial-context variant**: if the target state's config has
+`adversarial_context: true`, compose the Lifecycle Context block
+differently:
+
+- The **Description** section is the ticket description verbatim — same
+  as the default.
+- The **Acceptance Criteria** are guaranteed to be in the description
+  (P3 makes this a planner-enforced contract); the subagent reads them
+  directly out of the description text.
+- **No "Plan summary" or implementer-narrative section is included.**
+  Even if prior tracking comments contain a plan summary or
+  implementation notes, do NOT lift them into the Lifecycle Context.
+- The **Branch** line is replaced with two lines:
+  - **Branch (under review):** the implementer's branch name (same
+    derivation as the default).
+  - **Base branch:** `main` unless the repo's default is something else
+    (read from `gh repo view --json defaultBranchRef -q
+    .defaultBranchRef.name` if available; otherwise default to `main`).
+- **PR URL**, if discoverable from `parse_comments.py`'s
+  `latest_implementer_summary.pr_url` field (see step 9's parsed output),
+  is included as a separate **PR:** line. If not discoverable, omit the
+  line (the subagent will fall back to `git diff`).
+- The **Transitions** section reads:
+
+  ```
+  ### Transitions
+
+  - On success → **<nextState>** (Linear: "<nextState's linear_state>")
+  - Your output is a Markdown findings comment. The bootstrap will post
+    it on the issue and move the issue to <nextState>.
+  ```
+
+- The "When Done" footer is unchanged.
+
+The Rework Context section, if any, is **included** for adversarial-context
+subagents (a rework run still needs the human's prior rework reasoning); it
+is the only narrative-style content carried into the context, and it comes
+from humans, not the implementer.
+
+If `adversarial_context` is absent or false (the default for all existing
+states), compose the original Lifecycle Context block unchanged.
 
 After the block, append two blank lines, then the contents of `globalPrompt`
 (from step 2). The full string — Lifecycle Context block + blank lines + global
