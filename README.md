@@ -69,8 +69,11 @@ Both invocation modes use the same plugin and the same `/cadence:tick`
 command — they differ only in where the cron lives. You need: Claude Code with
 plugin support, a Linear MCP server, GitHub auth for the implementer subagent
 (`gh auth login` locally or `GH_TOKEN` on the routine), and a Linear board with
-one column per workflow stage (defaults: Todo, Planning, Implementing, In
-Review, Done — reshape via `workflow.yaml`).
+one column per workflow stage. The default workflow needs seven columns —
+Todo, Planning, Plan Review, Implementing, Reviewing, In Review, Done —
+reshape via `workflow.yaml`. (`Plan Review` and `Reviewing` are new as of
+the plan-review / agent-review phase; add them before upgrading an existing
+board — see [CHANGELOG.md](./CHANGELOG.md).)
 
 Gates use **one column plus two labels**, not three columns. Create the
 `cadence-approve` and `cadence-rework` labels in Linear alongside the

@@ -75,36 +75,59 @@ limits:
 # The first workflow state new issues enter. Must be type: agent.
 entry: plan
 
+# Workflow states. The default flow has six states:
+#   plan → plan_review (gate) → implement → agent_review → human_review (gate) → done
+# Each state has a `type` (agent / gate / terminal) and a `linear_state`
+# (its Linear column). Agent states name a `subagent`; gate states route
+# via `on_approve` / `on_rework` and are decided by a human via the
+# cadence_approve / cadence_rework labels.
 states:
   # ----------- planning -----------
   plan:
     type: agent
     subagent: planner                # → .claude/agents/planner.md
     linear_state: "Planning"         # Linear column for this state
-    next: implement                  # On success → this state
+    next: plan_review                # On success → this state
+
+  # ----------- plan review gate (human approves the plan before code) -----------
+  plan_review:
+    type: gate
+    linear_state: "Plan Review"      # NEW Linear column — add it to your board
+    on_approve: implement                   # next state when cadence_approve is seen
+    on_rework: plan                         # next state when cadence_rework is seen
+    max_rework: 2
 
   # ----------- implementation -----------
   implement:
     type: agent
     subagent: implementer            # → .claude/agents/implementer.md
     linear_state: "Implementing"
-    next: review
+    next: agent_review
+
+  # ----------- automated code review (adversarial, no implementer narrative) -----------
+  agent_review:
+    type: agent
+    subagent: reviewer               # → .claude/agents/reviewer.md
+    linear_state: "Reviewing"        # NEW Linear column — add it to your board
+    # Strip the implementer's narrative from the Lifecycle Context so the
+    # reviewer reads the diff cold (tick.md Step 13 adversarial-context
+    # variant). Boolean; only valid on type: agent states.
+    adversarial_context: true
+    next: human_review
 
   # ----------- human review gate -----------
-  review:
+  human_review:
     type: gate
-    # The single Linear column this gate uses — the waiting queue.
-    # Must exist as a column on your Linear board and be unique across
-    # the whole workflow config.
+    # The single Linear column this gate uses — the waiting queue. Must
+    # exist as a column on your Linear board and be unique across the
+    # whole workflow config. Gate signalling is label-based since P4.
     linear_state: "In Review"
-
     # A human signals their verdict by adding label.cadence_approve or
     # label.cadence_rework to the issue while it sits in "In Review".
     # The bootstrap reads the label on the next fire, removes it, and
     # routes the issue to the corresponding target state.
     on_approve: done                        # next state when cadence_approve is seen
     on_rework: implement                    # next state when cadence_rework is seen
-
     # Optional. Max rework rounds before the bootstrap escalates with
     # cadence_needs_human. Omit for unlimited rework.
     max_rework: 2
