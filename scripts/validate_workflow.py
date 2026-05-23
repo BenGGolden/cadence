@@ -14,9 +14,9 @@ Failure mode eliminated:
   could gloss as "passed" without showing its work. This script makes the
   checks deterministic and emits structured per-rule evidence.
 
-Rules implemented in this script: 1, 2, 3, 4, 5, 7, 8. Rule numbers are
-not ship-order — rule 6 is defined by a later hardening-plan phase (P6.2)
-and will land here when that phase ships.
+Rules implemented in this script: 1, 2, 3, 4, 5, 6, 7, 8. Rule numbers
+are not ship-order — they reflect the hardening-plan phase that added
+each rule.
 
 CLI:
   python validate_workflow.py [--workflow-path PATH] [--evidence]
@@ -173,6 +173,46 @@ def _rule5_pickup_state(linear):
     }
 
 
+def _rule6_max_in_flight(states):
+    """`max_in_flight`, where present, must be a positive integer (>= 1)
+    and may only appear on `type: agent` states. The cap is checked at
+    pickup time by tick.md Step 5 against the live Linear column count
+    for the state's `linear_state`; gates and terminals are excluded
+    because gates are human-driven (a backlog there is the human's
+    signal to act) and terminals have no pickup (P6.2)."""
+    lines = []
+    failures = []
+    for name, body in states.items():
+        if not isinstance(body, dict) or "max_in_flight" not in body:
+            continue
+        val = body.get("max_in_flight")
+        stype = body.get("type")
+        lines.append(
+            f"states.{name}.max_in_flight -> {val!r} (state type: {stype})"
+        )
+        # bool is a subclass of int — reject it explicitly so True/False
+        # don't slip through as 1/0.
+        if isinstance(val, bool) or not isinstance(val, int) or val < 1:
+            failures.append(
+                f"states.{name}.max_in_flight must be a positive integer "
+                f"(>= 1), got {val!r}"
+            )
+        if stype != "agent":
+            failures.append(
+                f"states.{name}.max_in_flight is only valid on "
+                f"`type: agent` states; `{name}` is `type: {stype}`"
+            )
+    if not lines:
+        lines.append("(no states declare max_in_flight)")
+    return {
+        "rule": 6,
+        "title": "max_in_flight type and scope",
+        "lines": lines,
+        "result": "PASS" if not failures else "FAIL",
+        "failure": None if not failures else "; ".join(failures),
+    }
+
+
 def _rule7_adversarial_context(states):
     """`adversarial_context`, where present, must be a boolean and may only
     appear on `type: agent` states. The flag controls how the bootstrap
@@ -284,6 +324,7 @@ def main():
         _rule3_targets(states),
         _rule4_subagent_files(states),
         _rule5_pickup_state(linear),
+        _rule6_max_in_flight(states),
         _rule7_adversarial_context(states),
         _rule8_legacy_gate_keys(states),
     ]
