@@ -13,9 +13,9 @@ file and three subagent prompts, point a scheduled routine at
 
 > **Build status:** v1 scaffolding is complete. All five slash commands
 > (`/cadence:init`, `/cadence:tick`, `/cadence:sweep`, `/cadence:status`,
-> `/cadence:create-ticket`) are implemented. End-to-end smoke testing
-> against a live Linear project happens once per consuming repo
-> ([SMOKE.md](./SMOKE.md) is the checklist).
+> `/cadence:create-ticket`) are implemented. Per-phase smoke checks for
+> the in-flight hardening work live alongside their acceptance criteria
+> in [HARDENING-PLAN.md](./HARDENING-PLAN.md).
 
 ---
 
