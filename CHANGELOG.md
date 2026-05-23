@@ -6,6 +6,65 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Phase 5: plan-review gate + adversarial review stage
+- `templates/workflow.example.yaml` gains two workflow states. A
+  `plan_review` **gate** sits between `plan` and `implement` so a human
+  approves the planner's output before implementation burns budget
+  (`type: gate`, `linear_state: "Plan Review"`, `on_approve: implement`,
+  `on_rework: plan`, `max_rework: 2`). An `agent_review` **agent state**
+  sits between `implement` and the human gate; it runs the `reviewer`
+  subagent (`linear_state: "Reviewing"`, `next: human_review`).
+- `templates/workflow.example.yaml` — new state field
+  `adversarial_context: true` (set on `agent_review`). When present, the
+  bootstrap composes a minimal Lifecycle Context for that state's
+  subagent: ticket + acceptance criteria + branch/PR pointers only, with
+  no implementer narrative carried forward.
+- `scripts/validate_workflow.py` Rule 7 — every `adversarial_context`
+  value must be a boolean and may only appear on `type: agent` states.
+  `--evidence` output includes a Rule 7 block.
+- `scripts/parse_comments.py` — emits a new `latest_implementer_summary`
+  key (`pr_url` / `branch`), derived from the most recent implementer
+  summary comment, so the adversarial Lifecycle Context can carry a PR
+  pointer without lifting implementer prose.
+
+### Changed — Phase 5: plan-review gate + adversarial review stage
+- `templates/workflow.example.yaml` — `plan.next` changes from
+  `implement` to `plan_review`; `implement.next` changes to
+  `agent_review`; the former `review` gate is renamed `human_review`
+  (its `linear_state`, `on_approve`, `on_rework`, `max_rework` are
+  unchanged). The states comment block above `states:` documents all six
+  states. No `commands/tick.md` or script changes are needed for the
+  `plan_review` gate itself — Step 10's gate dispatch and the validator
+  rules are gate-name-agnostic.
+- `templates/agents/reviewer.md` — rewritten as an independent
+  adversarial reviewer. The `## Your role` and `## How to review`
+  sections now instruct the reviewer to read the diff cold via
+  `git diff`, treat implementer comments as unreliable narrative, and
+  tie every blocking finding to an AC violation, scope mismatch, or
+  defect. `model` bumped `sonnet` → `opus`; `Bash` added to `tools` so
+  the reviewer can run `git` / `gh`.
+- `commands/tick.md` — Step 13 gains an adversarial-context variant
+  clause: when the target state has `adversarial_context: true`, the
+  Lifecycle Context omits any plan-summary / implementer narrative,
+  splits the branch line into "Branch (under review)" + "Base branch",
+  and adds a PR line from `parse_comments.py`. Step 3's validation-rules
+  prose references Rule 7.
+- `README.md` — the required-columns list adds `Plan Review` and
+  `Reviewing` (seven columns for the default workflow).
+- `.claude-plugin/plugin.json` — version bumped to `0.5.0`.
+
+Upgrading from pre-P5: add the `Plan Review` and `Reviewing` Linear
+columns to your board. In `.claude/workflow.yaml`, insert a
+`plan_review:` gate block (`type: gate`,
+`linear_state: "Plan Review"`, `on_approve: implement`,
+`on_rework: plan`, `max_rework: 2`) and point `plan.next` at it; rename
+`review:` to `human_review:`, change `implement.next` to `agent_review`,
+and insert the new `agent_review:` block above `human_review:` with
+`adversarial_context: true` (see `templates/workflow.example.yaml`).
+Consumers who want to keep the old single-gate flow can skip the
+`plan_review` / `agent_review` blocks entirely — the validator does not
+require them.
+
 ### Added — Phase 4: label-based gate signalling
 - `templates/workflow.example.yaml` `label:` section gains
   `cadence_approve` / `cadence_rework` entries — the two new

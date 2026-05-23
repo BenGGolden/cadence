@@ -19,8 +19,9 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
 - `.claude-plugin/plugin.json` — plugin manifest (name, version, metadata).
 - `.github/workflows/validate.yml` — CI: manifest schema + command frontmatter.
 - Root docs: `README.md` (operational shape), `GUIDEPOSTS.md` (design
-  principles / the *why*), `HARDENING-PLAN.md` (active roadmap), `SMOKE.md`
-  (how it's validated), `MIGRATION.md` (Stokowski → Cadence), `CHANGELOG.md`.
+  principles / the *why*), `HARDENING-PLAN.md` (active roadmap, with
+  per-phase smoke checks alongside each phase's acceptance criteria),
+  `MIGRATION.md` (Stokowski → Cadence), `CHANGELOG.md`.
 
 ## Load-bearing invariants — do not break these
 
@@ -51,4 +52,4 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
 | How the system behaves when installed | `README.md` |
 | Why it's designed this way | `GUIDEPOSTS.md` |
 | What's being hardened next, and how | `HARDENING-PLAN.md` |
-| How a release is validated | `SMOKE.md` |
+| How a phase is smoke-tested | `HARDENING-PLAN.md` (per-phase acceptance criteria) |

@@ -14,9 +14,9 @@ Failure mode eliminated:
   could gloss as "passed" without showing its work. This script makes the
   checks deterministic and emits structured per-rule evidence.
 
-Rules implemented in this script: 1, 2, 3, 4, 5, 8. Rule numbers are not
-ship-order — rules 6 and 7 are defined by later hardening-plan phases
-(P6.2 and P5.4a respectively) and will land here when those phases ship.
+Rules implemented in this script: 1, 2, 3, 4, 5, 7, 8. Rule numbers are
+not ship-order — rule 6 is defined by a later hardening-plan phase (P6.2)
+and will land here when that phase ships.
 
 CLI:
   python validate_workflow.py [--workflow-path PATH] [--evidence]
@@ -173,6 +173,42 @@ def _rule5_pickup_state(linear):
     }
 
 
+def _rule7_adversarial_context(states):
+    """`adversarial_context`, where present, must be a boolean and may only
+    appear on `type: agent` states. The flag controls how the bootstrap
+    composes the Lifecycle Context for a subagent invocation (tick.md
+    Step 13); gates and terminals invoke no subagent (P5.4a)."""
+    lines = []
+    failures = []
+    for name, body in states.items():
+        if not isinstance(body, dict) or "adversarial_context" not in body:
+            continue
+        val = body.get("adversarial_context")
+        stype = body.get("type")
+        lines.append(
+            f"states.{name}.adversarial_context -> {val!r} (state type: {stype})"
+        )
+        if not isinstance(val, bool):
+            failures.append(
+                f"states.{name}.adversarial_context must be a boolean "
+                f"(true/false), got {type(val).__name__}"
+            )
+        if stype != "agent":
+            failures.append(
+                f"states.{name}.adversarial_context is only valid on "
+                f"`type: agent` states; `{name}` is `type: {stype}`"
+            )
+    if not lines:
+        lines.append("(no states declare adversarial_context)")
+    return {
+        "rule": 7,
+        "title": "adversarial_context type and scope",
+        "lines": lines,
+        "result": "PASS" if not failures else "FAIL",
+        "failure": None if not failures else "; ".join(failures),
+    }
+
+
 def _rule8_legacy_gate_keys(states):
     """Reject the pre-P4 per-gate columns. Gates now signal verdicts via the
     cadence_approve / cadence_rework labels — the two legacy keys exist only
@@ -248,6 +284,7 @@ def main():
         _rule3_targets(states),
         _rule4_subagent_files(states),
         _rule5_pickup_state(linear),
+        _rule7_adversarial_context(states),
         _rule8_legacy_gate_keys(states),
     ]
 
