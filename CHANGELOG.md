@@ -6,6 +6,36 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Phase 6: per-state concurrency caps
+- `templates/workflow.example.yaml` — agent states can now declare an
+  optional `max_in_flight: N` (positive integer). When set,
+  `/cadence:tick` skips candidates that would target a state already at
+  its cap. Shipped as a commented-out example on the `implement` state.
+  The typical reason to set a cap is bounded human-review bandwidth
+  downstream (e.g. a single reviewer who can clear three
+  implementations per day).
+- `scripts/validate_workflow.py` Rule 6 — every `max_in_flight` value
+  must be a positive integer (>= 1) and may only appear on `type: agent`
+  states. Rejects `0`, negatives, floats, strings, null, booleans, and
+  any occurrence on `type: gate` or `type: terminal` states.
+  `--evidence` output includes a Rule 6 block.
+
+### Changed — Phase 6: per-state concurrency caps
+- `commands/tick.md` Step 5 — after sorting candidates, the bootstrap
+  queries the live Linear column count for every state with a
+  `max_in_flight` and drops any candidate whose target state is over its
+  cap. The cap is **coordination, not a hard lock**: counts are derived
+  from Linear on every fire (no sidecar state), and the soft-lock and
+  drift-reconciliation flows are unchanged. Step 3's validation prose
+  references Rule 6.
+- `commands/status.md` — when any state declares `max_in_flight`, the
+  report gains a Concurrency table showing each state's in-flight
+  count, cap, and `AT CAP` / `OVER CAP` status. The table is omitted
+  for workflows that declare no caps.
+- `README.md` — new "Workflow tuning" section documenting
+  `max_in_flight`, the bounded-human-review-bandwidth use case, and the
+  rule that caps are forbidden on gates / terminals.
+
 ### Added — Phase 5: plan-review gate + adversarial review stage
 - `templates/workflow.example.yaml` gains two workflow states. A
   `plan_review` **gate** sits between `plan` and `implement` so a human
