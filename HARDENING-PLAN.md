@@ -2200,18 +2200,25 @@ the next fire.
 
 ## P6.1 — `workflow.yaml` schema extension
 
-Update `templates/workflow.example.yaml` to add a commented-out example:
+Update `templates/workflow.example.yaml` to add a commented-out
+`max_in_flight` line on **every** agent state (`plan`, `implement`,
+`agent_review`). Putting the field on each agent state — and absent
+from gates / terminal — teaches the validity rule by layout. Carry the
+full explanatory comment on the first agent state (`plan`, which sits
+directly upstream of the `plan_review` gate); leave short cross-
+references on `implement` and `agent_review` that point readers back
+to `plan` for the full rationale.
 
 ```yaml
-  # ----------- implementation -----------
-  implement:
+  # ----------- planning -----------
+  plan:
     type: agent
-    subagent: implementer
-    linear_state: "Implementing"
-    next: agent_review
+    subagent: planner
+    linear_state: "Planning"
+    next: plan_review
     # Optional: cap concurrent issues at this state. Useful when a
-    # downstream gate (human review) has bounded throughput. Omit for
-    # unlimited.
+    # downstream gate (here, plan_review) has bounded human throughput.
+    # Omit for unlimited. Valid only on type: agent states.
     # max_in_flight: 3
 ```
 
@@ -2300,8 +2307,10 @@ issue assignment, revisit.)
 
 ## P6 acceptance criteria
 
-- [ ] `templates/workflow.example.yaml` shows a commented-out
-      `max_in_flight` line on the `implement` state.
+- [ ] `templates/workflow.example.yaml` shows commented-out
+      `max_in_flight` lines on every agent state (`plan`, `implement`,
+      `agent_review`), with the full explanatory comment on `plan` and
+      short cross-references on the other two.
 - [ ] `scripts/validate_workflow.py` enforces Rule 6; `--evidence`
       output includes a Rule 6 block.
 - [ ] `commands/tick.md` Step 5 includes the cap-enforcement
@@ -2312,12 +2321,14 @@ issue assignment, revisit.)
       `max_in_flight` and when to use it (the typical reason: bounded
       human-review bandwidth downstream).
 - [ ] Smoke O — **cap enforcement**: in a throwaway consumer repo, set
-      `implement.max_in_flight: 1`. Create three Linear issues in
-      `pickup_state`. Manually move one to `Implementing`. Run
-      `/cadence:tick`. Confirm the bootstrap prints the "caps reached"
-      message and exits without claiming a new issue. Move the
-      first issue to `Reviewing` (out of `Implementing`). Run again —
-      confirm pickup now proceeds.
+      `plan.max_in_flight: 1`. Create three Linear issues in
+      `pickup_state` (Todo). Manually move one to `Planning` to occupy
+      the slot. Run `/cadence:tick`. Confirm the bootstrap prints the
+      "caps reached" message naming `plan` and exits without claiming
+      a new issue — the two remaining Todo candidates target the entry
+      state (`plan`), which is at cap. Move the `Planning` issue
+      forward to `Plan Review`. Run again — confirm pickup now
+      proceeds (one Todo candidate is claimed and routed to `plan`).
 - [ ] Smoke P — **validate rejects bad caps**: set
       `implement.max_in_flight: 0`. Run `/cadence:tick`. Confirm the
       validation step exits with a Rule 6 failure naming the offending
@@ -2331,6 +2342,362 @@ issue assignment, revisit.)
 - One commit for the schema extension + validator (P6.1 + P6.2).
 - One commit for tick.md and status.md (P6.3 + P6.4).
 - Do not bundle P6 with P1, P2, P3, P4, or P5.
+
+---
+
+# Phase 7 — Skip gate-waiting issues without verdicts at pickup
+
+**Prerequisite**: P1 has landed (the validator output drives the
+filter). Independent of P2/P3/P5/P6, but P4 (label-based gates) and
+P6 (`max_in_flight`) provide the context that makes this fix matter.
+
+**Outcome**: Step 5's eligibility filter excludes issues sitting in a
+gate's waiting column without a verdict label. The bootstrap no longer
+locks a gate-waiting issue, sees no verdict at Step 10a, and exits
+without doing useful work — that fire is now free to claim a real
+candidate.
+
+## P7.0 — The problem this fixes
+
+Discovered after P6 shipped: with one issue sitting in `plan_review`
+(no verdict label yet) and two todos waiting in `pickup_state`,
+`/cadence:tick` could "do nothing" — locking the gate-waiting issue
+because it sorted to the top of the candidate list (priority asc, then
+`createdAt` asc), reaching Step 10a, releasing the lock, and exiting.
+The fire was wasted; the todos sat untouched.
+
+Step 5 currently does not consider verdict labels, so a parked gate
+issue is fully eligible. Step 10a is the only place gate-waiting
+candidates are noticed, and by then the dispatch has already committed
+to that one issue for the rest of the fire (the "exactly one issue per
+fire" rule from the Concurrency constraint at the bottom of
+[commands/tick.md](commands/tick.md)).
+
+This is a correctness fix: gate-waiting issues without verdict labels
+are *not actionable* by the bootstrap. They should never have been
+candidates.
+
+**Interaction with P6 and P8**: today, the accidental "fire wastes
+itself on the top-priority gate-waiting issue" behaviour provides
+incidental backpressure into gates — the queue can't grow much
+because the dispatch keeps tripping on the first item in it. Removing
+that accidental backpressure is correct on its own merits, BUT it
+removes the only mechanism that currently limits gate pile-up. P6's
+`max_in_flight` does **not** cap gate columns; it caps the agent
+states upstream of gates, which only weakly correlates with gate-queue
+depth (an agent's column drains as soon as the subagent finishes, even
+if the downstream gate is overflowing). Explicit gate-cap support
+lands in P8 to close that gap.
+
+## P7.1 — `tick.md` Step 5: additional eligibility filter
+
+Edit Step 5 ("Pick work"). After the existing four bullets in the
+filter list (Linear state ∈ `workflowLinearStates`; no `cadence_active`;
+no `cadence_needs_human`; blockers resolved), add a fifth:
+
+- The issue is **not** sitting in a gate state's waiting column without
+  a verdict label. Concretely: if the issue's current Linear column
+  equals some `<gate>.linear_state` for a `type: gate` state in the
+  config, the issue must carry either `label.cadence_approve` or
+  `label.cadence_rework`. If neither label is present, the issue is
+  ineligible — there is nothing the bootstrap can do for it until a
+  human acts.
+
+Implementation notes for the implementing session:
+
+- The set of gate `linear_state` values is derivable from
+  `validate_workflow.py`'s `states` output (P1.1): iterate states,
+  pick the ones where `type == "gate"`, collect their `linear_state`
+  strings. No validator change required.
+- Most Linear MCP `list_issues` calls already return labels (the
+  existing `cadence_active` / `cadence_needs_human` exclusions
+  require it). Apply this filter client-side after the query rather
+  than pushing it into the MCP query.
+- Step 10a's branch is preserved unchanged: it still handles the
+  case where a candidate's labels change between Step 5 and Step 10
+  (e.g. a human removed a verdict label in the seconds between the
+  pickup query and the gate check). Defence in depth — the failure
+  mode stays benign.
+
+## P7 acceptance criteria
+
+- [ ] `commands/tick.md` Step 5 lists the new fifth filter bullet.
+      The bullet names both verdict labels explicitly
+      (`label.cadence_approve` and `label.cadence_rework`).
+- [ ] No `scripts/*.py` changes are required. The validator already
+      exposes per-state `type` in its JSON output, which is
+      sufficient to enumerate gate columns client-side.
+- [ ] `commands/status.md` is unchanged — the count of issues in a
+      gate's waiting column (verdict-bearing or not) is still the
+      right thing to surface to operators.
+- [ ] CHANGELOG.md entry under `## [Unreleased]` describes the fix
+      and cross-references P8 (since the two interact on gate pile-up
+      behaviour).
+- [ ] Smoke R — **gate-waiting issue does not consume a fire**: in a
+      throwaway consumer repo with `templates/workflow.example.yaml`,
+      manually move one issue into `Plan Review` (no verdict label).
+      Add two todos in `Todo` with lower priority than the gate-waiting
+      issue (so the gate issue would otherwise sort first). Run
+      `/cadence:tick`. Confirm the bootstrap claims one of the todos
+      and routes it to `Planning`, NOT the gate-waiting issue.
+- [ ] Smoke S — **verdict-bearing gate issue is still picked up**:
+      in the same repo, add `cadence-approve` to the gate-waiting
+      issue. Run `/cadence:tick`. Confirm the bootstrap claims the
+      verdict-bearing issue, removes the label, and routes it to
+      `Implementing` (the `on_approve` target).
+- [ ] Smoke T — **only verdict-less gate issues are filtered**: with
+      one issue in `Plan Review` carrying `cadence-rework`, one in
+      `Plan Review` carrying no verdict, and one in `Todo`, run
+      `/cadence:tick`. Confirm the bootstrap picks the rework-bearing
+      gate issue if it sorts highest (routing it back to `plan`),
+      otherwise the todo — and **never** the verdict-less gate issue.
+
+## P7 commit guidance
+
+- One commit for the `tick.md` Step 5 edit + the CHANGELOG entry.
+  No script changes, no template changes. Smallest phase in the plan
+  by a wide margin.
+
+---
+
+# Phase 8 — Gate-aware concurrency caps
+
+**Prerequisite**: P7 has landed (removes the accidental backpressure
+that masked the need for an explicit gate cap). Requires P1.1 (the
+validator) and P6 (`max_in_flight` enforcement on agent states).
+
+**Outcome**: `max_in_flight: N` may be declared on `type: gate` states
+in addition to `type: agent`. When a gate is over-cap, the bootstrap
+drops any candidate whose **happy-path downstream** passes through that
+gate before reaching a terminal. This gives operators a real lever for
+preventing pile-up in human-review queues.
+
+## P8.0 — Semantics
+
+Today, `max_in_flight` on an agent state caps the **agent's own
+column** — it throttles parallel subagent runs at that state. It does
+not cap the gates downstream: as soon as an agent run finishes and the
+issue moves on, the agent's column drains and the cap stops binding,
+even if the downstream gate is overflowing.
+
+P8 extends `max_in_flight` to gates with the following semantics:
+
+- `max_in_flight: N` on a gate caps the **gate's waiting column** at
+  N issues. When `inFlightCount >= N` (counted the same way as P6:
+  live Linear column membership of the gate's `linear_state`,
+  regardless of whether issues carry verdict labels), the gate is
+  **over-cap** for the fire.
+- A candidate is dropped from `candidates` if any state on its
+  **happy-path downstream** is over-cap. The happy-path walk follows
+  `next` for agent states and `on_approve` for gate states, starting
+  from the candidate's effective target and stopping at
+  `type: terminal`. `on_rework` edges are not followed — the cap binds
+  against expected flow, not worst-case.
+- **Drain vs feed distinction**: for candidates already sitting in a
+  gate's column with a verdict label (approve or rework), the gate
+  itself is excluded from the over-cap check. Acting on a verdict
+  *reduces* the gate's column count; the cap shouldn't lock in actions
+  that drain the queue. The walk starts at the post-gate target
+  (`on_approve` or `on_rework`) and proceeds from there.
+- The cap remains **coordinational, not transactional**. Counts are
+  recomputed per fire from Linear; drift self-corrects on the next
+  pickup.
+
+The walker is loop-safe: track visited states, break on re-visit. The
+validator does not currently reject happy-path cycles, and while one
+shouldn't exist in any sane workflow, the guard is cheap insurance.
+
+## P8.1 — `workflow.yaml` schema: allow caps on gates
+
+Update `templates/workflow.example.yaml` to add a commented-out
+`max_in_flight` line to both gate states (`plan_review`,
+`human_review`). The comment should explain that gate caps differ
+semantically from agent caps (they cap the *waiting queue*, not
+parallel work), and that candidates feeding into the gate are blocked
+when the cap binds.
+
+Example shape on `plan_review`:
+
+```yaml
+  plan_review:
+    type: gate
+    linear_state: "Plan Review"
+    on_approve: implement
+    on_rework: plan
+    max_rework: 2
+    # Optional: cap the gate's waiting queue. When N issues are
+    # sitting in this column, the bootstrap blocks new pickups whose
+    # happy-path downstream would pass through this gate. Verdict-
+    # bearing issues already in the column are NOT blocked — acting
+    # on them drains the queue. Useful for capping the depth of work
+    # a human reviewer is asked to triage. Omit for unlimited. Valid
+    # on type: gate and type: agent (rejected on terminals).
+    # max_in_flight: 5
+```
+
+The same comment shape applies on `human_review`.
+
+## P8.2 — `validate_workflow.py` (P1.1, amended by P6.2) — relax Rule 6
+
+Rule 6 currently rejects `max_in_flight` on `type: gate`. Relax it:
+
+- `max_in_flight` value rules unchanged (positive integer ≥ 1).
+- Scope: now valid on `type: agent` OR `type: gate`. Still rejected
+  on `type: terminal`.
+
+Update the `--evidence` block's Rule 6 description and the failure
+messages accordingly. Update [commands/tick.md](commands/tick.md)
+Step 3's "Validation rules" prose in the same edit (the inline
+rule-6 description currently says "type: agent states" — change to
+"type: agent or type: gate states").
+
+## P8.3 — `tick.md` Step 5: reachability-aware cap walk
+
+Replace P6.3's cap-enforcement sub-section with a reachability walk.
+After the existing filter and sort:
+
+```markdown
+Apply per-state concurrency caps. For each state with a `max_in_flight`
+key (agent OR gate, per Rule 6 as amended in P8):
+
+1. Query the Linear MCP for issues in `linear.team` /
+   `linear.project_slug` whose current Linear column equals this
+   state's `linear_state`. Count the result; call it `inFlightCount`.
+2. If `inFlightCount >= max_in_flight`, mark this state as
+   **over-cap** for this fire.
+
+Then filter `candidates`. For each candidate:
+
+1. Determine the candidate's **effective target state**:
+   - If the candidate is in `linear.pickup_state`: target is the
+     `entry` state.
+   - If the candidate is in a gate's waiting column AND carries
+     `label.cadence_approve`: target is `<gate>.on_approve`.
+   - If the candidate is in a gate's waiting column AND carries
+     `label.cadence_rework`: target is `<gate>.on_rework`.
+   - Otherwise: target is the workflow state whose `linear_state`
+     matches the candidate's current column.
+2. Walk the **happy-path downstream** from the effective target,
+   following `next` for agent states and `on_approve` for gate states.
+   Stop at `type: terminal`. Track visited states; break on re-visit.
+3. If any visited state is over-cap, drop the candidate.
+   **Exception**: when the candidate is a verdict-bearing gate
+   issue, the gate it's currently sitting in is excluded from the
+   over-cap check for this candidate (the verdict drains the gate, so
+   the gate's own cap should not block the action).
+
+If `candidates` becomes empty after this filtering, print
+`No eligible issues.` followed by
+`(caps reached for: <comma-separated over-cap state names>)` and exit
+cleanly. Otherwise proceed to step 6 with the filtered list.
+```
+
+The cap-counting query is still O(states-with-caps) per fire; for a
+workflow with caps on `plan`, `implement`, and `plan_review`, that's
+three extra Linear MCP calls. Same batching-deferral note as P6.3
+applies.
+
+## P8.4 — `commands/status.md` — gate cap rows
+
+Update the Concurrency table from P6.4 to include gate rows when the
+gate has `max_in_flight` set. Gates with no cap continue to show
+`n/a` under Cap. Status values are the same (`OK` / `AT CAP` /
+`OVER CAP`). Example after P8:
+
+```markdown
+### Concurrency
+
+| State                   | In flight | Cap    | Status   |
+|-------------------------|-----------|--------|----------|
+| plan                    | 1         | (none) |          |
+| plan_review (gate)      | 4         | 5      |          |
+| implement               | 2         | 3      |          |
+| agent_review            | 1         | (none) |          |
+| human_review (gate)     | 5         | 5      | AT CAP   |
+| done                    | 12        | n/a    |          |
+```
+
+## P8.5 — Update the agent-state cap commentary
+
+The current `plan` / `implement` / `agent_review` cap comments in
+`templates/workflow.example.yaml` (added in P6.1) imply that capping
+the upstream agent state controls downstream gate pile-up. That was
+the best available story in P6; P8 makes it inaccurate. Update those
+comments to clarify:
+
+- An agent-state cap throttles **parallel subagent runs** at that
+  state.
+- A gate-state cap throttles **pickups whose happy-path downstream
+  feeds the gate**.
+- For controlling pile-up in `plan_review` / `human_review`, the
+  gate cap is the right tool; the agent-state cap on the upstream
+  agent is for limiting parallel runs of that agent specifically.
+
+## P8 acceptance criteria
+
+- [ ] `templates/workflow.example.yaml` shows commented-out
+      `max_in_flight` lines on both gate states (`plan_review`,
+      `human_review`), with the gate-cap explanation from P8.1.
+- [ ] Agent-state `max_in_flight` comments updated per P8.5 to
+      describe their narrower scope (parallel runs at this state,
+      not downstream pile-up control).
+- [ ] `scripts/validate_workflow.py` Rule 6 is relaxed to allow
+      gates; `--evidence` block and stderr messages reflect this.
+      Terminals are still rejected.
+- [ ] `commands/tick.md` Step 5 contains the reachability-walk cap
+      enforcement from P8.3, replacing P6.3's prose. The drain
+      exception for verdict-bearing gate candidates is named
+      explicitly.
+- [ ] `commands/tick.md` Step 3's "Validation rules" prose updated
+      to describe Rule 6's new scope.
+- [ ] `commands/status.md` Concurrency table includes gate rows for
+      capped gates, marking them `(gate)` and applying the same
+      `OK` / `AT CAP` / `OVER CAP` status values.
+- [ ] README.md "Workflow tuning" paragraph (added in P6) updated to
+      describe gate caps and how they differ from agent caps.
+- [ ] CHANGELOG.md entry under `## [Unreleased]`.
+- [ ] `.claude-plugin/plugin.json` version bumped.
+- [ ] Smoke U — **gate cap blocks upstream pickup**: in a throwaway
+      consumer repo, set `plan_review.max_in_flight: 2`. Move two
+      issues into `Plan Review` (no verdict labels). Create one
+      issue in `Todo`. Run `/cadence:tick`. Confirm the bootstrap
+      prints the "caps reached" message naming `plan_review` and
+      exits without claiming the Todo issue (its happy-path
+      downstream `plan → plan_review → ...` is blocked at
+      `plan_review`).
+- [ ] Smoke V — **verdict-bearing gate issue drains regardless of
+      cap**: in the same repo, add `cadence-approve` to one of the
+      `Plan Review` issues. Run `/cadence:tick`. Confirm the
+      bootstrap claims the verdict-bearing issue, advances it to
+      `Implementing`, and exits — even though the gate is at cap.
+      (The drain exception in P8.3 means the gate's own cap doesn't
+      block verdict actions.)
+- [ ] Smoke W — **downstream-only cap binding**: in the same repo,
+      set `human_review.max_in_flight: 1`. Move one issue into
+      `In Review`. Run `/cadence:tick` with one Todo present.
+      Confirm the bootstrap drops the Todo from `candidates` (its
+      happy-path `plan → plan_review → implement → agent_review →
+      human_review → done` passes through the over-cap
+      `human_review`).
+- [ ] Smoke X — **agent-state cap independent of gate cap**: with
+      both `implement.max_in_flight: 1` AND
+      `human_review.max_in_flight: 5`, one issue in `Implementing`,
+      three in `In Review` (no verdicts), and one in `Todo`, run
+      `/cadence:tick`. Confirm the Todo is dropped because the walk
+      hits the over-cap `implement` (not because of `human_review`,
+      which is below cap). Verify the error message names
+      `implement`, not `human_review`.
+- [ ] Smoke Y — **terminal still rejected**: set
+      `done.max_in_flight: 5` in the consumer's workflow.yaml. Run
+      `/cadence:tick dry-run`. Confirm Rule 6 fails (caps still
+      rejected on terminal states).
+
+## P8 commit guidance
+
+- One commit for the validator relaxation + workflow.example.yaml
+  schema additions + agent-cap comment updates (P8.1 + P8.2 + P8.5).
+- One commit for tick.md and status.md (P8.3 + P8.4).
+- Do not bundle P8 with P7.
 
 ---
 
@@ -2469,5 +2836,27 @@ extension)*
 31. **P6.4** (status.md Concurrency table).
 32. **Land P6** as one PR. Run smoke tests O, P, Q. P and Q together
     verify validator rejection; O verifies live cap behaviour.
+
+**P7 — Skip gate-waiting issues without verdicts at pickup**
+*(requires P1.1 for the validator output; independent of P2–P6)*
+
+33. **P7.1** (tick.md Step 5 fifth-filter bullet) — the entire
+    behavioural change.
+34. **Land P7** as one PR. Run smoke tests R, S, T. R is load-bearing:
+    confirm a verdict-less gate issue no longer consumes the fire when
+    todos are waiting.
+
+**P8 — Gate-aware concurrency caps** *(requires P7; builds on P6's
+cap mechanism and P1.1's validator)*
+
+35. **P8.2** (validator Rule 6 relaxation) + **P8.1** (workflow.example.yaml
+    gate-cap examples) + **P8.5** (agent-cap comment updates) — ship
+    together; they define the schema change and refine the surrounding
+    docs.
+36. **P8.3** (tick.md Step 5 reachability walk replacing P6.3 prose) +
+    **P8.4** (status.md gate rows) — the behavioural change.
+37. **Land P8** as one PR. Run smoke tests U, V, W, X, Y. V is
+    load-bearing: confirm verdict-bearing gate candidates are
+    immune to their own gate's cap (the drain exception).
 
 Each phase should land independently. Do not bundle.
