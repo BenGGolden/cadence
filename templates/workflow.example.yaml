@@ -15,6 +15,9 @@
 #   - No gate state may carry the legacy `approved_linear_state` or
 #     `rework_linear_state` keys (removed in P4 — gates now signal
 #     verdicts via the cadence_approve / cadence_rework labels).
+#   - Any `max_in_flight` value must be a positive integer (>= 1) and
+#     may only appear on `type: agent` states (rejected on gates /
+#     terminals).
 
 linear:
   # Required. Your Linear team key (e.g. "ENG", "PROD"). Used by the
@@ -103,6 +106,15 @@ states:
     subagent: implementer            # → .claude/agents/implementer.md
     linear_state: "Implementing"
     next: agent_review
+    # Optional: cap concurrent issues at this state. Useful when a
+    # downstream gate (human review) has bounded throughput — without
+    # the cap, multiple parallel fires can pile up issues faster than
+    # the human reviewer can drain them. Counts the issues currently in
+    # this state's linear_state column on every fire (no sidecar
+    # state); coordination is approximate, not a hard lock. Omit for
+    # unlimited. Valid only on type: agent states (rejected by the
+    # validator on gates / terminals).
+    # max_in_flight: 3
 
   # ----------- automated code review (adversarial, no implementer narrative) -----------
   agent_review:

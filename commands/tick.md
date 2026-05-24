@@ -125,11 +125,12 @@ This script enforces the config rules deterministically (uniqueness of every
 `linear_state` value plus `linear.pickup_state`; `entry` resolves to a
 `type: agent` state; every `next` / `on_approve` / `on_rework` resolves;
 every `subagent` resolves to `.claude/agents/{name}.md` on disk;
-`linear.pickup_state` non-empty; any `adversarial_context` field is a
-boolean and appears only on `type: agent` states (Rule 7); no gate state
-carries the legacy `approved_linear_state` / `rework_linear_state` keys —
-those were removed in P4 and the validator rejects them with a Rule 8
-failure).
+`linear.pickup_state` non-empty; any `max_in_flight` value is a positive
+integer (>= 1) and appears only on `type: agent` states (Rule 6); any
+`adversarial_context` field is a boolean and appears only on `type: agent`
+states (Rule 7); no gate state carries the legacy `approved_linear_state` /
+`rework_linear_state` keys — those were removed in P4 and the validator
+rejects them with a Rule 8 failure).
 
 - If the exit code is **non-zero**, print the script's stderr verbatim and
   exit. **Do not write to Linear.** (Exit 1 means the YAML was unreadable;
@@ -187,7 +188,33 @@ Sort the results by Linear priority ascending (lower numeric = higher priority;
 treat null / "No priority" as the worst), then by `createdAt` ascending. Keep
 the result as an ordered list, `candidates`.
 
-If `candidates` is empty, print `No eligible issues.` and exit.
+**Apply per-state concurrency caps.** For each workflow state that has a
+`max_in_flight` key (an optional positive integer; only valid on `type: agent`
+states — the validator enforces this in Rule 6):
+
+1. Query the Linear MCP for issues in `linear.team` (narrowed to
+   `linear.project_slug` if present) whose current Linear column equals this
+   state's `linear_state`. Count the result; call it `inFlightCount`. This
+   count includes any issues with the `cadence_active` lock label — a paused
+   in-flight issue still occupies a slot from a downstream coordination
+   perspective.
+2. If `inFlightCount >= max_in_flight`, mark this state as **over-cap** for
+   this fire.
+
+Then filter `candidates`:
+
+- For each candidate, determine which workflow state it would target if picked
+  up — in most cases this is the workflow state whose `linear_state` matches
+  the candidate's current Linear column; for issues sitting in
+  `linear.pickup_state` it is the `entry` state.
+- If the target state is over-cap, drop the candidate from `candidates` and
+  continue with the next one.
+
+If `candidates` is empty (either no eligible issues to begin with, or every
+candidate's target state is over-cap), print `No eligible issues.` and exit —
+if the empty set came from cap filtering, append the line
+`(caps reached for: <comma-separated over-cap state names>)` on the next
+line before exiting.
 
 ---
 

@@ -172,6 +172,31 @@ watch their fleet and keep work on a laptop pick local.
 
 ---
 
+## Workflow tuning
+
+### `max_in_flight` — per-state concurrency cap
+
+Any `type: agent` state in `.claude/workflow.yaml` can declare an
+optional `max_in_flight: N` (positive integer). When set, `/cadence:tick`
+counts the issues currently sitting in that state's `linear_state`
+column on every fire; if the count is already at the cap, candidates
+that would target that state are skipped and the fire exits with a
+`(caps reached for: …)` note. The cap is **coordination, not a hard
+lock** — counts are recomputed from live Linear column membership each
+fire, so manual moves between fires self-correct on the next pickup.
+
+The typical reason to set a cap is **bounded human-review bandwidth
+downstream**: if you can only review three implementations per day, an
+`implement.max_in_flight: 3` keeps the bootstrap from churning through a
+backlog and filling `human_review` faster than you can drain it. Caps
+are forbidden on `type: gate` and `type: terminal` states — gates are
+human-driven (a backlog there is the signal that you need to act);
+terminals have no pickup to throttle. The validator (Rule 6) rejects
+both shapes. `/cadence:status` surfaces current cap usage in its
+Concurrency table when any state declares one.
+
+---
+
 ## Required permissions
 
 Cadence is a system of slash commands and subagents — each call hits the
