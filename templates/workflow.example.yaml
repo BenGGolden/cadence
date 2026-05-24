@@ -91,6 +91,16 @@ states:
     subagent: planner                # → .claude/agents/planner.md
     linear_state: "Planning"         # Linear column for this state
     next: plan_review                # On success → this state
+    # Optional: cap concurrent issues at this state. Useful when a
+    # downstream gate (here, plan_review) has bounded human throughput
+    # — without the cap, multiple parallel fires can pile up issues
+    # faster than the reviewer can drain them. Counts the issues
+    # currently in this state's linear_state column on every fire (no
+    # sidecar state); coordination is approximate, not a hard lock.
+    # Omit for unlimited. Valid only on type: agent states (rejected
+    # by the validator on gates / terminals). The same field is
+    # available on `implement` and `agent_review` — see below.
+    # max_in_flight: 3
 
   # ----------- plan review gate (human approves the plan before code) -----------
   plan_review:
@@ -106,14 +116,10 @@ states:
     subagent: implementer            # → .claude/agents/implementer.md
     linear_state: "Implementing"
     next: agent_review
-    # Optional: cap concurrent issues at this state. Useful when a
-    # downstream gate (human review) has bounded throughput — without
-    # the cap, multiple parallel fires can pile up issues faster than
-    # the human reviewer can drain them. Counts the issues currently in
-    # this state's linear_state column on every fire (no sidecar
-    # state); coordination is approximate, not a hard lock. Omit for
-    # unlimited. Valid only on type: agent states (rejected by the
-    # validator on gates / terminals).
+    # Optional cap on this state's concurrent issues (see `plan` above
+    # for the full explanation). Worth setting when `human_review`
+    # downstream is the bottleneck — capping `implement` keeps the
+    # review queue from growing faster than the reviewer can drain it.
     # max_in_flight: 3
 
   # ----------- automated code review (adversarial, no implementer narrative) -----------
@@ -126,6 +132,10 @@ states:
     # variant). Boolean; only valid on type: agent states.
     adversarial_context: true
     next: human_review
+    # Optional cap on this state's concurrent issues (see `plan` above
+    # for the full explanation). Rarely needed in practice — agent
+    # reviews are short and don't usually bottleneck downstream.
+    # max_in_flight: 3
 
   # ----------- human review gate -----------
   human_review:
