@@ -175,11 +175,15 @@ def _rule5_pickup_state(linear):
 
 def _rule6_max_in_flight(states):
     """`max_in_flight`, where present, must be a positive integer (>= 1)
-    and may only appear on `type: agent` states. The cap is checked at
-    pickup time by tick.md Step 5 against the live Linear column count
-    for the state's `linear_state`; gates and terminals are excluded
-    because gates are human-driven (a backlog there is the human's
-    signal to act) and terminals have no pickup (P6.2)."""
+    and may only appear on `type: agent` or `type: gate` states.
+    Terminals are excluded (they have no pickup to throttle).
+
+    Agent caps throttle parallel subagent runs at the state itself. Gate
+    caps throttle the *waiting queue*: tick.md Step 5 walks each
+    candidate's happy-path downstream and drops it if any state on that
+    path (agent or gate) is over-cap. Verdict-bearing gate candidates
+    are exempt from their own gate's cap because acting on a verdict
+    drains the queue (P8.2)."""
     lines = []
     failures = []
     for name, body in states.items():
@@ -197,10 +201,11 @@ def _rule6_max_in_flight(states):
                 f"states.{name}.max_in_flight must be a positive integer "
                 f"(>= 1), got {val!r}"
             )
-        if stype != "agent":
+        if stype not in ("agent", "gate"):
             failures.append(
                 f"states.{name}.max_in_flight is only valid on "
-                f"`type: agent` states; `{name}` is `type: {stype}`"
+                f"`type: agent` or `type: gate` states; `{name}` is "
+                f"`type: {stype}`"
             )
     if not lines:
         lines.append("(no states declare max_in_flight)")
