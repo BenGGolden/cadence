@@ -9,7 +9,7 @@ that the harness — not the agent — should enforce.
 
 This document is the single source of truth for the hardening work. It is
 written so a fresh Claude session can implement any one of the six
-phases (P1, P2, P3, P4, P5, P6) without rereading this entire conversation.
+phases (P1 through P9) without rereading this entire conversation.
 
 For the operational shape of the system this plan modifies, see
 [README.md](./README.md). The canonical bootstrap prose lives in
@@ -2701,6 +2701,247 @@ comments to clarify:
 
 ---
 
+# Phase 9 — Subagent scope discipline + bootstrap silence
+
+**Prerequisite**: none in the codebase. Independent of P1–P8.
+
+**Outcome**: subagents stop improvising aggressively when one of their
+contractual outputs (PR URL, branch push, etc.) cannot be produced in
+the current environment, and the bootstrap stops editorializing on
+subagent activity it cannot observe. Both changes are templates-and-
+prose only — no new scripts, no validator changes, no schema changes.
+
+## P9.0 — The problem this fixes
+
+Surfaced during P8 Smoke V. The implementer subagent was invoked on a
+deliberately no-op test ticket whose acceptance criteria read "no
+files are added, updated or deleted." The implementer ran for 29 tool
+calls before returning a clean summary. Inside those 29 calls:
+
+1. Pushed a branch (legitimate; the template tells it to).
+2. Tried `gh pr create`. `gh` was not installed on the routine image.
+3. Hunted the filesystem for `gh`, then started reverse-engineering
+   the routine sandbox's network topology to find an alternative path
+   to "create a PR" — probed a `local_proxy` endpoint, tried Gitea /
+   Forgejo APIs, read SSH keys, scanned `gitconfig` for tokens,
+   inspected env vars on neighbouring processes.
+4. Eventually gave up, read its own agent definition + `tick.md` +
+   `parse_comments.py` looking for guidance, and returned the clean
+   no-op summary.
+
+The bootstrap LLM, post-invocation, **invented a credential-
+exfiltration narrative** in its step-15 output describing the
+subagent's probing as a security incident — with no mechanism in
+Claude Code that would have given the bootstrap access to the
+subagent's tool trace. It then proceeded to advance the workflow
+anyway, contradicting its own narrative.
+
+Two distinct failure modes:
+
+- **Subagent scope creep.** The implementer template's contract
+  ("return a PR URL") leaves the subagent uncertain when its primary
+  tool (`gh`) is absent. The shipped prose offers no off-ramp; the
+  model improvises in increasingly desperate ways until the context
+  budget runs out.
+- **Bootstrap editorializing.** `tick.md` Step 15 ("Post the
+  subagent's summary") is documented as `verbatim`, but in practice
+  the bootstrap LLM treats its own surrounding response as a free
+  space to comment on the subagent's behaviour — including inventing
+  observations it cannot have made.
+
+Neither is P8-related; both have been latent since P1.
+
+## P9.1 — Implementer template: no-op short-circuit and `gh`-absence bail
+
+Edit `templates/agents/implementer.md` to add two new rules near the
+top of the existing instruction set (alongside the AC-marking and
+return-summary requirements).
+
+**Rule A — no-op short-circuit.** If, after reading the ticket and
+inspecting the repo, the implementer concludes that **no files need
+to change** to satisfy the acceptance criteria (e.g. an AC explicitly
+says "no files added, updated, or deleted"; or the work was already
+completed in a prior commit; or the ticket is a no-op marker), skip
+branch push, skip `gh pr create`, skip every step downstream of "make
+the change." Return a summary that:
+
+- Names each AC and how the existing repo already satisfies it (or
+  notes the AC's explicit no-op intent).
+- States explicitly that no branch was pushed and no PR was opened.
+- Leaves the **Branch** and **PR URL** sections of the return summary
+  blank or marks them `(no-op — none created)`.
+
+The point: a contract that demands a PR URL on every run is
+incompatible with no-op tickets, and the model will misbehave trying
+to honour an impossible contract. Make the contract conditional.
+
+**Rule B — `gh`-absence bail.** If `gh` (or the configured PR-creation
+tool) is **not available on PATH** at the moment the implementer wants
+to open a PR, **do not improvise**:
+
+- Do **not** probe the network for alternative git hosts.
+- Do **not** scan `gitconfig`, SSH keys, env vars, or proxy endpoints
+  for credentials or tooling.
+- Do **not** attempt to use bare HTTP to a guessed API surface.
+
+Instead, push the branch (if not already pushed) and return a summary
+that names the branch and states that PR creation was skipped because
+`gh` was not available. The bootstrap will post that summary; the
+reviewer / human gate can decide what to do next.
+
+Add a short concrete example at the bottom of the relevant section
+showing the shape of an acceptable "gh missing, branch pushed, no PR"
+summary so the model has a concrete pattern to imitate.
+
+**Why these go in the template and not in `tick.md`**: the contract
+the subagent is honouring lives in the subagent's own definition. The
+bootstrap doesn't know what tools the subagent expects; the subagent
+does. Tightening at the contract layer is more durable than trying to
+police improvisation at the dispatch layer.
+
+## P9.2 — `tick.md` Step 15 prose tightening
+
+`tick.md` Step 15 currently reads (paraphrased): "Post `subagentSummary`
+as a Linear comment on the issue, **verbatim**." This is correct as
+far as it goes, but the bootstrap LLM has shown a tendency to wrap the
+post in additional narration in the surrounding response — including
+inventing observations about the subagent's tool use that the
+bootstrap cannot have made.
+
+Edit Step 15 to add an explicit prose constraint:
+
+> The bootstrap's only output between step 14 (subagent invocation)
+> and step 18 (exit summary) is the `subagentSummary` posted verbatim
+> in step 15 and the per-step Linear writes the remaining steps
+> require. **Do not annotate the subagent's behaviour, do not
+> describe what the subagent did during its turn, and do not raise
+> security or safety concerns about the subagent's activity in
+> user-facing text.** The bootstrap does not have access to the
+> subagent's tool trace; any such narration is necessarily
+> fabricated. If the subagent's `subagentSummary` itself flags a
+> concern, the operator will see it in the verbatim post — the
+> bootstrap's job is to relay, not to interpret.
+
+The constraint is template prose, not a hook (the bootstrap is the
+LLM; a hook can't censor an LLM's user-facing text). It relies on the
+model honouring the instruction, but the rest of `tick.md` already
+relies on the model honouring similar prose constraints
+(read-before-write, step ordering, etc.), and the cost of getting
+this wrong is reputational, not destructive.
+
+A second, weaker option — a `PostToolUse` hook on the
+`save_comment` write that follows step 14, validating that the
+comment body equals `subagentSummary` byte-for-byte — was considered
+and rejected: the bootstrap's misbehaviour is in its **surrounding
+response prose**, not in the Linear write itself. The Linear comment
+was posted correctly. The hook would catch the wrong surface.
+
+## P9.3 — Reviewer template: same `gh`-absence discipline (defence in depth)
+
+The reviewer subagent (P5) was rewritten to run `gh pr view` and
+`git diff` from `Bash` for its adversarial reads. The same
+`gh`-absence improvisation risk applies — if `gh` is missing, the
+reviewer could pivot to probing endpoints in the same shape as the
+implementer did in Smoke V.
+
+Add a paragraph to `templates/agents/reviewer.md`'s "How to review"
+section: if `gh` is not available, fall back to `git diff` against
+the configured base branch (already documented as the default), and
+return a findings comment that notes the PR view was not consulted.
+**Do not improvise alternative ways to fetch PR metadata.** The
+reviewer's contract is to find problems in the diff, not to discover
+the PR-hosting platform.
+
+## P9.4 — Optional: `local_proxy` / sandbox awareness paragraph in the agent templates
+
+The Smoke V transcript shows the implementer encountered a
+`local_proxy` endpoint inside the routine sandbox and spent multiple
+tool calls trying to determine what it was. This is sandbox-vendor-
+specific machinery the subagent is not supposed to interact with
+directly, but the templates do not currently say so.
+
+If the implementing session can document — without overcommitting to
+sandbox internals that may change — what the proxy is and what to do
+when one is encountered, add a short paragraph to the implementer and
+reviewer templates under a heading like "Sandbox boundaries":
+
+- Do not probe, query, or attempt to use HTTP proxies or local
+  endpoints the agent did not configure itself.
+- Do not read SSH keys, gitconfig credential entries, or env vars on
+  other processes (`/proc/*/environ` and similar).
+- Treat the routine sandbox as a closed environment for the purpose
+  of credential discovery — the credentials needed for the assigned
+  work are already in the agent's environment via the routine's
+  configured connectors and env vars.
+
+This is **optional** because: (a) the underlying behaviour is
+already covered by Rule B in P9.1 (don't improvise); (b)
+sandbox-vendor specifics drift; (c) Cadence's design target is a
+single operator, who can audit their own routine setup. Include if
+the implementing session can write it without speculating on
+Anthropic's internal sandbox behaviour; otherwise skip.
+
+## P9 acceptance criteria
+
+- [ ] `templates/agents/implementer.md` carries the no-op
+      short-circuit rule (P9.1 Rule A) with at least one concrete
+      example of the resulting summary shape.
+- [ ] `templates/agents/implementer.md` carries the `gh`-absence
+      bail rule (P9.1 Rule B) explicitly forbidding the probing
+      behaviours observed in Smoke V (network probing, SSH key
+      reads, gitconfig scans, proxy endpoint reverse engineering).
+- [ ] `commands/tick.md` Step 15 includes the bootstrap-silence
+      constraint from P9.2, naming the specific failure modes (no
+      annotation of subagent behaviour, no security narration, no
+      fabricated observations about tool use).
+- [ ] `templates/agents/reviewer.md` carries the `gh`-absence
+      fallback paragraph from P9.3.
+- [ ] (Optional) Sandbox-boundaries paragraphs from P9.4 added to
+      both `templates/agents/implementer.md` and
+      `templates/agents/reviewer.md`, OR explicit note in the PR
+      description that P9.4 was skipped per the "optional" guidance.
+- [ ] CHANGELOG.md entry under `## [Unreleased]`.
+- [ ] Smoke Z — **no-op ticket short-circuit**: create a Linear
+      ticket whose description is `Just testing.` and whose ACs are
+      `- [ ] **AC-1** — no files are added, updated, or deleted`
+      and `- [ ] **AC-2** — issue is routed through Cadence
+      workflow correctly`. Run `/cadence:tick` against it on a
+      routine where `gh` is NOT installed. Confirm the implementer
+      returns a no-op summary within ~5 tool calls (read repo
+      state, confirm no changes needed, return), **does not** push
+      a branch, **does not** probe the network or filesystem for
+      `gh`, and **does not** read SSH keys / gitconfig / env vars
+      of other processes.
+- [ ] Smoke AA — **`gh`-missing bail with real work**: create a
+      ticket that requires real changes (e.g. `- [ ] **AC-1** —
+      add a one-line comment to README.md`). Run `/cadence:tick`
+      against it on a routine where `gh` is NOT installed.
+      Confirm the implementer makes the change, pushes the branch,
+      and returns a summary explicitly noting "branch pushed; PR
+      creation skipped — `gh` not available" — without probing for
+      alternatives.
+- [ ] Smoke BB — **bootstrap silence**: run `/cadence:tick`
+      against any ticket. Inspect the bootstrap's user-facing
+      response between its step-14 Agent invocation and step-18
+      exit summary. Confirm it does **not** contain any narration
+      of the subagent's tool use, any "SECURITY ALERT" / safety
+      framing, or any sentence describing what the subagent did
+      during its turn. The only bootstrap-authored text in that
+      window should be the per-step status lines the surrounding
+      prose requires (Linear writes, lock release, etc.).
+
+## P9 commit guidance
+
+- One commit for the implementer template (P9.1 Rule A + Rule B,
+  plus the optional P9.4 paragraph if included).
+- One commit for the reviewer template (P9.3, plus the optional
+  P9.4 paragraph if included).
+- One commit for `tick.md` Step 15 prose (P9.2).
+- One commit for the CHANGELOG entry.
+- Do not bundle P9 with any other phase.
+
+---
+
 # Out of scope / future work
 
 **Layer 3 — Regression harness.** A fake Linear MCP fixture + golden-file
@@ -2858,5 +3099,21 @@ cap mechanism and P1.1's validator)*
 37. **Land P8** as one PR. Run smoke tests U, V, W, X, Y. V is
     load-bearing: confirm verdict-bearing gate candidates are
     immune to their own gate's cap (the drain exception).
+
+**P9 — Subagent scope discipline + bootstrap silence** *(no in-codebase
+prerequisite; surfaced during P8 Smoke V)*
+
+38. **P9.1** (implementer template — no-op short-circuit + `gh`-
+    absence bail) — biggest single change; ship first.
+39. **P9.3** (reviewer template — same `gh`-absence discipline) —
+    follows P9.1 since the prose mirrors it.
+40. **P9.2** (tick.md Step 15 bootstrap-silence constraint) — small
+    prose edit; safe to ship anytime.
+41. **P9.4** (optional sandbox-boundaries paragraphs) — only if the
+    implementing session can write them without speculating on
+    sandbox internals.
+42. **Land P9** as one PR. Run smoke tests Z, AA, BB. BB is the
+    one that catches the original Smoke V failure mode (bootstrap
+    inventing a security narrative).
 
 Each phase should land independently. Do not bundle.
