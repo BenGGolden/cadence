@@ -205,13 +205,26 @@ watch their fleet and keep work on a laptop pick local.
 Any `type: agent` or `type: gate` state in `.claude/workflow.yaml` can
 declare an optional `max_in_flight: N` (positive integer). When set,
 `/cadence:tick` counts the issues currently sitting in that state's
-`linear_state` column on every fire and walks each candidate's
-happy-path downstream (`next` for agents, `on_approve` for gates) at
-pickup time; if any state on the walk is at its cap, the candidate is
-skipped and the fire exits with a `(caps reached for: …)` note. The cap
-is **coordination, not a hard lock** — counts are recomputed from live
-Linear column membership each fire, so manual moves between fires
-self-correct on the next pickup.
+`linear_state` column on every fire and runs a **bounded reachability
+walk** for each candidate at pickup time. The walk starts at the
+candidate's effective target state, follows `next` through agent
+states, and **stops at the first gate or terminal it reaches**
+(inclusive — the gate is checked, then the walk ends). If any visited
+state is at its cap, the candidate is skipped and the fire exits with
+a `(caps reached for: …)` note. The cap is **coordination, not a
+hard lock** — counts are recomputed from live Linear column
+membership each fire, so manual moves between fires self-correct on
+the next pickup.
+
+**Why the walk stops at the first gate.** Every gate is a parking
+spot for a distinct human's attention. A candidate that enters the
+workflow only needs to pass through *its* next gate's queue — it'll
+wait there for that gate's reviewer, and downstream gates are someone
+else's bandwidth concern. Conflating them would mean an at-cap
+`human_review` (one reviewer's queue) silently blocks new Todo pickups
+that would have parked at `plan_review` (a different reviewer's queue
+with capacity). The bounded walk gives each gate-owning reviewer their
+own cap to set independently.
 
 **Agent caps vs. gate caps** — they look the same in YAML but bind
 differently:
@@ -220,22 +233,30 @@ differently:
   own state. Useful for limiting how many planners or implementers
   fire in parallel.
 - A **gate cap** throttles the gate's **waiting queue** by blocking
-  candidates whose happy-path downstream feeds the gate. Useful for
-  capping the depth of work a reviewer is asked to triage. The
-  bootstrap exempts verdict-bearing issues already sitting in the
-  gate from their own gate's cap — acting on a verdict drains the
-  queue, so the gate's own cap must not block the drain.
+  candidates whose bounded walk reaches the gate. The bootstrap
+  exempts verdict-bearing issues already sitting in the gate from
+  their own gate's cap — acting on a verdict drains the queue, so
+  the gate's own cap must not block the drain.
 
-For controlling pile-up in `plan_review` / `human_review`, the gate
-cap is the right tool — it caps the queue directly. An upstream agent
-cap only narrows the inflow and stops binding the moment the agent's
-own column drains, even if the downstream gate is overflowing.
+Worked example, default workflow (`plan → plan_review → implement →
+agent_review → human_review → done`):
 
-Caps are forbidden on `type: terminal` states (terminals have no
-pickup to throttle). The validator (Rule 6) rejects that shape.
-`/cadence:status` surfaces current cap usage in its Concurrency table
-when any state declares one — gates with caps get a row alongside the
-agent states.
+| Candidate state                  | Walk                                                | Caps that bind                              |
+|----------------------------------|-----------------------------------------------------|---------------------------------------------|
+| `Todo`                           | `plan → plan_review`                                | `plan`, `plan_review`                       |
+| `Plan Review` + `cadence-approve` | `implement → agent_review → human_review`           | `implement`, `agent_review`, `human_review` |
+| `Plan Review` + `cadence-rework` | `plan → plan_review` (`plan_review` drain-exempt)   | `plan`                                      |
+| `In Review` + `cadence-approve`  | `done` (terminal)                                   | none                                        |
+| `In Review` + `cadence-rework`   | `implement → agent_review → human_review` (`human_review` drain-exempt) | `implement`, `agent_review` |
+
+Set caps where the bandwidth actually lives: cap each gate to the
+depth its reviewer wants to triage; cap agent states (e.g.
+`implement.max_in_flight`) when you want to throttle parallel runs of
+that subagent specifically. Caps are forbidden on `type: terminal`
+states (terminals have no pickup to throttle). The validator (Rule 6)
+rejects that shape. `/cadence:status` surfaces current cap usage in
+its Concurrency table when any state declares one — gates with caps
+get a row alongside the agent states.
 
 ---
 

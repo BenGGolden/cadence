@@ -115,15 +115,16 @@ states:
     max_rework: 2
     # Optional: cap the gate's **waiting queue**. When N issues are
     # sitting in this column, the bootstrap blocks new pickups whose
-    # happy-path downstream (plan → plan_review → implement → ...)
-    # would pass through this gate. Verdict-bearing issues already in
-    # the column are NOT blocked — acting on them drains the queue, so
-    # the gate's own cap is bypassed for verdict drainage. Useful for
-    # capping the depth of work a reviewer is asked to triage. Omit
-    # for unlimited. Valid on type: agent and type: gate; rejected by
-    # the validator on terminals. Gate caps differ from agent caps:
-    # they bind on candidates upstream of the gate, not on parallel
-    # runs at this state.
+    # bounded reachability walk reaches this gate — for plan_review,
+    # that's any Todo candidate (entering the workflow at `plan`,
+    # walking to `plan_review`). Downstream gates (e.g. human_review)
+    # do NOT block Todo pickups; each reviewer's bandwidth is throttled
+    # by their own gate's cap. Verdict-bearing issues already in this
+    # column are NOT blocked — acting on a verdict drains the queue,
+    # so the gate's own cap is bypassed for verdict drainage. Useful
+    # for capping the depth of work this gate's reviewer is asked to
+    # triage. Omit for unlimited. Valid on type: agent and type: gate;
+    # rejected by the validator on terminals.
     # max_in_flight: 5
 
   # ----------- implementation -----------
@@ -133,10 +134,12 @@ states:
     linear_state: "Implementing"
     next: agent_review
     # Optional cap on **parallel implementer runs** at this state (see
-    # `plan` above for the full explanation). For controlling pile-up
-    # in `human_review` downstream, prefer a gate cap on
-    # `human_review.max_in_flight` — it caps the queue directly, where
-    # capping `implement` only narrows the inflow.
+    # `plan` above for the full explanation). For backpressure into
+    # `human_review`, cap that gate directly — under the bounded walk
+    # an at-cap `human_review` blocks pickups whose walk reaches it
+    # (e.g. plan-approved candidates targeting `implement`), without
+    # blocking Todo pickups whose walk stops at the earlier
+    # `plan_review` gate.
     # max_in_flight: 3
 
   # ----------- automated code review (adversarial, no implementer narrative) -----------
@@ -173,11 +176,13 @@ states:
     max_rework: 2
     # Optional cap on the gate's **waiting queue** (see plan_review
     # above for the full gate-cap explanation). The primary lever for
-    # controlling reviewer load: when N issues are sitting in
-    # "In Review", the bootstrap drops candidates whose happy-path
-    # downstream would feed this gate, so the queue can't grow past N.
-    # Verdict-bearing issues already in the queue drain regardless of
-    # cap.
+    # controlling this reviewer's load: when N issues are sitting in
+    # "In Review", the bootstrap drops candidates whose bounded walk
+    # reaches this gate — concretely, plan-approved candidates
+    # (targeting `implement`) and the implementer/agent_review chain
+    # downstream of them. Todo pickups are NOT affected (their walk
+    # stops at plan_review). Verdict-bearing issues already in the
+    # queue drain regardless of cap.
     # max_in_flight: 5
 
   # ----------- terminal -----------
