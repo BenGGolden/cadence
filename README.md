@@ -174,26 +174,42 @@ watch their fleet and keep work on a laptop pick local.
 
 ## Workflow tuning
 
-### `max_in_flight` — per-state concurrency cap
+### `max_in_flight` — per-state concurrency caps
 
-Any `type: agent` state in `.claude/workflow.yaml` can declare an
-optional `max_in_flight: N` (positive integer). When set, `/cadence:tick`
-counts the issues currently sitting in that state's `linear_state`
-column on every fire; if the count is already at the cap, candidates
-that would target that state are skipped and the fire exits with a
-`(caps reached for: …)` note. The cap is **coordination, not a hard
-lock** — counts are recomputed from live Linear column membership each
-fire, so manual moves between fires self-correct on the next pickup.
+Any `type: agent` or `type: gate` state in `.claude/workflow.yaml` can
+declare an optional `max_in_flight: N` (positive integer). When set,
+`/cadence:tick` counts the issues currently sitting in that state's
+`linear_state` column on every fire and walks each candidate's
+happy-path downstream (`next` for agents, `on_approve` for gates) at
+pickup time; if any state on the walk is at its cap, the candidate is
+skipped and the fire exits with a `(caps reached for: …)` note. The cap
+is **coordination, not a hard lock** — counts are recomputed from live
+Linear column membership each fire, so manual moves between fires
+self-correct on the next pickup.
 
-The typical reason to set a cap is **bounded human-review bandwidth
-downstream**: if you can only review three implementations per day, an
-`implement.max_in_flight: 3` keeps the bootstrap from churning through a
-backlog and filling `human_review` faster than you can drain it. Caps
-are forbidden on `type: gate` and `type: terminal` states — gates are
-human-driven (a backlog there is the signal that you need to act);
-terminals have no pickup to throttle. The validator (Rule 6) rejects
-both shapes. `/cadence:status` surfaces current cap usage in its
-Concurrency table when any state declares one.
+**Agent caps vs. gate caps** — they look the same in YAML but bind
+differently:
+
+- An **agent cap** throttles **parallel subagent runs** at the agent's
+  own state. Useful for limiting how many planners or implementers
+  fire in parallel.
+- A **gate cap** throttles the gate's **waiting queue** by blocking
+  candidates whose happy-path downstream feeds the gate. Useful for
+  capping the depth of work a reviewer is asked to triage. The
+  bootstrap exempts verdict-bearing issues already sitting in the
+  gate from their own gate's cap — acting on a verdict drains the
+  queue, so the gate's own cap must not block the drain.
+
+For controlling pile-up in `plan_review` / `human_review`, the gate
+cap is the right tool — it caps the queue directly. An upstream agent
+cap only narrows the inflow and stops binding the moment the agent's
+own column drains, even if the downstream gate is overflowing.
+
+Caps are forbidden on `type: terminal` states (terminals have no
+pickup to throttle). The validator (Rule 6) rejects that shape.
+`/cadence:status` surfaces current cap usage in its Concurrency table
+when any state declares one — gates with caps get a row alongside the
+agent states.
 
 ---
 
