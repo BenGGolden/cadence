@@ -126,11 +126,12 @@ This script enforces the config rules deterministically (uniqueness of every
 `type: agent` state; every `next` / `on_approve` / `on_rework` resolves;
 every `subagent` resolves to `.claude/agents/{name}.md` on disk;
 `linear.pickup_state` non-empty; any `max_in_flight` value is a positive
-integer (>= 1) and appears only on `type: agent` states (Rule 6); any
-`adversarial_context` field is a boolean and appears only on `type: agent`
-states (Rule 7); no gate state carries the legacy `approved_linear_state` /
-`rework_linear_state` keys — those were removed in P4 and the validator
-rejects them with a Rule 8 failure).
+integer (>= 1) and appears only on `type: agent` or `type: gate` states
+(Rule 6 — terminals rejected); any `adversarial_context` field is a
+boolean and appears only on `type: agent` states (Rule 7); no gate state
+carries the legacy `approved_linear_state` / `rework_linear_state` keys —
+those were removed in P4 and the validator rejects them with a Rule 8
+failure).
 
 - If the exit code is **non-zero**, print the script's stderr verbatim and
   exit. **Do not write to Linear.** (Exit 1 means the YAML was unreadable;
@@ -202,32 +203,57 @@ treat null / "No priority" as the worst), then by `createdAt` ascending. Keep
 the result as an ordered list, `candidates`.
 
 **Apply per-state concurrency caps.** For each workflow state that has a
-`max_in_flight` key (an optional positive integer; only valid on `type: agent`
-states — the validator enforces this in Rule 6):
+`max_in_flight` key (an optional positive integer; valid on `type: agent`
+and `type: gate` states — Rule 6 forbids it on terminals):
 
 1. Query the Linear MCP for issues in `linear.team` (narrowed to
    `linear.project_slug` if present) whose current Linear column equals this
    state's `linear_state`. Count the result; call it `inFlightCount`. This
    count includes any issues with the `cadence_active` lock label — a paused
    in-flight issue still occupies a slot from a downstream coordination
-   perspective.
+   perspective. For gates, the count also includes verdict-bearing issues
+   (the gate is full regardless of whether the queue is drainable on the
+   next fire).
 2. If `inFlightCount >= max_in_flight`, mark this state as **over-cap** for
    this fire.
 
-Then filter `candidates`:
+Then filter `candidates`. For each candidate, run a **reachability walk**
+and drop the candidate if any state on its happy-path downstream is over
+its cap:
 
-- For each candidate, determine which workflow state it would target if picked
-  up — in most cases this is the workflow state whose `linear_state` matches
-  the candidate's current Linear column; for issues sitting in
-  `linear.pickup_state` it is the `entry` state.
-- If the target state is over-cap, drop the candidate from `candidates` and
-  continue with the next one.
+1. Determine the candidate's **effective target state**:
+   - If the candidate's current Linear column equals `linear.pickup_state`,
+     the target is the `entry` state.
+   - If the candidate is sitting in a gate's waiting column AND carries
+     `label.cadence_approve`, the target is `<gate>.on_approve`.
+   - If the candidate is sitting in a gate's waiting column AND carries
+     `label.cadence_rework` (or both verdict labels — treated as rework
+     per Step 10), the target is `<gate>.on_rework`.
+   - Otherwise, the target is the workflow state whose `linear_state`
+     matches the candidate's current Linear column.
+2. Walk the **happy-path downstream** from the effective target state.
+   Follow `next` for `type: agent` states and `on_approve` for
+   `type: gate` states. Stop when the walk reaches a `type: terminal`
+   state. Track which states the walk has already visited; if the walk
+   would re-visit one, break (the validator does not currently reject
+   happy-path cycles, and the guard is cheap insurance against a
+   pathological config).
+3. If any visited state is over-cap, drop the candidate from
+   `candidates` and continue with the next one. **Exception**: when the
+   candidate is a verdict-bearing gate issue (it sits in some gate's
+   waiting column and carries `cadence_approve` or `cadence_rework`),
+   that gate is **excluded** from the over-cap check for this candidate.
+   Acting on a verdict drains the gate, so the gate's own cap must not
+   block the action — otherwise an at-cap gate would lock itself.
 
 If `candidates` is empty (either no eligible issues to begin with, or every
-candidate's target state is over-cap), print `No eligible issues.` and exit —
-if the empty set came from cap filtering, append the line
-`(caps reached for: <comma-separated over-cap state names>)` on the next
-line before exiting.
+candidate is blocked by an over-cap state on its walk), print
+`No eligible issues.` and exit — if the empty set came from cap filtering,
+append the line `(caps reached for: <comma-separated over-cap state names>)`
+on the next line before exiting. The named states are the union of every
+over-cap state that blocked at least one candidate (not the entire set of
+over-cap states, since a state can be over-cap without any candidate's walk
+passing through it).
 
 ---
 
