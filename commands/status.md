@@ -238,23 +238,24 @@ Also emit a single line for `pickup_state`:
 
 ### Concurrency
 
-If any workflow state declares `max_in_flight` (P6), append a Concurrency
-table after the per-state summary so the human can see whether pickup is
-currently throttled by caps. Walk every state in the `states:` map (in
-declaration order); compute `inFlight` as the number of issues from step
-3 whose Linear column equals the state's `linear_state` (the same counts
-the per-state summary already has).
+If any workflow state declares `max_in_flight` (agent or gate; P6 + P8),
+append a Concurrency table after the per-state summary so the human can
+see whether pickup is currently throttled by caps. Walk every state in
+the `states:` map (in declaration order); compute `inFlight` as the
+number of issues from step 3 whose Linear column equals the state's
+`linear_state` (the same counts the per-state summary already has).
 
 ```markdown
 ### Concurrency
 
-| State                | In flight | Cap    | Status   |
-|----------------------|-----------|--------|----------|
-| plan                 | 1         | (none) |          |
-| implement            | 2         | 3      |          |
-| agent_review         | 1         | 2      |          |
-| human_review (gate)  | 4         | n/a    |          |
-| done                 | 12        | n/a    |          |
+| State                   | In flight | Cap    | Status   |
+|-------------------------|-----------|--------|----------|
+| plan                    | 1         | (none) |          |
+| plan_review (gate)      | 4         | 5      |          |
+| implement               | 2         | 3      |          |
+| agent_review            | 1         | (none) |          |
+| human_review (gate)     | 5         | 5      | AT CAP   |
+| done                    | 12        | n/a    |          |
 ```
 
 Cells:
@@ -263,15 +264,18 @@ Cells:
   `(terminal)` for terminals. The `(pickup)` row is omitted; pickup is
   not a workflow state.
 - **In flight** — `inFlight` for this state.
-- **Cap** — the state's `max_in_flight` if set; `(none)` for agent states
-  without a cap; `n/a` for gates and terminals (Rule 6 forbids caps on
-  those state types).
+- **Cap** — the state's `max_in_flight` if set; `(none)` for agent or
+  gate states without a cap; `n/a` for terminals (Rule 6 forbids caps
+  on terminal states).
 - **Status** —
   - empty when `Cap` is `(none)` or `n/a`, or when `inFlight < cap`;
-  - `AT CAP` when `inFlight == cap` (the next fire targeting this state
-    will skip until something drains);
+  - `AT CAP` when `inFlight == cap` (the next fire's reachability walk
+    will drop candidates whose happy-path downstream passes through
+    this state — except verdict-bearing issues already in a capped
+    gate's column, which drain regardless);
   - `OVER CAP` when `inFlight > cap` (a human moved issues in manually;
-    the next fire will skip until the count drops to the cap or below).
+    the next fire will block upstream candidates until the count
+    drops to the cap or below).
 
 Omit the entire Concurrency section if no state declares `max_in_flight`
 — a workflow without caps does not need the noise.

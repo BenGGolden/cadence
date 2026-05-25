@@ -6,6 +6,46 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — Phase 8: gate-aware concurrency caps
+- `scripts/validate_workflow.py` Rule 6 — relaxed to allow `max_in_flight`
+  on `type: gate` states in addition to `type: agent`. Terminals are
+  still rejected (no pickup to throttle). Rule 6's `--evidence` block,
+  stderr messages, and docstring updated to reflect the new scope.
+- `templates/workflow.example.yaml` — both gate states (`plan_review`,
+  `human_review`) gain a commented-out `max_in_flight` example with a
+  full gate-cap explanation (queue cap, not parallel-run cap; verdict-
+  bearing issues drain regardless). The agent-state cap comments
+  (`plan`, `implement`, `agent_review`) are revised to clarify that
+  they throttle parallel subagent runs only — they do **not** control
+  downstream gate pile-up, for which the gate cap is the right lever.
+  The top-of-file validation-rules comment names both state types.
+- `commands/tick.md` Step 5 — replaces P6.3's per-candidate cap check
+  with a **reachability walk**. For each candidate the bootstrap
+  determines the effective target state (entry for pickup-state
+  issues; `on_approve` / `on_rework` for verdict-bearing gate issues;
+  otherwise the workflow state matching the candidate's column), then
+  walks the happy-path downstream following `next` / `on_approve`
+  until a terminal. If any visited state is over its cap, the
+  candidate is dropped. The walk tracks visited states and breaks on
+  re-visit (insurance against pathological happy-path cycles). The
+  bootstrap exempts a verdict-bearing gate candidate from its own
+  gate's cap so verdict drainage isn't blocked by an at-cap queue.
+  Step 3's validation-rules prose updated to describe Rule 6's new
+  scope.
+- `commands/status.md` — Concurrency table now includes capped gates
+  alongside capped agents; the `(none)` Cap value covers either state
+  type, `n/a` is reserved for terminals. The `AT CAP` / `OVER CAP`
+  descriptions reference the reachability walk and the verdict-drain
+  exception so the operator can read the table without re-deriving
+  the dispatch behaviour.
+- `README.md` — "Workflow tuning" section expanded with an Agent-caps
+  vs. Gate-caps subsection: agent caps throttle parallel subagent
+  runs; gate caps throttle the waiting queue and bind on upstream
+  candidates. Recommends the gate cap as the right lever for
+  controlling reviewer load (an upstream agent cap stops binding the
+  moment the agent's column drains, even if the gate is overflowing).
+- `.claude-plugin/plugin.json` — version bumped to `0.6.0`.
+
 ### Changed — Phase 7: skip gate-waiting issues without verdicts at pickup
 - `commands/tick.md` Step 5 — added a fifth eligibility filter that excludes
   issues sitting in a gate state's waiting column without a verdict label

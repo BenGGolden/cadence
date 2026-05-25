@@ -16,8 +16,10 @@
 #     `rework_linear_state` keys (removed in P4 — gates now signal
 #     verdicts via the cadence_approve / cadence_rework labels).
 #   - Any `max_in_flight` value must be a positive integer (>= 1) and
-#     may only appear on `type: agent` states (rejected on gates /
-#     terminals).
+#     may only appear on `type: agent` or `type: gate` states (rejected
+#     on terminals). Agent caps throttle parallel subagent runs at the
+#     state itself; gate caps throttle the gate's *waiting queue* by
+#     dropping pickups whose happy-path downstream feeds the gate.
 
 linear:
   # Required. Your Linear team key (e.g. "ENG", "PROD"). Used by the
@@ -91,15 +93,17 @@ states:
     subagent: planner                # → .claude/agents/planner.md
     linear_state: "Planning"         # Linear column for this state
     next: plan_review                # On success → this state
-    # Optional: cap concurrent issues at this state. Useful when a
-    # downstream gate (here, plan_review) has bounded human throughput
-    # — without the cap, multiple parallel fires can pile up issues
-    # faster than the reviewer can drain them. Counts the issues
-    # currently in this state's linear_state column on every fire (no
-    # sidecar state); coordination is approximate, not a hard lock.
-    # Omit for unlimited. Valid only on type: agent states (rejected
-    # by the validator on gates / terminals). The same field is
-    # available on `implement` and `agent_review` — see below.
+    # Optional: cap **parallel subagent runs at this state** by counting
+    # the issues currently in this state's linear_state column on every
+    # fire (no sidecar state); coordination is approximate, not a hard
+    # lock. Omit for unlimited. Valid on type: agent and type: gate
+    # states (rejected by the validator on terminals); see the comments
+    # on plan_review and human_review for gate-cap semantics, which
+    # differ — gate caps throttle the *waiting queue* and bind on
+    # candidates upstream of the gate, whereas agent caps only bind on
+    # parallel runs at this state. For controlling pile-up in
+    # plan_review / human_review, use the gate cap; the agent cap here
+    # only limits how many planners run in parallel.
     # max_in_flight: 3
 
   # ----------- plan review gate (human approves the plan before code) -----------
@@ -109,6 +113,18 @@ states:
     on_approve: implement                   # next state when cadence_approve is seen
     on_rework: plan                         # next state when cadence_rework is seen
     max_rework: 2
+    # Optional: cap the gate's **waiting queue**. When N issues are
+    # sitting in this column, the bootstrap blocks new pickups whose
+    # happy-path downstream (plan → plan_review → implement → ...)
+    # would pass through this gate. Verdict-bearing issues already in
+    # the column are NOT blocked — acting on them drains the queue, so
+    # the gate's own cap is bypassed for verdict drainage. Useful for
+    # capping the depth of work a reviewer is asked to triage. Omit
+    # for unlimited. Valid on type: agent and type: gate; rejected by
+    # the validator on terminals. Gate caps differ from agent caps:
+    # they bind on candidates upstream of the gate, not on parallel
+    # runs at this state.
+    # max_in_flight: 5
 
   # ----------- implementation -----------
   implement:
@@ -116,10 +132,11 @@ states:
     subagent: implementer            # → .claude/agents/implementer.md
     linear_state: "Implementing"
     next: agent_review
-    # Optional cap on this state's concurrent issues (see `plan` above
-    # for the full explanation). Worth setting when `human_review`
-    # downstream is the bottleneck — capping `implement` keeps the
-    # review queue from growing faster than the reviewer can drain it.
+    # Optional cap on **parallel implementer runs** at this state (see
+    # `plan` above for the full explanation). For controlling pile-up
+    # in `human_review` downstream, prefer a gate cap on
+    # `human_review.max_in_flight` — it caps the queue directly, where
+    # capping `implement` only narrows the inflow.
     # max_in_flight: 3
 
   # ----------- automated code review (adversarial, no implementer narrative) -----------
@@ -132,9 +149,10 @@ states:
     # variant). Boolean; only valid on type: agent states.
     adversarial_context: true
     next: human_review
-    # Optional cap on this state's concurrent issues (see `plan` above
-    # for the full explanation). Rarely needed in practice — agent
-    # reviews are short and don't usually bottleneck downstream.
+    # Optional cap on **parallel reviewer runs** at this state (see
+    # `plan` above for the full explanation). Rarely needed in
+    # practice — agent reviews are short and don't usually bottleneck
+    # downstream.
     # max_in_flight: 3
 
   # ----------- human review gate -----------
@@ -153,6 +171,14 @@ states:
     # Optional. Max rework rounds before the bootstrap escalates with
     # cadence_needs_human. Omit for unlimited rework.
     max_rework: 2
+    # Optional cap on the gate's **waiting queue** (see plan_review
+    # above for the full gate-cap explanation). The primary lever for
+    # controlling reviewer load: when N issues are sitting in
+    # "In Review", the bootstrap drops candidates whose happy-path
+    # downstream would feed this gate, so the queue can't grow past N.
+    # Verdict-bearing issues already in the queue drain regardless of
+    # cap.
+    # max_in_flight: 5
 
   # ----------- terminal -----------
   done:
