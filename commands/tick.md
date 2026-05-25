@@ -162,6 +162,19 @@ Using the Linear MCP, query the team named in `linear.team` (narrowed to
   in a Linear state **outside** `workflowLinearStates` (i.e. a foreign terminal
   state like "Done" or "Cancelled", or one not modelled by this workflow). If
   blocker data is not available from the MCP query, skip this filter and proceed.
+- The issue is **not** sitting in a gate state's waiting column without a
+  verdict label. Concretely: if the issue's current Linear column equals some
+  `<gate>.linear_state` for any state in the config whose `type` is `gate`,
+  the issue must carry either `label.cadence_approve` or `label.cadence_rework`.
+  If neither verdict label is present, the issue is ineligible — there is
+  nothing the bootstrap can do for it until a human acts, and claiming it
+  would consume this fire to no useful effect (the lock would be acquired,
+  step 10a would see no verdict, the lock would be released, and the fire
+  would exit). The set of gate `linear_state` values is derivable from the
+  validator's `states` output: iterate states and pick the ones where
+  `type == "gate"`. Apply this filter client-side against the labels already
+  returned by the pickup query (the `cadence_active` / `cadence_needs_human`
+  filters above already require labels in the response).
 
 **Query shape requirements** (do not deviate):
 

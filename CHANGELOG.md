@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — Phase 7: skip gate-waiting issues without verdicts at pickup
+- `commands/tick.md` Step 5 — added a fifth eligibility filter that excludes
+  issues sitting in a gate state's waiting column without a verdict label
+  (`label.cadence_approve` / `label.cadence_rework`). Without this filter, a
+  verdict-less gate issue that sorted to the top of the candidate list (high
+  priority or oldest `createdAt`) would consume the entire fire: the bootstrap
+  would acquire the soft lock, reach Step 10a, see no verdict, release the
+  lock, and exit — while real candidates in `pickup_state` sat untouched.
+  Step 10a's branch is preserved unchanged as defence in depth for the rare
+  case where a human removes a verdict label between the pickup query and the
+  gate check. No script or template changes are needed: the set of gate
+  `linear_state` values is derived from the validator's `states` output,
+  filtered client-side against labels already present in the pickup query.
+  Cross-references Phase 8: today's verdict-less-gate-issue behaviour
+  provides incidental backpressure into gates (the queue can't grow much
+  because the dispatch keeps tripping on the first item in it); removing
+  that backpressure is correct on its own merits but leaves nothing limiting
+  gate pile-up until P8 lands gate-aware `max_in_flight` support.
+
 ### Added — Phase 6: per-state concurrency caps
 - `templates/workflow.example.yaml` — agent states can now declare an
   optional `max_in_flight: N` (positive integer). When set,
