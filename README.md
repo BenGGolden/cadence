@@ -125,6 +125,32 @@ Fully autonomous. No operator presence required between fires.
 [connectors]: https://claude.ai/customize/connectors
 [routines]: https://claude.ai/code/routines
 
+#### GitHub CLI setup
+
+The implementer subagent opens PRs via `gh`, which isn't preinstalled
+on the routine image. Without it, the implementer falls back to
+"branch pushed; PR creation skipped" — workable, but you lose
+automatic PR links in the Linear summary.
+
+The fix is one line in the routine's **Setup script** field
+(environment settings, runs once at environment build and is cached
+across fires — not the routine prompt):
+
+```bash
+#!/bin/bash
+apt update && apt install -y gh
+```
+
+Routine sandboxes run as root on Ubuntu 24.04, so no `sudo` is
+needed. Pair the install with `GH_TOKEN` on the routine env (already
+covered in step 5 above) — `gh` reads `GH_TOKEN` automatically and
+auths headlessly. No `gh auth login` flow required.
+
+If you skip this and `gh` is missing at fire time, the implementer
+template is designed to bail cleanly rather than improvise — see the
+[hardening plan's Phase 9](./HARDENING-PLAN.md#phase-9--subagent-scope-discipline--bootstrap-silence)
+for the discipline.
+
 ### Ticket quality
 
 Cadence treats every Linear issue as a contract. The planner subagent
