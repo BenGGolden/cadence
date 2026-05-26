@@ -11,12 +11,6 @@ projects install the plugin, run `/cadence:init`, edit one YAML
 file and three subagent prompts, point a scheduled routine at
 `/cadence:tick`, and watch Linear.
 
-> **Build status:** v1 scaffolding is complete. All five slash commands
-> (`/cadence:init`, `/cadence:tick`, `/cadence:sweep`, `/cadence:status`,
-> `/cadence:create-ticket`) are implemented. Per-phase smoke checks for
-> the in-flight hardening work live alongside their acceptance criteria
-> in [HARDENING-PLAN.md](./HARDENING-PLAN.md).
-
 ---
 
 ## What it does
@@ -69,11 +63,22 @@ Both invocation modes use the same plugin and the same `/cadence:tick`
 command — they differ only in where the cron lives. You need: Claude Code with
 plugin support, a Linear MCP server, GitHub auth for the implementer subagent
 (`gh auth login` locally or `GH_TOKEN` on the routine), and a Linear board with
-one column per workflow stage. The default workflow needs seven columns —
-Todo, Planning, Plan Review, Implementing, Reviewing, In Review, Done —
-reshape via `workflow.yaml`. (`Plan Review` and `Reviewing` are new as of
-the plan-review / agent-review phase; add them before upgrading an existing
-board — see [CHANGELOG.md](./CHANGELOG.md).)
+one column per workflow stage. The default workflow:
+
+```mermaid
+flowchart TD
+    todo([Todo]) --> plan
+    plan --> plan_review{plan_review}
+    plan_review -->|approve| implement
+    plan_review -->|reject| plan
+    implement --> agent_review
+    agent_review --> human_review{human_review}
+    human_review -->|approve| done([Done])
+    human_review -->|reject| implement
+```
+
+— which needs seven Linear columns (Todo, Planning, Plan Review,
+Implementing, Reviewing, In Review, Done). Reshape via `workflow.yaml`.
 
 Gates use **one column plus two labels**, not three columns. Create the
 `cadence-approve` and `cadence-rework` labels in Linear alongside the
@@ -148,7 +153,8 @@ auths headlessly. No `gh auth login` flow required.
 
 If you skip this and `gh` is missing at fire time, the implementer
 template is designed to bail cleanly rather than improvise — see the
-[hardening plan's Phase 9](./HARDENING-PLAN.md#phase-9--subagent-scope-discipline--bootstrap-silence)
+`## Short-circuits` section in
+[templates/agents/implementer.md](./templates/agents/implementer.md)
 for the discipline.
 
 ### Ticket quality
@@ -418,20 +424,22 @@ Team: **ENG**   Project: **acme-platform**   Pickup: **Todo**
 
 ### Issues in workflow
 
-| ID      | Title                                              | Linear column | Workflow state    | Attempt | Lock | Needs human | Verdict          |
-|---------|----------------------------------------------------|---------------|-------------------|---------|------|-------------|------------------|
-| ENG-204 | Add OAuth callback retry on transient 5xx          | Implementing  | implement         | 2       | 🔒   |             |                  |
-| ENG-198 | Migrate analytics worker to BullMQ                 | In Review     | review (waiting)  | 1       |      |             |                  |
-| ENG-187 | Crash on empty rate-limit header                   | In Review     | review (waiting)  | 2       |      |             | cadence-rework   |
-| ENG-176 | Tighten auth middleware regex                      | Todo          | (pickup)          | —       |      |             |                  |
-| ENG-149 | Reindex legacy events                              | Implementing  | implement         | 3       |      | 🛑          |                  |
+| ID      | Title                                              | Linear column | Workflow state          | Attempt | Lock | Needs human | Verdict          |
+|---------|----------------------------------------------------|---------------|-------------------------|---------|------|-------------|------------------|
+| ENG-204 | Add OAuth callback retry on transient 5xx          | Implementing  | implement               | 2       | 🔒   |             |                  |
+| ENG-198 | Migrate analytics worker to BullMQ                 | In Review     | human_review (waiting)  | 1       |      |             |                  |
+| ENG-187 | Crash on empty rate-limit header                   | In Review     | human_review (waiting)  | 2       |      |             | cadence-rework   |
+| ENG-176 | Tighten auth middleware regex                      | Todo          | (pickup)                | —       |      |             |                  |
+| ENG-149 | Reindex legacy events                              | Implementing  | implement               | 3       |      | 🛑          |                  |
 
 ### Per-state counts
 
 - **(pickup)** (`Todo`) — 1 issues
 - **plan** (`Planning`) — 0 issues
+- **plan_review** (gate, `Plan Review`) — 0 issues
 - **implement** (`Implementing`) — 2 issues   🔒 1 locked   🛑 1 needs-human
-- **review** (gate, `In Review`) — 2 issues
+- **agent_review** (`Reviewing`) — 0 issues
+- **human_review** (gate, `In Review`) — 2 issues
   - awaiting verdict — 1 issues
   - 👎 cadence-rework — 1 issues
 - **done** (`Done`) — 0 issues
@@ -554,17 +562,35 @@ See [GUIDEPOSTS.md](./GUIDEPOSTS.md) for why the system is shaped this way.
 ```
 <consumer-repo>/
 └── .claude/
-    ├── workflow.yaml             # state machine config
+    ├── workflow.yaml             # state machine config — edit me
     ├── ticket-template.md        # Cadence ticket skeleton — paste into Linear
     ├── prompts/
-    │   └── global.md             # shared subagent preamble
-    └── agents/
-        ├── planner.md            # Opus, read-only
-        ├── implementer.md        # Sonnet, full edit + git/gh
-        └── reviewer.md           # Sonnet, read-only
+    │   └── global.md             # shared subagent preamble — edit me
+    ├── agents/                   # edit subagent prompts here
+    │   ├── planner.md            # Opus, read-only
+    │   ├── implementer.md        # Sonnet, full edit + git/gh
+    │   └── reviewer.md           # Opus, adversarial, read + git/gh
+    ├── commands/cadence/         # dispatch prose — committed so /schedule cloud routines can find it
+    │   ├── tick.md
+    │   ├── sweep.md
+    │   └── status.md
+    ├── hooks/                    # JSON validator, prompt validator, audit log — copied from the plugin
+    │   ├── validate_tracking_json.py
+    │   ├── validate_workflow_on_prompt.py
+    │   ├── audit_linear_writes.py
+    │   ├── validate_workflow.py
+    │   ├── parse_comments.py
+    │   ├── emit_tracking_comment.py
+    │   └── _common.py
+    ├── settings.json             # hook entries merged in
+    └── settings.local.json       # Linear MCP permissions allowlist merged in (per-operator, gitignored)
 ```
 
-Re-running `/cadence:init` refuses to overwrite. Use
+The top three (`workflow.yaml`, `prompts/global.md`, `agents/*.md`) are
+the operator-facing surface. The rest is infrastructure — re-copied
+verbatim on `/cadence:init --force`.
+
+Re-running `/cadence:init` without `--force` refuses to overwrite. Use
 `/cadence:init --force` to replace existing files.
 
 ---

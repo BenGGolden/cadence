@@ -3,8 +3,8 @@
 Captured from a review of the [Symphony spec](https://github.com/openai/symphony/blob/main/SPEC.md),
 [Stokowski](https://github.com/Sugar-Coffee/stokowski), and Cadence itself. These
 are design principles for any system that orchestrates coding agents off a
-tracker — meant to inform [HARDENING-PLAN.md](./HARDENING-PLAN.md) iterations
-and any future implementation of the concept.
+tracker — they framed Cadence's hardening track (see [CHANGELOG.md](./CHANGELOG.md))
+and should frame any future implementation of the concept.
 
 Across the spec and the two implementations, the things that actually move
 output quality (as opposed to operational completeness) cluster into a small
@@ -97,8 +97,10 @@ Each of these is "the agent might forget X" → "X is enforced by the harness."
 Things will break in ways the operator wasn't watching. The system has to be
 reconstructable after the fact.
 
-- **Audit log of every tracker write** (Cadence's HARDENING-PLAN P2.3 is the
-  right shape, even if not yet landed).
+- **Audit log of every tracker write.** Cadence ships a `PostToolUse`
+  hook (`audit_linear_writes.py`) that appends one JSONL line per Linear
+  write to `.cadence/audit.log` — durable in `/loop` mode, per-fire in
+  `/schedule` mode (the durability gap is tracked in BACKLOG).
 - **Dry-run mode** that validates config and renders the prompt without side
   effects. Cadence's `/cadence:tick dry-run` with the "show your work"
   validation evidence is the right grain.
@@ -150,30 +152,10 @@ A few anti-goals that the implementations gesture at, mostly by omission:
 
 ---
 
-## Concrete suggestions for Cadence specifically
-
-Holding the above against the current state of Cadence:
-
-- **The ticket-quality input is currently implicit.** Worth scaffolding an
-  acceptance-criteria pattern into the `/cadence:init` output and having the
-  planner subagent enforce it before implementation begins.
-- **No adversarial-review stage in the default template.** The shipped
-  template is plan → implement → review → done with the same model class.
-  Adding an explicit code-review stage with `model: claude-opus` and
-  `session: fresh` semantics (when Claude Code subagents support that —
-  today the harness doesn't give you per-invocation session control the way
-  Stokowski's CLI does) would be a quality win.
-- **The HARDENING-PLAN P2.3 audit log is genuinely the missing piece.** Land
-  it. Once you're running real work through `/schedule`, you'll want it.
-- **Consider per-state concurrency caps for multi-operator setups.** Currently
-  the soft lock prevents two operators clobbering one issue, but doesn't
-  prevent six concurrent `implement`s when only one `review` slot makes
-  sense.
-- **The lifecycle context block in tick.md Step 13 is already strong** — the
-  level of detail it dictates (transition info, rework context, branch
-  suggestion) is exactly what subagents need pre-built rather than inferred.
-  Hold that line; don't let it drift into "let the agent figure it out."
-
 The through-line: **the system is a quality harness around the agent, not a
 replacement for human judgment.** The implementations that recognize that
 produce good software; the ones that try to remove the humans don't.
+
+For what Cadence has shipped against these principles see
+[CHANGELOG.md](./CHANGELOG.md); for known gaps and deferred ideas see
+[BACKLOG.md](./BACKLOG.md).

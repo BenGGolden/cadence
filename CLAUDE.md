@@ -12,16 +12,21 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
 
 ## Repo map
 
-- `commands/` — the four slash commands (`tick`, `init`, `sweep`, `status`).
-  Each `.md` is **dispatch prose the harness executes**, not documentation.
+- `commands/` — the five slash commands (`tick`, `init`, `sweep`, `status`,
+  `create-ticket`). Each `.md` is **dispatch prose the harness executes**,
+  not documentation.
 - `templates/` — files `/cadence:init` scaffolds into a consumer repo:
-  `workflow.example.yaml`, `global-prompt.example.md`, `agents/*.md`.
+  `workflow.example.yaml`, `global-prompt.example.md`, `ticket-template.md`,
+  `agents/*.md`, `hooks/*.py`, `settings.example.json`.
+- `scripts/` — deterministic Python helpers invoked from command prose via
+  Bash (config validation, comment parsing, tracking-comment emission, plus
+  the plugin-side merge helpers used by `/cadence:init`). Contract documented
+  in [`scripts/README.md`](./scripts/README.md).
 - `.claude-plugin/plugin.json` — plugin manifest (name, version, metadata).
 - `.github/workflows/validate.yml` — CI: manifest schema + command frontmatter.
 - Root docs: `README.md` (operational shape), `GUIDEPOSTS.md` (design
-  principles / the *why*), `HARDENING-PLAN.md` (active roadmap, with
-  per-phase smoke checks alongside each phase's acceptance criteria),
-  `MIGRATION.md` (Stokowski → Cadence), `CHANGELOG.md`.
+  principles / the *why*), `CHANGELOG.md` (what shipped, in order),
+  `BACKLOG.md` (ideas / deferred work), `MIGRATION.md` (Stokowski → Cadence).
 
 ## Load-bearing invariants — do not break these
 
@@ -51,5 +56,6 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
 |---|---|
 | How the system behaves when installed | `README.md` |
 | Why it's designed this way | `GUIDEPOSTS.md` |
-| What's being hardened next, and how | `HARDENING-PLAN.md` |
-| How a phase is smoke-tested | `HARDENING-PLAN.md` (per-phase acceptance criteria) |
+| What has shipped, in order | `CHANGELOG.md` |
+| Deferred ideas / known gaps | `BACKLOG.md` |
+| Helper-script contract (exit codes, stdin/stdout shape) | `scripts/README.md` |
