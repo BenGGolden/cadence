@@ -6,6 +6,45 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — Repo reorg: `templates/` now mirrors the consumer's `.claude/`
+- `templates/` is now a 1:1 mirror of the consumer's `.claude/` tree.
+  `/cadence:init` (commands/init.md Step 4) copies every file under
+  `templates/` to the same relative path under `.claude/`. The
+  `.example` suffixes are gone:
+  - `templates/workflow.example.yaml` → `templates/workflow.yaml`
+  - `templates/global-prompt.example.md` → `templates/prompts/global.md`
+  - `templates/settings.example.json` → `templates/settings.json`
+- The four dispatch-prose helpers move from `scripts/` to
+  `templates/hooks/` (alongside the three event-hook scripts that were
+  already there): `validate_workflow.py`, `_common.py`,
+  `parse_comments.py`, `emit_tracking_comment.py`. They were already
+  copied into `.claude/hooks/` at init; the source location now
+  reflects that. Sibling imports (`from _common import ...`) keep
+  working in the new directory.
+- `scripts/` now contains only the two plugin-only init-time merge
+  helpers (`merge_settings_hooks.py`, `merge_settings_permissions.py`)
+  that are never scaffolded to the consumer. `scripts/README.md`
+  rewritten to reflect this narrower scope.
+- `commands/init.md` Step 4 — copy table updated to the new source
+  paths; the merge_settings_hooks invocation now points at
+  `templates/settings.json`. Destination paths in `.claude/` are
+  unchanged, so this is a no-op for already-initialised consumers.
+  `commands/{tick,sweep,status}.md` already invoked their helpers via
+  `${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/...` and need no path
+  changes.
+- `CLAUDE.md` repo map rewritten to describe the new layout; docstrings
+  in `templates/hooks/_common.py`, `templates/hooks/validate_tracking_json.py`,
+  and `templates/hooks/audit_linear_writes.py` updated to cite the new
+  paths. README, MIGRATION, and BACKLOG references updated.
+- **Motivation**: the previous layout split the seven Python files that
+  ship to `.claude/hooks/` across two source directories
+  (`templates/hooks/` and `scripts/`) with no behavioural distinction,
+  and the `.example` suffixes plus path renames (e.g.
+  `global-prompt.example.md` → `prompts/global.md`) meant
+  `commands/init.md`'s copy table was the only place the mapping was
+  legible. With the new layout the rule is "every file under
+  `templates/` lands at the same path under `.claude/`."
+
 ### Changed — Phase 9: subagent scope discipline + bootstrap silence
 - `templates/agents/implementer.md` — adds a `## Short-circuits` section
   with two rules. **Rule A** (no-op short-circuit): when the acceptance

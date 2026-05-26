@@ -14,14 +14,25 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
 
 - `commands/` — the five slash commands (`tick`, `init`, `sweep`, `status`,
   `create-ticket`). Each `.md` is **dispatch prose the harness executes**,
-  not documentation.
-- `templates/` — files `/cadence:init` scaffolds into a consumer repo:
-  `workflow.example.yaml`, `global-prompt.example.md`, `ticket-template.md`,
-  `agents/*.md`, `hooks/*.py`, `settings.example.json`.
-- `scripts/` — deterministic Python helpers invoked from command prose via
-  Bash (config validation, comment parsing, tracking-comment emission, plus
-  the plugin-side merge helpers used by `/cadence:init`). Contract documented
-  in [`scripts/README.md`](./scripts/README.md).
+  not documentation. `tick.md`, `sweep.md`, and `status.md` are also copied
+  to the consumer's `.claude/commands/cadence/` at init so `/schedule`
+  cloud routines can dispatch them without resolving a plugin root.
+- `templates/` — **mirror of the consumer's `.claude/` tree.** Everything
+  here is copied 1:1 to the same relative path under `.claude/` by
+  `/cadence:init`: `workflow.yaml`, `prompts/global.md`, `ticket-template.md`,
+  `agents/*.md`, `hooks/*.py`, `settings.json` (the last is merged into
+  `.claude/settings.json` rather than copied verbatim).
+- `templates/hooks/` — seven Python files copied to the consumer's
+  `.claude/hooks/`. Three are PreToolUse / UserPromptSubmit / PostToolUse
+  hooks (`validate_tracking_json.py`, `validate_workflow_on_prompt.py`,
+  `audit_linear_writes.py`); four are deterministic helpers the dispatch
+  prose invokes via Bash (`validate_workflow.py`, `_common.py`,
+  `parse_comments.py`, `emit_tracking_comment.py`). All seven are always
+  overwritten on init — they are plugin-owned executables, not user config.
+- `scripts/` — plugin-only init-time helpers (`merge_settings_hooks.py`,
+  `merge_settings_permissions.py`). Never scaffolded to the consumer; only
+  invoked from `commands/init.md`. Contract documented in
+  [`scripts/README.md`](./scripts/README.md).
 - `.claude-plugin/plugin.json` — plugin manifest (name, version, metadata).
 - `.github/workflows/validate.yml` — CI: manifest schema + command frontmatter.
 - Root docs: `README.md` (operational shape), `GUIDEPOSTS.md` (design

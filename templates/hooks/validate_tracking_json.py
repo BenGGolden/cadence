@@ -9,7 +9,7 @@ with a clear diagnostic.
 Why this exists:
   Tracking-comment bodies embed JSON that downstream fires read back to count
   attempts and route rework. An LLM that hand-writes a comment instead of going
-  through `scripts/emit_tracking_comment.py` can produce malformed JSON, which
+  through `templates/hooks/emit_tracking_comment.py` can produce malformed JSON, which
   poisons every subsequent fire's bookkeeping. This hook is the last line of
   defence before bad JSON reaches Linear.
 
@@ -22,7 +22,7 @@ Behaviour:
 Stdin payload (PreToolUse):
   {"tool_name": "...", "tool_input": {"body": "..."}, "tool_use_id": "..."}
 
-Matcher contract (kept in sync with templates/settings.example.json):
+Matcher contract (kept in sync with templates/settings.json):
   The settings.json matcher is a regex that catches any Linear MCP tool
   named `create_comment` or `save_comment` regardless of the MCP server's
   namespace prefix, as long as the prefix contains "linear" or "Linear".

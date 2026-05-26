@@ -2,8 +2,8 @@
 """Merge Cadence's Linear-MCP permission allowlist into .claude/settings.local.json.
 
 Plugin-only helper — invoked from commands/init.md after the hooks merge.
-Not scaffolded to the consumer; it lives in scripts/ and is called by
-/cadence:init.
+Not scaffolded to the consumer; it lives in scripts/ (init-time only) and
+is called by /cadence:init.
 
 The bootstrap calls a small, fixed set of Linear MCP verbs (list_issues,
 get_issue, list_comments, save_comment / create_comment, save_issue /

@@ -66,8 +66,7 @@ so the picker renders the verdict as a single-select control.)
 
 ### 2. Rewrite `workflow.yaml`
 
-Cadence schema (see `templates/workflow.example.yaml` for the canonical
-shape):
+Cadence schema (see `templates/workflow.yaml` for the canonical shape):
 
 ```yaml
 linear:
@@ -114,7 +113,7 @@ states:
 
 This is the **minimum** Cadence shape that mirrors a typical Stokowski
 flow. The shipped default template
-([`templates/workflow.example.yaml`](./templates/workflow.example.yaml))
+([`templates/workflow.yaml`](./templates/workflow.yaml))
 adds two more states — a `plan_review` gate between `plan` and
 `implement` so a human approves the plan before code burns budget, and
 an `agent_review` adversarial reviewer state between `implement` and
