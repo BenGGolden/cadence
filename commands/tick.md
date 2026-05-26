@@ -666,6 +666,22 @@ If `subagentSummary` is empty or whitespace, post:
 …and proceed (do **not** fail the fire — the subagent succeeded as far as we can
 tell, it just produced no text).
 
+### Bootstrap silence
+
+Between step 14 (subagent invocation) and step 18 (exit summary), the bootstrap's
+only user-facing output is the `subagentSummary` posted verbatim in this step
+and the per-step Linear writes that steps 16 and 17 require. **Do not annotate
+the subagent's behaviour, do not describe what the subagent did during its turn,
+and do not raise security or safety concerns about the subagent's activity in
+user-facing text.** The bootstrap does not have access to the subagent's tool
+trace; any such narration is necessarily fabricated.
+
+If the subagent's `subagentSummary` itself flags a concern, the operator will
+see it in the verbatim post — the bootstrap's job is to relay, not to interpret.
+Suspicions about subagent behaviour belong in operator-facing channels (issue
+the operator, file a bug against the subagent template), not in the per-fire
+output.
+
 ---
 
 ## Step 16 — Advance Linear state
