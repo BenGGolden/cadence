@@ -38,7 +38,7 @@ any active work.
 **Discussed in**: conversation on 2026-05-15 about whether Linear's
 extension surface lets Cadence look less like a series of workarounds.
 The label-group recommendation (now in
-[templates/workflow.example.yaml](./templates/workflow.example.yaml)
+[templates/workflow.yaml](./templates/workflow.yaml)
 and [README.md](./README.md)) came out of the same conversation; this
 one is the longer-horizon companion.
 
@@ -281,7 +281,7 @@ gap.
   `.cadence/audit.log` and posts a single `<!-- cadence:audit ... -->`
   tracking comment summarising the writes.
 - Mark the comment with its own prefix so
-  [parse_comments.py](./scripts/parse_comments.py) ignores it on
+  [parse_comments.py](./templates/hooks/parse_comments.py) ignores it on
   future fires (audit comments are write-only — never read back by
   the bootstrap).
 
@@ -321,7 +321,7 @@ so a GitLab or Bitbucket consumer can route the implementer to `glab`
 implementer push the branch, hit Rule B (`gh` missing), and bail
 without opening a merge request. The branch lands; the MR doesn't.
 Everything downstream that uses the PR URL — the reviewer's
-`gh pr view`, [parse_comments.py](./scripts/parse_comments.py)'s
+`gh pr view`, [parse_comments.py](./templates/hooks/parse_comments.py)'s
 `latest_implementer_summary.pr_url`, the adversarial Lifecycle
 Context's `PR:` line — falls back to `git diff`, which works but
 loses platform-side context (reviewers, conversation, CI status).
@@ -420,72 +420,79 @@ which files Cadence put where."
 
 ---
 
-## Ticket-quality enforcement for Linear-native ticket creation
+## Relax planner's AC gate; promote planner-proposed AC into the ticket description
 
-**Idea**: [/cadence:create-ticket](./commands/create-ticket.md) is a
-local-only slash command. Tickets created directly in Linear (the web
-app, mobile, copy-paste from elsewhere, the "duplicate issue" button)
-bypass the drafter entirely. The
-[planner.md ticket-quality gate](./templates/agents/planner.md)
-catches them on first fire and refuses to plan — correctly — but each
-refusal costs a fire and an attempt counter. Bridge the gap so common
-Linear-side ticket creation paths produce Cadence-shaped tickets
-without requiring the operator to run a local slash command first.
+**Idea**: relax the planner's hard AC-gate at
+[templates/agents/planner.md:52-81](./templates/agents/planner.md).
+When `## Acceptance Criteria` is absent from the ticket, the planner
+produces a plan as normal plus a `## Proposed Acceptance Criteria`
+section in its returned summary. The Cadence bootstrap then edits the
+Linear issue description to promote those proposed AC into the standard
+`## Acceptance Criteria` location. The existing `plan_review` gate is
+the human signoff — the reviewer sees plan and proposed AC together
+and approves with `cadence-approve`, or sends back with `cadence-rework`
+and feedback.
 
-**Why**: the design-target operator creates tickets across multiple
-surfaces (laptop, phone, the Linear web UI). Requiring
-`/cadence:create-ticket` to be the entry point for every ticket is
-unrealistic. The planner gate is the only enforcement today, which
-means the cost of a malformed ticket is one wasted fire per attempt
-(capped at `max_attempts_per_issue`, then escalated). Cheap per
-ticket, but accumulates if the operator routinely creates "just one
-line" tickets and expects Cadence to handle them.
+**Why**: today's hard gate costs one wasted fire per malformed ticket
+(capped at `max_attempts_per_issue`, then escalated). The design-target
+operator creates tickets from multiple surfaces (laptop, phone, Linear
+web UI) and can't realistically run `/cadence:create-ticket` every
+time. Letting the planner author the AC:
 
-**Candidate paths** (not yet chosen):
+- Dissolves the "Linear-web-UI bypasses the drafter" problem — the
+  planner now expects to be the one who shapes the ticket.
+- Matches the natural "I have an idea — figure out what done means"
+  workflow many operators already use.
+- Keeps AC source-of-truth in the ticket description (bootstrap
+  promotes them there), so the implementer template doesn't need a
+  second lookup path and the AC don't get scattered across multiple
+  proposal comments.
+- Reuses `plan_review` as the scope signoff — no new gate needed.
 
-1. **Linear native issue template.** Linear supports issue templates
-   per team. Documenting how to register the Cadence ticket template
-   as a Linear template would make the happy path one Linear UI
-   selection rather than a local slash command. No plugin code
-   change — pure docs.
-2. **Tighter planner backstop.** Today the planner refuses with one
-   summary shape and counts the refusal toward
-   `max_attempts_per_issue`. It could (a) include a paste-ready
-   rewritten ticket body in the refusal comment, (b) escalate with
-   `cadence-needs-human` immediately on the first refusal instead of
-   waiting for the attempt cap, or both. Lower-cost UX on an
-   enforcement mechanism that already works.
-3. **Linear webhook + validator service.** A small service receives
-   Linear's `Issue.create` webhook and posts a comment on malformed
-   tickets pointing at the template. Adds infrastructure Cadence has
-   deliberately avoided.
+**Shape sketch**:
 
-Path 1 is the cheapest and most in-grain with Cadence's
-"consumer owns Linear configuration" stance. Path 2 sharpens the
-existing mechanism without new infrastructure. Path 3 is the
-heaviest and crosses into the dashboard/UI territory the project
-has explicitly avoided.
+- [templates/agents/planner.md](./templates/agents/planner.md): the
+  refuse-and-stop gate becomes propose-and-continue. If AC are
+  present, plan against them as today. If absent, emit
+  `## Proposed Acceptance Criteria` with `- [ ] **AC-N**` items
+  alongside the rest of the plan.
+- [commands/tick.md](./commands/tick.md) gains a step (after posting
+  the planner summary, before advancing state) that, when the planner
+  emitted proposed AC, edits the Linear issue description to insert
+  them into the standard `## Acceptance Criteria` section.
+- New Linear-write surface for the bootstrap (issue-description
+  update, not just comment add). Recorded by
+  [templates/hooks/audit_linear_writes.py](./templates/hooks/audit_linear_writes.py).
+- Rework rounds: planner re-runs with feedback and re-emits AC; the
+  bootstrap overwrites the description's AC section on each plan
+  promotion.
 
 **Open questions**:
 
-- Does Linear's template feature support markdown bodies with
-  checkboxes and bold AC-N markers the way the Cadence ticket
-  template needs? Confirm before recommending the docs path.
-- If path 1 lands, does `/cadence:create-ticket` still pull its
-  weight, or is the local command obsolete once the Linear template
-  covers the happy path?
-- Should the planner's "Cannot plan" comment include a paste-ready
-  corrected ticket body? Adds value but blurs the planner's role
-  from "judge" into "co-author."
+- **Description edit safety.** How does the bootstrap insert AC
+  without clobbering operator-authored content? Likely: locate the
+  `## Acceptance Criteria` H2, replace the block between it and the
+  next H2 (or EOF). Append at end if the H2 is missing. First H2 wins
+  if there are multiple.
+- **Mixed authorship.** What if the operator wrote some AC and the
+  planner sees gaps it wants to add? Options: (a) planner only
+  proposes when none are present (binary); (b) planner can propose
+  additions marked distinctly until approved at `plan_review`. (a) is
+  simpler; (b) closes a real gap but adds prose complexity.
+- **/cadence:create-ticket positioning.** Becomes one of two valid
+  entry paths ("I already know my AC") rather than the only correct
+  one. Worth re-examining whether it earns its place once the
+  planner-AC path has shipped — the AC-validation step in `create-ticket`'s
+  Step 3b still has value as a faster local feedback loop than waiting
+  for a tick to fire, but the obligation to use it dissolves.
 
-**Why not now**: the planner gate is doing its job — malformed
-tickets fail closed. The cost is per-operator-tolerance; if the
-operator finds the failure loop annoying they will reach for
-`/cadence:create-ticket` themselves. Pick this up when the
-malformed-ticket rate or the operator's frustration crosses a
-threshold.
+**Why not now**: agreed direction (2026-05-26) but unscheduled. The
+existing planner gate keeps tickets honest in the meantime; ship this
+when ready to take on the issue-description write surface.
 
-**Discussed in**: post-P9 review conversation on 2026-05-25.
+**Discussed in**: conversation on 2026-05-26 — replaces the prior
+"Ticket-quality enforcement for Linear-native ticket creation"
+framing.
 
 ---
 

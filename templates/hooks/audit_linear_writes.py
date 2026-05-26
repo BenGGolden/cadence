@@ -22,7 +22,7 @@ Behaviour:
 Stdin payload (PostToolUse):
   {"tool_name": "...", "tool_input": {...}, "tool_response": {...}, ...}
 
-Matcher contract (kept in sync with templates/settings.example.json):
+Matcher contract (kept in sync with templates/settings.json):
   The settings.json matcher is a regex that catches any Linear MCP write
   tool (`create_comment`, `save_comment`, `save_issue`, `update_issue`,
   `add_label`, `remove_label`) regardless of MCP server namespace prefix,

@@ -1,9 +1,11 @@
-"""Shared helpers for the Cadence helper scripts.
+"""Shared helpers for the Cadence dispatch-prose helpers.
 
-Imported by validate_workflow.py, parse_comments.py, and
-emit_tracking_comment.py. The hook scripts under templates/hooks/ deliberately
-do NOT import this module — they stay self-contained so the consumer's hook
-loader never has to resolve a relative path.
+Imported by validate_workflow.py and emit_tracking_comment.py (siblings in
+templates/hooks/). The three event-hook scripts in this same directory
+(validate_tracking_json.py, validate_workflow_on_prompt.py,
+audit_linear_writes.py) deliberately do NOT import this module — they stay
+self-contained so the consumer's hook loader never has to resolve a relative
+path.
 
 Exit-code convention (shared across all scripts):
   0  success

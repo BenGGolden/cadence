@@ -340,7 +340,7 @@ Linear:
 Plus the bare names (`save_comment`, `get_issue`, etc.) some bridges
 expose without an `mcp__<server>__` prefix.
 
-The shipped Cadence hook matchers in `templates/settings.example.json`
+The shipped Cadence hook matchers in `templates/settings.json`
 catch all of these via the regex pattern
 `mcp__[A-Za-z0-9_-]*[Ll]inear[A-Za-z0-9_-]*__<tool>` — any namespace
 containing `linear` or `Linear`. **The Claude Code permission allowlist

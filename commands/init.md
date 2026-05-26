@@ -74,10 +74,16 @@ Use the Read tool to load each source file, then Write tool to create the
 destination. Source paths use `${CLAUDE_PLUGIN_ROOT}` — substitute the
 actual plugin root at runtime.
 
+The `${CLAUDE_PLUGIN_ROOT}/templates/` tree mirrors the consumer's
+`.claude/` tree 1:1 — every file under `templates/` is copied to the same
+relative path under `.claude/`. The three slash-command files live at
+`${CLAUDE_PLUGIN_ROOT}/commands/` (plugin-manifest contract) and copy to
+`.claude/commands/cadence/`.
+
 | Source                                                            | Destination                  |
 |-------------------------------------------------------------------|------------------------------|
-| `${CLAUDE_PLUGIN_ROOT}/templates/workflow.example.yaml`           | `.claude/workflow.yaml`      |
-| `${CLAUDE_PLUGIN_ROOT}/templates/global-prompt.example.md`        | `.claude/prompts/global.md`  |
+| `${CLAUDE_PLUGIN_ROOT}/templates/workflow.yaml`                   | `.claude/workflow.yaml`      |
+| `${CLAUDE_PLUGIN_ROOT}/templates/prompts/global.md`               | `.claude/prompts/global.md`  |
 | `${CLAUDE_PLUGIN_ROOT}/templates/ticket-template.md`              | `.claude/ticket-template.md` |
 | `${CLAUDE_PLUGIN_ROOT}/templates/agents/planner.md`               | `.claude/agents/planner.md`  |
 | `${CLAUDE_PLUGIN_ROOT}/templates/agents/implementer.md`           | `.claude/agents/implementer.md` |
@@ -85,10 +91,10 @@ actual plugin root at runtime.
 | `${CLAUDE_PLUGIN_ROOT}/templates/hooks/validate_tracking_json.py` | `.claude/hooks/validate_tracking_json.py` |
 | `${CLAUDE_PLUGIN_ROOT}/templates/hooks/validate_workflow_on_prompt.py` | `.claude/hooks/validate_workflow_on_prompt.py` |
 | `${CLAUDE_PLUGIN_ROOT}/templates/hooks/audit_linear_writes.py`    | `.claude/hooks/audit_linear_writes.py` |
-| `${CLAUDE_PLUGIN_ROOT}/scripts/validate_workflow.py`              | `.claude/hooks/validate_workflow.py` |
-| `${CLAUDE_PLUGIN_ROOT}/scripts/_common.py`                        | `.claude/hooks/_common.py`   |
-| `${CLAUDE_PLUGIN_ROOT}/scripts/parse_comments.py`                 | `.claude/hooks/parse_comments.py` |
-| `${CLAUDE_PLUGIN_ROOT}/scripts/emit_tracking_comment.py`          | `.claude/hooks/emit_tracking_comment.py` |
+| `${CLAUDE_PLUGIN_ROOT}/templates/hooks/validate_workflow.py`      | `.claude/hooks/validate_workflow.py` |
+| `${CLAUDE_PLUGIN_ROOT}/templates/hooks/_common.py`                | `.claude/hooks/_common.py`   |
+| `${CLAUDE_PLUGIN_ROOT}/templates/hooks/parse_comments.py`         | `.claude/hooks/parse_comments.py` |
+| `${CLAUDE_PLUGIN_ROOT}/templates/hooks/emit_tracking_comment.py`  | `.claude/hooks/emit_tracking_comment.py` |
 | `${CLAUDE_PLUGIN_ROOT}/commands/tick.md`                          | `.claude/commands/cadence/tick.md` |
 | `${CLAUDE_PLUGIN_ROOT}/commands/sweep.md`                         | `.claude/commands/cadence/sweep.md` |
 | `${CLAUDE_PLUGIN_ROOT}/commands/status.md`                        | `.claude/commands/cadence/status.md` |
@@ -101,13 +107,14 @@ The seven files copied into `.claude/hooks/` and the three files copied
 into `.claude/commands/cadence/` are always overwritten on init (including
 without `--force`). They are plugin-owned executables and dispatch prose,
 not user config; keeping them in sync with the installed plugin is the
-point. `validate_workflow.py`, `_common.py`, `parse_comments.py`, and
-`emit_tracking_comment.py` are siblings under `.claude/hooks/` so that the
-`UserPromptSubmit` hook and the copied `/cadence:*` commands can call them
-via `$CLAUDE_PROJECT_DIR/.claude/hooks/...` without resolving a plugin path
-at runtime — which is what makes the workflow runnable from a `/schedule`
-cloud routine (where `${CLAUDE_PLUGIN_ROOT}` is not defined because the
-plugin is not installed in the cloud session).
+point. The four `.py` files at `templates/hooks/` that are also called from
+the dispatch prose (`validate_workflow.py`, `_common.py`, `parse_comments.py`,
+`emit_tracking_comment.py`) are siblings of the three event-hook scripts so
+that the `UserPromptSubmit` hook and the copied `/cadence:*` commands can
+call them via `$CLAUDE_PROJECT_DIR/.claude/hooks/...` without resolving a
+plugin path at runtime — which is what makes the workflow runnable from a
+`/schedule` cloud routine (where `${CLAUDE_PLUGIN_ROOT}` is not defined
+because the plugin is not installed in the cloud session).
 
 If `--force` was supplied and a destination already exists, overwrite it.
 If `--force` was NOT supplied (which means step 2 fell through because
@@ -126,7 +133,7 @@ absent):
 ```
 python "${CLAUDE_PLUGIN_ROOT}/scripts/merge_settings_hooks.py" \
   --settings-path .claude/settings.json \
-  --template-path "${CLAUDE_PLUGIN_ROOT}/templates/settings.example.json"
+  --template-path "${CLAUDE_PLUGIN_ROOT}/templates/settings.json"
 ```
 
 The merge is idempotent: re-running on a settings file that already contains
