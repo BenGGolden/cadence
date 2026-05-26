@@ -217,9 +217,8 @@ and `type: gate` states — Rule 6 forbids it on terminals):
 2. If `inFlightCount >= max_in_flight`, mark this state as **over-cap** for
    this fire.
 
-Then filter `candidates`. For each candidate, run a **reachability walk**
-and drop the candidate if any state on its happy-path downstream is over
-its cap:
+Then filter `candidates`. For each candidate, run a **bounded reachability
+walk** and drop the candidate if any state on its walk is over its cap:
 
 1. Determine the candidate's **effective target state**:
    - If the candidate's current Linear column equals `linear.pickup_state`,
@@ -232,12 +231,22 @@ its cap:
    - Otherwise, the target is the workflow state whose `linear_state`
      matches the candidate's current Linear column.
 2. Walk the **happy-path downstream** from the effective target state.
-   Follow `next` for `type: agent` states and `on_approve` for
-   `type: gate` states. Stop when the walk reaches a `type: terminal`
-   state. Track which states the walk has already visited; if the walk
-   would re-visit one, break (the validator does not currently reject
-   happy-path cycles, and the guard is cheap insurance against a
-   pathological config).
+   Follow `next` for `type: agent` states. The walk is **bounded at the
+   next gate or terminal**: include the effective target and every
+   subsequent agent state, plus the first `type: gate` or `type: terminal`
+   state reached. Stop there — do not continue past it. Track visited
+   states; if the walk would re-visit one, break (the validator does not
+   currently reject happy-path cycles, and the guard is cheap insurance
+   against a pathological config).
+
+   **Why bounded**: each gate is a parking spot for a distinct human's
+   attention. A candidate that enters the workflow only needs to pass
+   through *its* next gate's queue — downstream gates are a different
+   reviewer's concern until the candidate is closer to them. Conflating
+   them means an at-cap gate one reviewer owns silently blocks pickups
+   that would have parked at an earlier gate a *different* reviewer
+   owns and could clear. Operators get gate-level backpressure by
+   capping each gate individually; that's the intended lever.
 3. If any visited state is over-cap, drop the candidate from
    `candidates` and continue with the next one. **Exception**: when the
    candidate is a verdict-bearing gate issue (it sits in some gate's
@@ -245,6 +254,20 @@ its cap:
    that gate is **excluded** from the over-cap check for this candidate.
    Acting on a verdict drains the gate, so the gate's own cap must not
    block the action — otherwise an at-cap gate would lock itself.
+
+Examples for the default workflow (`plan → plan_review → implement →
+agent_review → human_review → done`):
+
+- A `Todo` candidate's walk is `plan → plan_review`. Caps on
+  `plan` and `plan_review` bind; caps on `implement`, `agent_review`,
+  or `human_review` do **not** affect this candidate.
+- A candidate at `plan_review` with `cadence_approve` has its walk start
+  at `implement` and run `implement → agent_review → human_review`. Caps
+  on `implement`, `agent_review`, and `human_review` all bind.
+- A candidate at `human_review` with `cadence_approve` has its walk
+  start at `done` (terminal); no caps bind. With `cadence_rework` the
+  walk is `implement → agent_review → human_review` (with `human_review`
+  drain-exempt), so caps on `implement` and `agent_review` bind.
 
 If `candidates` is empty (either no eligible issues to begin with, or every
 candidate is blocked by an over-cap state on its walk), print

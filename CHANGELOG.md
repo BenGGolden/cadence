@@ -6,6 +6,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — Phase 8 amendment: bound the reachability walk at the next gate
+- `commands/tick.md` Step 5 — the reachability walk now **stops at the
+  first gate or terminal** reached (inclusive), instead of traversing
+  every state to the workflow's terminal. Each gate is a parking spot
+  for a distinct human's attention; conflating gates in the walk meant
+  an at-cap downstream gate (e.g. `human_review`, one reviewer's queue)
+  silently blocked Todo pickups that would have parked at an upstream
+  gate (`plan_review`, a different reviewer's queue with capacity).
+  Under the bounded walk, each gate-owning reviewer gets an independent
+  cap; backpressure into a specific gate requires capping that gate
+  directly. The drain exception for verdict-bearing gate candidates
+  (their own gate is excluded from the check) is unchanged. Step 5 also
+  documents the worked example walks for the default workflow so the
+  shape of the binding is obvious without re-deriving it from the
+  prose. No script or schema changes.
+- `templates/workflow.example.yaml` — gate-cap and agent-cap comments
+  rewritten to describe the bounded walk explicitly (which candidates'
+  walks reach a given cap; Todo pickups not affected by downstream-gate
+  caps).
+- `README.md` — "Workflow tuning" section rewritten with a "Why the
+  walk stops at the first gate" paragraph and a worked-example table
+  showing which caps bind for each candidate-state shape in the default
+  workflow.
+
 ### Changed — Phase 8: gate-aware concurrency caps
 - `scripts/validate_workflow.py` Rule 6 — relaxed to allow `max_in_flight`
   on `type: gate` states in addition to `type: agent`. Terminals are

@@ -2488,11 +2488,18 @@ P8 extends `max_in_flight` to gates with the following semantics:
   regardless of whether issues carry verdict labels), the gate is
   **over-cap** for the fire.
 - A candidate is dropped from `candidates` if any state on its
-  **happy-path downstream** is over-cap. The happy-path walk follows
-  `next` for agent states and `on_approve` for gate states, starting
-  from the candidate's effective target and stopping at
-  `type: terminal`. `on_rework` edges are not followed — the cap binds
-  against expected flow, not worst-case.
+  **bounded happy-path walk** is over-cap. The walk starts at the
+  candidate's effective target, follows `next` through agent states,
+  and **stops at the first `type: gate` or `type: terminal` state
+  reached** (inclusive — the gate/terminal is checked, then the walk
+  ends). `on_rework` edges are not followed.
+
+  Each gate is a parking spot for a distinct human's attention; an
+  unbounded walk would conflate one reviewer's bandwidth signal with
+  another's. Operators get per-gate backpressure by capping each gate
+  individually — Todo pickups walk to `plan_review` and stop there;
+  plan-approved candidates walk through `implement` / `agent_review`
+  to `human_review` and stop there.
 - **Drain vs feed distinction**: for candidates already sitting in a
   gate's column with a verdict label (approve or rework), the gate
   itself is excluded from the over-cap check. Acting on a verdict
@@ -2526,12 +2533,15 @@ Example shape on `plan_review`:
     on_rework: plan
     max_rework: 2
     # Optional: cap the gate's waiting queue. When N issues are
-    # sitting in this column, the bootstrap blocks new pickups whose
-    # happy-path downstream would pass through this gate. Verdict-
-    # bearing issues already in the column are NOT blocked — acting
-    # on them drains the queue. Useful for capping the depth of work
-    # a human reviewer is asked to triage. Omit for unlimited. Valid
-    # on type: gate and type: agent (rejected on terminals).
+    # sitting in this column, the bootstrap blocks pickups whose
+    # bounded walk reaches this gate (e.g. Todos walking to
+    # plan_review; plan-approved candidates walking to human_review).
+    # Downstream gates do NOT block upstream pickups — each gate's
+    # cap is independent. Verdict-bearing issues already in this
+    # column are NOT blocked — acting on them drains the queue.
+    # Useful for capping the depth of work this gate's reviewer is
+    # asked to triage. Omit for unlimited. Valid on type: gate and
+    # type: agent (rejected on terminals).
     # max_in_flight: 5
 ```
 
@@ -2577,9 +2587,11 @@ Then filter `candidates`. For each candidate:
      `label.cadence_rework`: target is `<gate>.on_rework`.
    - Otherwise: target is the workflow state whose `linear_state`
      matches the candidate's current column.
-2. Walk the **happy-path downstream** from the effective target,
-   following `next` for agent states and `on_approve` for gate states.
-   Stop at `type: terminal`. Track visited states; break on re-visit.
+2. Walk the **bounded happy-path** from the effective target,
+   following `next` through agent states. Stop at the first
+   `type: gate` or `type: terminal` reached (inclusive — visit it,
+   check its cap, then end the walk). Track visited states; break on
+   re-visit.
 3. If any visited state is over-cap, drop the candidate.
    **Exception**: when the candidate is a verdict-bearing gate
    issue, the gate it's currently sitting in is excluded from the
@@ -2672,21 +2684,31 @@ comments to clarify:
       `Implementing`, and exits — even though the gate is at cap.
       (The drain exception in P8.3 means the gate's own cap doesn't
       block verdict actions.)
-- [ ] Smoke W — **downstream-only cap binding**: in the same repo,
-      set `human_review.max_in_flight: 1`. Move one issue into
-      `In Review`. Run `/cadence:tick` with one Todo present.
-      Confirm the bootstrap drops the Todo from `candidates` (its
-      happy-path `plan → plan_review → implement → agent_review →
-      human_review → done` passes through the over-cap
-      `human_review`).
-- [ ] Smoke X — **agent-state cap independent of gate cap**: with
-      both `implement.max_in_flight: 1` AND
-      `human_review.max_in_flight: 5`, one issue in `Implementing`,
-      three in `In Review` (no verdicts), and one in `Todo`, run
-      `/cadence:tick`. Confirm the Todo is dropped because the walk
-      hits the over-cap `implement` (not because of `human_review`,
-      which is below cap). Verify the error message names
-      `implement`, not `human_review`.
+- [ ] Smoke W — **downstream gate cap does NOT block upstream
+      pickup**: in the same repo, set `human_review.max_in_flight: 1`.
+      Move one issue into `In Review` (no verdict). Run
+      `/cadence:tick` with one Todo present. Confirm the bootstrap
+      **claims the Todo** and routes it to `Planning` — the Todo's
+      bounded walk is `plan → plan_review` and never reaches
+      `human_review`, so the downstream gate's cap is irrelevant.
+      The In-Review issue stays put (it has no verdict label).
+- [ ] Smoke W2 — **downstream gate cap binds the right candidate**:
+      keep `human_review.max_in_flight: 1` and the one issue in
+      `In Review`. Move a fresh issue into `Plan Review` with
+      `cadence-approve`. Run `/cadence:tick`. Confirm the bootstrap
+      drops the plan-approved candidate (its walk is
+      `implement → agent_review → human_review`, which hits the
+      over-cap `human_review`), prints `caps reached for: human_review`,
+      and exits.
+- [ ] Smoke X — **agent-state cap binds under the bounded walk**:
+      set `implement.max_in_flight: 1` and `human_review.max_in_flight: 5`,
+      one issue in `Implementing` (occupies the `implement` cap), one
+      in `Plan Review` with `cadence-approve` (candidate; walk is
+      `implement → agent_review → human_review`), and one Todo. Run
+      `/cadence:tick`. Confirm the plan-approved candidate is dropped
+      (walk hits over-cap `implement`); the Todo is **picked up**
+      (its walk `plan → plan_review` doesn't touch `implement`).
+      Error message names `implement`, not `human_review`.
 - [ ] Smoke Y — **terminal still rejected**: set
       `done.max_in_flight: 5` in the consumer's workflow.yaml. Run
       `/cadence:tick dry-run`. Confirm Rule 6 fails (caps still
