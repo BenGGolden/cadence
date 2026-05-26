@@ -6,6 +6,48 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — Phase 9: subagent scope discipline + bootstrap silence
+- `templates/agents/implementer.md` — adds a `## Short-circuits` section
+  with two rules. **Rule A** (no-op short-circuit): when the acceptance
+  criteria are already satisfied by the repo (or explicitly say "no
+  files added, updated, or deleted"), the implementer skips branch
+  push and PR creation entirely and returns a summary with blank PR /
+  branch fields. The default contract demands a PR URL on every run,
+  which is incompatible with no-op tickets and pushed the model into
+  manufacturing a PR to honour an impossible contract. **Rule B**
+  (`gh`-absence bail): when `gh` is not on PATH, the implementer pushes
+  the branch and returns a summary noting that PR creation was skipped
+  — explicitly forbidding the network probing, SSH-key / gitconfig /
+  env-var scanning, and proxy-endpoint reverse engineering observed
+  when the model improvised its way around a missing tool. A concrete
+  example summary is included so the model has a pattern to imitate.
+- `templates/agents/implementer.md` and `templates/agents/reviewer.md`
+  — add a `## Sandbox boundaries` section forbidding probing of local
+  HTTP proxies, in-sandbox endpoints, SSH keys, gitconfig credentials,
+  and other-process env vars. Reinforces Rule B at the subagent
+  contract layer; the credentials needed for the assigned work are
+  already in the agent's environment via the routine's configured
+  connectors.
+- `templates/agents/reviewer.md` — `gh`-absence fallback paragraph in
+  step 2 of `## How to review`. If `gh` is not on PATH, the reviewer
+  falls back to `git diff` against the configured base branch and
+  notes that the PR view was not consulted; the same prohibition on
+  improvising alternative metadata-fetch paths applies. Defence in
+  depth, since P5's reviewer template also invokes `gh pr view`.
+- `commands/tick.md` Step 15 — adds a **Bootstrap silence** subsection.
+  Between step 14 (subagent invocation) and step 18 (exit), the
+  bootstrap's only user-facing output is the verbatim
+  `subagentSummary` and the Linear writes steps 16 and 17 require.
+  Explicitly forbids annotating subagent behaviour, describing what
+  the subagent did during its turn, and raising security or safety
+  concerns about subagent activity in user-facing text — the
+  bootstrap has no access to the subagent's tool trace, so any such
+  narration is necessarily fabricated. The `verbatim` requirement on
+  the Linear post itself is unchanged; this tightens the prose around
+  it. Surfaced during P8 Smoke V, where the bootstrap invented a
+  credential-exfiltration narrative about the implementer's behaviour
+  with no underlying observability into the subagent's turn.
+
 ### Changed — Phase 8 amendment: bound the reachability walk at the next gate
 - `commands/tick.md` Step 5 — the reachability walk now **stops at the
   first gate or terminal** reached (inclusive), instead of traversing
