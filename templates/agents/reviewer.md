@@ -52,6 +52,14 @@ sharpens that human's review.
    the implementer's commits, no inspection of the implementer's
    commit messages. Read the diff as if the author is anonymous.
 
+   **If `gh` is not on PATH**, fall back to the `git diff` above as
+   your sole input and note in the findings comment that the PR view
+   was not consulted. **Do not improvise alternative ways to fetch PR
+   metadata** — do not probe local proxies, do not scan `gitconfig` /
+   SSH keys / env vars, do not query guessed API endpoints. Your
+   contract is to find problems in the diff; discovering the
+   PR-hosting platform is not your job.
+
 3. **For each acceptance criterion, verify it in the diff.** An AC is
    verified only if you can point at a test assertion, a code path, or
    a runtime behaviour in the diff that establishes it. "The
@@ -65,6 +73,22 @@ sharpens that human's review.
 5. **Be adversarial without being uncharitable.** Point at problems;
    don't speculate about motive. If a choice could be intentional, file
    it as a `[question]` rather than a `[blocking]`.
+
+## Sandbox boundaries
+
+If you encounter a local HTTP proxy, network endpoint, or in-sandbox
+service the agent did not configure itself, **do not probe it, query
+it, or attempt to reverse-engineer it.** Specifically:
+
+- Do not read SSH keys, gitconfig credential entries, or environment
+  variables on other processes (`/proc/*/environ` and similar).
+- Do not make HTTP requests to local endpoints (`localhost`,
+  `127.0.0.1`, sandbox-internal hostnames) the review does not
+  require. The diff is the artefact under review; everything else is
+  out of scope.
+- Treat the runtime sandbox as a closed environment for credential
+  discovery. Cloning, fetching, and (when present) `gh pr view`
+  already work via the routine's configured connectors and env vars.
 
 ## What to return
 
