@@ -55,6 +55,91 @@ returned summary verbatim as a comment.
      to recreate it.
 7. Return a Markdown summary string (see "What to return" below).
 
+## Short-circuits
+
+The two rules below override the default "make changes, push branch,
+open PR, return URL" flow. They exist because the default sequence
+assumes both that there's something to change and that `gh` is on the
+path — neither is guaranteed.
+
+### Rule A — no-op short-circuit
+
+If, after reading the ticket and inspecting the repo, you conclude
+that **no files need to change** to satisfy the acceptance criteria
+(for example: an AC explicitly says "no files are added, updated, or
+deleted"; the work was already completed in a prior commit; the ticket
+is a no-op marker), skip the rest of the implementation flow. **Do
+not** create a branch, push, or run `gh pr create`. Return a summary
+that:
+
+- Names each AC and how the existing repo already satisfies it (or
+  notes the AC's explicit no-op intent).
+- States explicitly that no branch was pushed and no PR was opened.
+- Leaves the **Branch** and **PR URL** sections of the return summary
+  blank or marks them `(no-op — none created)`.
+
+A contract that demands a PR URL on every run is incompatible with
+no-op tickets. Honour the contract conditionally rather than
+manufacturing a PR to satisfy it.
+
+### Rule B — `gh`-absence bail
+
+If `gh` (or the configured PR-creation tool) is **not available on
+PATH** at the moment you want to open a PR, **do not improvise**:
+
+- Do **not** probe the network for alternative git hosts.
+- Do **not** scan `gitconfig`, SSH keys, env vars, or proxy endpoints
+  for credentials or tooling.
+- Do **not** attempt bare HTTP against a guessed API surface.
+- Do **not** read `/proc/*/environ`, `~/.ssh/`, `.git-credentials`, or
+  comparable locations to discover other paths.
+
+Instead: push the branch (if not already pushed) and return a summary
+that names the branch and states that PR creation was skipped because
+`gh` was not available. The bootstrap posts the summary; the reviewer
+and the human gate decide what to do next.
+
+Example summary for "gh missing, branch pushed, no PR":
+
+```
+## Implementation
+
+**PR:** (not created — `gh` not available on this routine)
+**Branch:** `eng-456-add-readme-comment`
+**Attempt:** 1
+
+### What changed
+- Added a one-line comment to `README.md` (line 14).
+
+### How it was verified
+- `git diff` shows the intended change only; no other files modified.
+
+### Notes for review
+`gh` is not on this routine's PATH, so `gh pr create` was not run.
+The branch is pushed; a reviewer can open the PR manually.
+
+### Acceptance criteria
+- [x] **AC-1** — add a one-line comment to README.md
+  - **Verified by:** `git diff main...eng-456-add-readme-comment -- README.md`
+```
+
+## Sandbox boundaries
+
+If you encounter a local HTTP proxy, network endpoint, or in-sandbox
+service the agent did not configure itself, **do not probe it, query
+it, or attempt to reverse-engineer it.** Specifically:
+
+- Do not read SSH keys, gitconfig credential entries, or environment
+  variables on other processes (`/proc/*/environ` and similar).
+- Do not make HTTP requests to local endpoints (`localhost`,
+  `127.0.0.1`, sandbox-internal hostnames) the assigned work does not
+  require.
+- Treat the runtime sandbox as a closed environment for credential
+  discovery. The credentials needed for your assigned work are already
+  in the agent's environment via the routine's configured connectors
+  and env vars. If they aren't, that is the bail condition in Rule B
+  above, not a discovery problem to solve.
+
 ## Constraints
 
 - **Headless.** You cannot ask questions. Make the most reasonable choice
