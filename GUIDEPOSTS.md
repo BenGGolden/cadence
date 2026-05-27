@@ -92,7 +92,31 @@ guardrails into the harness:
 
 Each of these is "the agent might forget X" → "X is enforced by the harness."
 
-## 7. Build for forensic debugging
+## 7. Prefer deterministic code to agent prose
+
+Anything mechanical — parsing a structured comment, validating YAML, formatting
+a string, merging JSON — a small script does faster, cheaper, and the same way
+every time. The temptation in agentic systems is to lean on prose for
+everything ("the LLM can figure it out"), but that trades reproducibility,
+cost, and reviewability for flexibility you rarely need.
+
+Reserve LLM calls for what genuinely needs judgment: investigating an
+unfamiliar codebase, weighing two designs, writing the code itself. Everything
+else should be code.
+
+Practically: Cadence parses tracking comments with `parse_comments.py`,
+validates `workflow.yaml` with `validate_workflow.py`, formats audit lines
+with `emit_tracking_comment.py`, and merges settings via the helpers in
+`scripts/`. Each could have been a paragraph of dispatch prose. None should
+be — deterministic code is reproducible across model versions, free at
+inference time, and reviewable as code rather than as a prompt's emergent
+behavior.
+
+This is distinct from #6: guardrails are about what the agent shouldn't be
+trusted to remember; determinism is about what shouldn't be re-derived by an
+LLM at all when a 20-line script will do.
+
+## 8. Build for forensic debugging
 
 Things will break in ways the operator wasn't watching. The system has to be
 reconstructable after the fact.
@@ -112,7 +136,7 @@ reconstructable after the fact.
   a failed attempt counts as an attempt happened, but a failure record
   doesn't double-count. This matters for cap accuracy.
 
-## 8. The codebase has to teach the agent
+## 9. The codebase has to teach the agent
 
 This is OpenAI's "harness engineering" concept and it's load-bearing. Agent
 output quality is roughly proportional to how self-describing the codebase
