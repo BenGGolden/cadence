@@ -38,3 +38,20 @@ makes MCP or network calls — they read and write local JSON only.
   `re` only.
 - **No MCP calls.** Writes are limited to the two settings files inside
   the consumer's `.claude/`.
+
+## Tests
+
+The runtime helpers under [`templates/hooks/`](../templates/hooks/) are
+covered by a `unittest`-based suite under [`tests/`](../tests/) at the
+repo root. One test file per script. Run:
+
+```sh
+python -m unittest discover -s tests -v
+```
+
+Each test materialises its inputs in a `tempfile.TemporaryDirectory()`
+and invokes the script via subprocess so the full argparse + I/O path
+runs. Larger fixtures (golden Markdown, JSON payloads) belong under
+`tests/fixtures/`; inline literals are fine until they grow past a few
+lines. CI runs the discover command in the `python-tests` job in
+[`.github/workflows/validate.yml`](../.github/workflows/validate.yml).
