@@ -45,32 +45,36 @@ verbs are present.
 
 ---
 
-## Step 1 — Read config
+## Step 1 — Read and validate config
 
-Read `.claude/workflow.yaml`. If missing or unreadable, print a clear
-error naming the path and exit.
-
-From the parsed config, extract:
-
-- `linear.team`, `linear.pickup_state` — required.
-- `linear.project_slug` — optional; narrows the query to one project
-  when set, otherwise the report is team-wide.
-- `label.cadence_active` — required.
-- `label.cadence_needs_human` — required.
-
-Then invoke Bash:
+Invoke Bash:
 `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/validate_workflow.py --evidence`.
 
-- If it exits **1**, the YAML is structurally unreadable — print the script's
-  stderr verbatim and exit.
-- If it exits **0 or 2**, parse the JSON on stdout. Use its `states` map,
-  `workflow_linear_states`, `pickup_state`, `entry_state_name`, and
-  `entry_subagent` for the rest of this report (state-to-Linear mapping and
-  the per-state summary). An exit code of **2** means one or more validation
-  rules failed; this reporter still proceeds — a human often runs
-  `/cadence:status` *because* the workflow is misconfigured. Keep the
-  `evidence` array's `FAIL` blocks for the **Config warnings** section
-  (step 5).
+The script reads `.claude/workflow.yaml` and emits the full validated
+config (and per-rule evidence under `--evidence`) as JSON on stdout.
+
+- If it exits **1**, the YAML is missing or structurally unreadable —
+  print the script's stderr verbatim and exit.
+- If it exits **0 or 2**, parse the JSON on stdout. This is the **sole
+  source of truth** for the config in this fire. Read from it:
+  - `linear.team`, `linear.pickup_state` — required for the header.
+  - `linear.project_slug` — optional; narrows the query to one project
+    when set, otherwise the report is team-wide.
+  - `label.cadence_active`, `label.cadence_needs_human` — required for
+    the Lock and Needs-human columns.
+  - `states`, `workflow_linear_states`, `linear_to_workflow`,
+    `entry_state_name`, `entry_subagent`, `pickup_state` — used by
+    steps 2-5.
+
+  An exit code of **2** means one or more validation rules failed; this
+  reporter still proceeds — a human often runs `/cadence:status` *because*
+  the workflow is misconfigured. Keep the `evidence` array's `FAIL`
+  blocks for the **Config warnings** section (step 5).
+
+**Do not read `.claude/workflow.yaml` directly.** Reading the YAML
+yourself produces a model-cacheable artifact that can go stale across
+fires in the same conversation; re-invoking the script every fire is the
+only way edits to the config are guaranteed to be picked up.
 
 ---
 

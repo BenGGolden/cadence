@@ -25,6 +25,14 @@ Exit codes:
   0  all rules pass
   2  one or more rules fail
   1  the YAML could not be read or parsed at all
+
+JSON output (stdout) contains the derived fields the dispatch prose needs
+(`entry_state_name`, `entry_subagent`, `workflow_linear_states`,
+`linear_to_workflow`, `pickup_state`, `states`) **plus** the raw top-level
+`linear`, `label`, and `limits` blocks from the YAML. The prose reads
+team / project / label / limits values from this output instead of
+re-reading `.claude/workflow.yaml` itself — one read per fire, one
+cacheable artifact eliminated.
 """
 
 import argparse
@@ -358,6 +366,8 @@ def main():
 
     states = wf.get("states") or {}
     linear = wf.get("linear") or {}
+    label = wf.get("label") or {}
+    limits = wf.get("limits") or {}
     entry = wf.get("entry")
 
     if not isinstance(states, dict):
@@ -389,6 +399,9 @@ def main():
         "linear_to_workflow": _build_linear_to_workflow(states, pickup),
         "pickup_state": pickup,
         "states": states,
+        "linear": linear if isinstance(linear, dict) else {},
+        "label": label if isinstance(label, dict) else {},
+        "limits": limits if isinstance(limits, dict) else {},
     }
 
     if args.evidence:

@@ -6,26 +6,45 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Changed — Determinism Phase 2: validator emits `linear_to_workflow` reverse map
+### Changed — Determinism Phase 2: validator emits `linear_to_workflow` reverse map and owns the YAML read
 - `templates/hooks/validate_workflow.py` now includes a `linear_to_workflow`
   field in its JSON output: each Linear column name keyed to
   `{ "kind": "pickup" | "state" | "gate_waiting", "workflow_state": "<name>" | null, "linear_state_type": "agent" | "gate" | "terminal" | null }`.
-- `commands/tick.md` step 8 (matched workflow state) replaces the
-  inline "find the single workflow state whose `linear_state` equals it"
-  derivation with a direct lookup against this map. Step 4 keeps
-  `linearToWorkflow` from the validator output alongside the existing
-  `workflowLinearStates`.
-- `commands/status.md` step 2 drops its manual `linearToWorkflow`
-  construction (and the conflict-detection prose Rule 1 already covers)
-  in favour of the validator's map.
-- `tests/test_validate_workflow.py` adds four cases pinning the map's
-  shape for agent / gate-waiting / pickup / terminal columns, plus a
-  custom pickup name and a sanity check that the map's keys equal
-  `workflow_linear_states`.
+- The validator also passes through the raw top-level `linear`, `label`,
+  and `limits` blocks. The dispatch prose now reads team / project /
+  label / limits values from the validator's JSON instead of doing its
+  own Read of `.claude/workflow.yaml` — one read per fire, one
+  cacheable artifact eliminated. Without this, the LLM would cache the
+  earlier YAML Read across fires in the same conversation and miss
+  edits made between fires.
+- `commands/tick.md` step 1 (formerly "Read config" + step 3 "Validate
+  config") now combines the two into a single validator invocation;
+  step 3 becomes a removed-stub for step-number stability. Step 8
+  (matched workflow state) replaces the inline "find the single workflow
+  state whose `linear_state` equals it" derivation with a direct lookup
+  against `linear_to_workflow`. Step 4 keeps `linearToWorkflow` from
+  the validator output alongside the existing `workflowLinearStates`.
+  The dry-run report (step 0) also renders the new map as bullets
+  between "Workflow Linear states queried" and "Entry state".
+- `commands/status.md` step 1 drops its standalone YAML Read; the
+  validator invocation now reads + validates in one call. Step 2 drops
+  its manual `linearToWorkflow` construction (and the conflict-detection
+  prose Rule 1 already covers) in favour of the validator's map.
+- `commands/sweep.md` step 1 likewise consolidates the read and the
+  advisory validation into a single script invocation, with the same
+  "do not read workflow.yaml directly" guardrail.
+- `tests/test_validate_workflow.py` adds four cases pinning the
+  `linear_to_workflow` map's shape for agent / gate-waiting / pickup /
+  terminal columns, plus a custom pickup name and a sanity check that
+  the map's keys equal `workflow_linear_states`. Five further cases
+  cover the raw `linear` / `label` / `limits` pass-through, including
+  absent-block defaults and non-mapping coercion.
 - **Motivation**: two dispatch commands re-derived the same Linear-column
   → workflow-state lookup every fire. The validator already had the
-  data — emitting it once collapses both ad-hoc derivations and
-  unblocks the status renderer extraction in Phase 5.
+  data — emitting it once collapses both ad-hoc derivations. The raw
+  config pass-through addresses a separate determinism gap (the LLM
+  caching the YAML Read), and unblocks the status renderer extraction
+  in Phase 5.
 
 ### Added — Determinism Phase 1: test scaffolding for the runtime helpers
 - New `tests/` directory at the repo root with `unittest`-based coverage

@@ -39,15 +39,29 @@ available tool list — the verbs below describe intent, not exact names.
 
 ---
 
-## Step 1 — Read config
+## Step 1 — Read and validate config
 
-Read `.claude/workflow.yaml`. If the file is missing or unreadable, print
-a clear error naming the path and exit. **Do not write to Linear.**
+Invoke Bash: `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/validate_workflow.py --evidence`.
 
-From the parsed config, extract:
+The script reads `.claude/workflow.yaml` and emits the full parsed config
+(plus per-rule evidence) as JSON on stdout. The sweeper does **not**
+require a valid workflow schema — it never invokes a subagent and never
+advances state, and must still be able to clear stranded locks even when
+the workflow is misconfigured. So treat the validation result as
+**advisory**:
 
-- `label.cadence_active` — the soft-lock label name. Required; if missing,
-  print an error and exit.
+- If the script exits **1** (YAML missing or unreadable), print the
+  script's stderr verbatim and exit. **Do not write to Linear.**
+- If the script exits **2** (validation rules failed), print a
+  single-line warning
+  (`Cadence sweep: workflow.yaml validation reported issues — proceeding anyway; the sweeper does not require a valid schema.`)
+  and continue. Parse stdout normally.
+- If the script exits **0**, parse stdout. Print nothing extra.
+
+From the parsed JSON, read:
+
+- `label.cadence_active` — the soft-lock label name. Required; if missing
+  or empty, print an error and exit.
 - `linear.team` — the team key used to scope the Linear query. Required.
 - `linear.project_slug` — the project to narrow the scope to. Optional;
   omit to scan team-wide. Must match whatever `/cadence:tick` uses, so
@@ -55,15 +69,9 @@ From the parsed config, extract:
 - `limits.stale_after_minutes` — the activity window. If absent, null, or
   not a positive number, use **30**.
 
-Then invoke Bash: `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/validate_workflow.py`.
-This sweeper does **not** require a valid workflow schema — it never invokes a
-subagent and never advances state, and it must still be able to clear stranded
-locks even when the workflow is misconfigured. So treat the script's result as
-**advisory**: if it exits non-zero, print a single-line warning
-(`Cadence sweep: workflow.yaml validation reported issues — proceeding anyway;
-the sweeper does not require a valid schema.`) and continue. If it exits zero,
-print nothing extra. Either way, proceed as long as the four values above are
-present and well-formed.
+**Do not read `.claude/workflow.yaml` directly.** The script's JSON is
+the sole source of truth — re-invoking it every fire is the only way
+edits to the config are guaranteed to be picked up.
 
 ## Step 2 — Resolve "now"
 
