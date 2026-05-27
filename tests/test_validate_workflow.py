@@ -1,0 +1,417 @@
+"""Tests for templates/hooks/validate_workflow.py.
+
+Covers rules 1-8 (pass + fail paths), --evidence output shape, exit codes,
+and workflow_linear_states ordering. Invoked via subprocess so the full
+load_workflow -> rules -> main() path is exercised on every run.
+"""
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+import yaml
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SCRIPT = REPO_ROOT / "templates" / "hooks" / "validate_workflow.py"
+
+
+def _valid_workflow():
+    """A minimal but realistic config that passes every rule."""
+    return {
+        "linear": {"team": "ENG", "pickup_state": "Todo"},
+        "label": {
+            "cadence_active": "cadence-active",
+            "cadence_needs_human": "cadence-needs-human",
+            "cadence_approve": "cadence-approve",
+            "cadence_rework": "cadence-rework",
+        },
+        "entry": "plan",
+        "states": {
+            "plan": {
+                "type": "agent", "subagent": "planner",
+                "linear_state": "Planning", "next": "plan_review",
+            },
+            "plan_review": {
+                "type": "gate", "linear_state": "Plan Review",
+                "on_approve": "implement", "on_rework": "plan",
+            },
+            "implement": {
+                "type": "agent", "subagent": "implementer",
+                "linear_state": "Implementing", "next": "done",
+            },
+            "done": {"type": "terminal", "linear_state": "Done"},
+        },
+    }
+
+
+def run_validator(tmpdir, wf=None, agents=("planner", "implementer"),
+                  evidence=False, workflow_text=None, workflow_path=None):
+    """Materialise workflow + agent files under tmpdir and invoke the script.
+
+    `wf` is a dict that will be dumped to YAML. `workflow_text` overrides
+    that with raw text (for testing unparseable YAML). `workflow_path`
+    overrides the destination path entirely (for missing-file tests).
+    """
+    tmpdir = Path(tmpdir)
+    agent_dir = tmpdir / ".claude" / "agents"
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    for a in agents:
+        (agent_dir / f"{a}.md").write_text("# agent\n", encoding="utf-8")
+
+    if workflow_path is None:
+        workflow_path = tmpdir / "workflow.yaml"
+        if workflow_text is not None:
+            workflow_path.write_text(workflow_text, encoding="utf-8")
+        else:
+            workflow_path.write_text(
+                yaml.safe_dump(wf, sort_keys=False), encoding="utf-8")
+
+    args = [sys.executable, str(SCRIPT), "--workflow-path", str(workflow_path)]
+    if evidence:
+        args.append("--evidence")
+    return subprocess.run(args, cwd=str(tmpdir),
+                          capture_output=True, text=True)
+
+
+def _rule(evidence, rule_num):
+    return next(e for e in evidence if e["rule"] == rule_num)
+
+
+class ValidateWorkflowTests(unittest.TestCase):
+
+    def test_default_workflow_passes(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, _valid_workflow())
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            payload = json.loads(r.stdout)
+            self.assertTrue(payload["valid"])
+            self.assertEqual(payload["entry_state_name"], "plan")
+            self.assertEqual(payload["entry_subagent"], "planner")
+            self.assertEqual(payload["pickup_state"], "Todo")
+
+    # ---------- evidence shape ----------
+
+    def test_evidence_emits_all_eight_rules(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, _valid_workflow(), evidence=True)
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            payload = json.loads(r.stdout)
+            self.assertIn("evidence", payload)
+            self.assertEqual(
+                sorted(e["rule"] for e in payload["evidence"]),
+                [1, 2, 3, 4, 5, 6, 7, 8],
+            )
+            for e in payload["evidence"]:
+                self.assertIn("title", e)
+                self.assertIn("lines", e)
+                self.assertIsInstance(e["lines"], list)
+                self.assertIn(e["result"], ("PASS", "FAIL"))
+                self.assertIn("failure", e)
+
+    # ---------- workflow_linear_states ordering ----------
+
+    def test_workflow_linear_states_order(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, _valid_workflow())
+            payload = json.loads(r.stdout)
+            self.assertEqual(
+                payload["workflow_linear_states"],
+                ["Todo", "Planning", "Plan Review", "Implementing", "Done"],
+            )
+
+    # ---------- exit codes ----------
+
+    def test_exit_code_1_on_unparseable_yaml(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, workflow_text="foo: [unterminated\n")
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("invalid YAML", r.stderr)
+
+    def test_exit_code_1_on_missing_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, workflow_path=Path(td) / "nope.yaml")
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("not found", r.stderr)
+
+    def test_exit_code_1_on_non_mapping_root(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, workflow_text="- just a list\n- of items\n")
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("did not parse to a mapping", r.stderr)
+
+    def test_exit_code_2_on_rule_failure(self):
+        wf = _valid_workflow()
+        wf["states"]["implement"]["linear_state"] = "Planning"
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf)
+            self.assertEqual(r.returncode, 2)
+
+    # ---------- rule 1: uniqueness ----------
+
+    def test_rule1_pass(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, _valid_workflow(), evidence=True)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 1)["result"],
+                             "PASS")
+
+    def test_rule1_fail_duplicate_linear_state(self):
+        wf = _valid_workflow()
+        wf["states"]["implement"]["linear_state"] = "Planning"
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            ev = _rule(json.loads(r.stdout)["evidence"], 1)
+            self.assertEqual(ev["result"], "FAIL")
+            self.assertIn("Planning", ev["failure"])
+
+    def test_rule1_fail_pickup_collides_with_state(self):
+        wf = _valid_workflow()
+        wf["linear"]["pickup_state"] = "Planning"
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 1)["result"],
+                             "FAIL")
+
+    # ---------- rule 2: entry ----------
+
+    def test_rule2_pass(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, _valid_workflow(), evidence=True)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 2)["result"],
+                             "PASS")
+
+    def test_rule2_fail_entry_not_defined(self):
+        wf = _valid_workflow()
+        wf["entry"] = "ghost"
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            ev = _rule(json.loads(r.stdout)["evidence"], 2)
+            self.assertEqual(ev["result"], "FAIL")
+            self.assertIn("ghost", ev["failure"])
+
+    def test_rule2_fail_entry_not_agent(self):
+        wf = _valid_workflow()
+        wf["entry"] = "plan_review"  # entry pointing at a gate
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            ev = _rule(json.loads(r.stdout)["evidence"], 2)
+            self.assertEqual(ev["result"], "FAIL")
+            self.assertIn("must be `agent`", ev["failure"])
+
+    def test_rule2_fail_entry_missing(self):
+        wf = _valid_workflow()
+        del wf["entry"]
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 2)["result"],
+                             "FAIL")
+
+    # ---------- rule 3: targets ----------
+
+    def test_rule3_pass(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, _valid_workflow(), evidence=True)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 3)["result"],
+                             "PASS")
+
+    def test_rule3_fail_dangling_next(self):
+        wf = _valid_workflow()
+        wf["states"]["plan"]["next"] = "ghost"
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            ev = _rule(json.loads(r.stdout)["evidence"], 3)
+            self.assertEqual(ev["result"], "FAIL")
+            self.assertIn("ghost", ev["failure"])
+
+    def test_rule3_fail_dangling_on_rework(self):
+        wf = _valid_workflow()
+        wf["states"]["plan_review"]["on_rework"] = "ghost"
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 3)["result"],
+                             "FAIL")
+
+    # ---------- rule 4: subagent files ----------
+
+    def test_rule4_pass(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, _valid_workflow(), evidence=True)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 4)["result"],
+                             "PASS")
+
+    def test_rule4_fail_missing_agent_file(self):
+        # Don't materialise the planner agent file.
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, _valid_workflow(), agents=("implementer",),
+                              evidence=True)
+            self.assertEqual(r.returncode, 2)
+            ev = _rule(json.loads(r.stdout)["evidence"], 4)
+            self.assertEqual(ev["result"], "FAIL")
+            self.assertIn("planner", ev["failure"])
+
+    def test_rule4_fail_missing_subagent_key(self):
+        wf = _valid_workflow()
+        del wf["states"]["plan"]["subagent"]
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            ev = _rule(json.loads(r.stdout)["evidence"], 4)
+            self.assertEqual(ev["result"], "FAIL")
+
+    # ---------- rule 5: pickup state ----------
+
+    def test_rule5_pass(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, _valid_workflow(), evidence=True)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 5)["result"],
+                             "PASS")
+
+    def test_rule5_fail_empty_pickup(self):
+        wf = _valid_workflow()
+        wf["linear"]["pickup_state"] = ""
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 5)["result"],
+                             "FAIL")
+
+    def test_rule5_fail_missing_pickup(self):
+        wf = _valid_workflow()
+        del wf["linear"]["pickup_state"]
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 5)["result"],
+                             "FAIL")
+
+    # ---------- rule 6: max_in_flight ----------
+    # AC-3: removing _rule6_max_in_flight from main() must break these.
+
+    def test_rule6_pass_when_no_caps(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, _valid_workflow(), evidence=True)
+            ev = _rule(json.loads(r.stdout)["evidence"], 6)
+            self.assertEqual(ev["result"], "PASS")
+            self.assertEqual(ev["title"], "max_in_flight type and scope")
+
+    def test_rule6_pass_with_valid_caps_on_agent_and_gate(self):
+        wf = _valid_workflow()
+        wf["states"]["plan"]["max_in_flight"] = 3
+        wf["states"]["plan_review"]["max_in_flight"] = 5
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 0)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 6)["result"],
+                             "PASS")
+
+    def test_rule6_fail_on_terminal(self):
+        wf = _valid_workflow()
+        wf["states"]["done"]["max_in_flight"] = 1
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            ev = _rule(json.loads(r.stdout)["evidence"], 6)
+            self.assertEqual(ev["result"], "FAIL")
+            self.assertIn("done", ev["failure"])
+
+    def test_rule6_fail_zero(self):
+        wf = _valid_workflow()
+        wf["states"]["plan"]["max_in_flight"] = 0
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 6)["result"],
+                             "FAIL")
+
+    def test_rule6_fail_bool_rejected(self):
+        # The script must reject booleans even though bool is a subclass of int.
+        wf = _valid_workflow()
+        wf["states"]["plan"]["max_in_flight"] = True
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 6)["result"],
+                             "FAIL")
+
+    def test_rule6_fail_string(self):
+        wf = _valid_workflow()
+        wf["states"]["plan"]["max_in_flight"] = "3"
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 6)["result"],
+                             "FAIL")
+
+    # ---------- rule 7: adversarial_context ----------
+
+    def test_rule7_pass_when_absent(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, _valid_workflow(), evidence=True)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 7)["result"],
+                             "PASS")
+
+    def test_rule7_pass_with_bool_on_agent(self):
+        wf = _valid_workflow()
+        wf["states"]["implement"]["adversarial_context"] = True
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 0)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 7)["result"],
+                             "PASS")
+
+    def test_rule7_fail_on_gate(self):
+        wf = _valid_workflow()
+        wf["states"]["plan_review"]["adversarial_context"] = True
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 7)["result"],
+                             "FAIL")
+
+    def test_rule7_fail_non_bool(self):
+        wf = _valid_workflow()
+        wf["states"]["implement"]["adversarial_context"] = "yes"
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 7)["result"],
+                             "FAIL")
+
+    # ---------- rule 8: legacy gate keys ----------
+
+    def test_rule8_pass(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, _valid_workflow(), evidence=True)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 8)["result"],
+                             "PASS")
+
+    def test_rule8_fail_approved_linear_state(self):
+        wf = _valid_workflow()
+        wf["states"]["plan_review"]["approved_linear_state"] = "Approved"
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            ev = _rule(json.loads(r.stdout)["evidence"], 8)
+            self.assertEqual(ev["result"], "FAIL")
+            self.assertIn("approved_linear_state", ev["failure"])
+
+    def test_rule8_fail_rework_linear_state(self):
+        wf = _valid_workflow()
+        wf["states"]["plan_review"]["rework_linear_state"] = "Rework"
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 8)["result"],
+                             "FAIL")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -6,6 +6,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Determinism Phase 1: test scaffolding for the runtime helpers
+- New `tests/` directory at the repo root with `unittest`-based coverage
+  for the three runtime helpers under `templates/hooks/`:
+  `test_validate_workflow.py` (rules 1-8 pass + fail, `--evidence`
+  output shape, exit codes 0/1/2, `workflow_linear_states` order),
+  `test_parse_comments.py` (`attempt_count`, `rework_count` scoped to
+  `--gate-name`, `rework_context` excludes Cadence/Stokowski + bots
+  oldest-first, `latest_implementer_summary` author-match constraint,
+  legacy `stokowski:` `run`/`timestamp` normalisation, malformed
+  tracking-JSON surfaces in `parse_errors`),
+  `test_emit_tracking_comment.py` (every `--kind` x `--status`
+  combination, missing-required-arg paths exit 1, 400-char error
+  truncation, newline collapsing).
+- New `python-tests` job in `.github/workflows/validate.yml` runs
+  `python -m unittest discover -s tests -v` on push and PR, blocking
+  merge on failure.
+- `scripts/README.md` documents the discover command and the
+  `tests/fixtures/` convention.
+- **Motivation**: the runtime helpers shipped with zero automated
+  coverage. The next determinism phases all modify or sit next to them;
+  this lands the regression net before any logic moves.
+
 ### Changed — Repo reorg: `templates/` now mirrors the consumer's `.claude/`
 - `templates/` is now a 1:1 mirror of the consumer's `.claude/` tree.
   `/cadence:init` (commands/init.md Step 4) copies every file under
