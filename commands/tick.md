@@ -97,6 +97,10 @@ case-insensitively (i.e. the user typed `/cadence:tick dry-run`):
    If the script exited zero, follow the Validation section with:
    - **Workflow Linear states queried:** the `workflow_linear_states` array
      from the script output, one per line.
+   - **Linear column → workflow map:** one bullet per entry in
+     `linear_to_workflow` from the script output, in the form
+     `` `<column>` → <kind> ``, with `` (<workflow_state>, <linear_state_type>) ``
+     appended when `workflow_state` is non-null.
    - **Entry state:** `entry_state_name` plus `entry_subagent` from the script
      output.
    - **Lifecycle Context (composed):** the block, fenced exactly as a normal
