@@ -6,6 +6,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — Determinism Phase 2: validator emits `linear_to_workflow` reverse map
+- `templates/hooks/validate_workflow.py` now includes a `linear_to_workflow`
+  field in its JSON output: each Linear column name keyed to
+  `{ "kind": "pickup" | "state" | "gate_waiting", "workflow_state": "<name>" | null, "linear_state_type": "agent" | "gate" | "terminal" | null }`.
+- `commands/tick.md` step 8 (matched workflow state) replaces the
+  inline "find the single workflow state whose `linear_state` equals it"
+  derivation with a direct lookup against this map. Step 4 keeps
+  `linearToWorkflow` from the validator output alongside the existing
+  `workflowLinearStates`.
+- `commands/status.md` step 2 drops its manual `linearToWorkflow`
+  construction (and the conflict-detection prose Rule 1 already covers)
+  in favour of the validator's map.
+- `tests/test_validate_workflow.py` adds four cases pinning the map's
+  shape for agent / gate-waiting / pickup / terminal columns, plus a
+  custom pickup name and a sanity check that the map's keys equal
+  `workflow_linear_states`.
+- **Motivation**: two dispatch commands re-derived the same Linear-column
+  → workflow-state lookup every fire. The validator already had the
+  data — emitting it once collapses both ad-hoc derivations and
+  unblocks the status renderer extraction in Phase 5.
+
 ### Added — Determinism Phase 1: test scaffolding for the runtime helpers
 - New `tests/` directory at the repo root with `unittest`-based coverage
   for the three runtime helpers under `templates/hooks/`:

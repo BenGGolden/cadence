@@ -303,6 +303,49 @@ def _build_linear_states_set(states, pickup):
     return ordered
 
 
+def _build_linear_to_workflow(states, pickup):
+    """Reverse lookup: Linear column name -> workflow role.
+
+    Used by tick.md step 8 (Linear column -> matched workflow state) and
+    status.md step 2 (workflow-state column rendering). Duplicates are
+    first-wins; Rule 1 already fails the validation when duplicates
+    exist, so the map's behaviour on duplicates only matters for
+    `--evidence` callers that still proceed past a Rule 1 failure.
+
+    Shape:
+      {
+        "<Linear column>": {
+          "kind": "pickup" | "state" | "gate_waiting",
+          "workflow_state": "<name>" | null,
+          "linear_state_type": "agent" | "gate" | "terminal" | null
+        }
+      }
+    """
+    mapping = {}
+    if isinstance(pickup, str) and pickup:
+        mapping[pickup] = {
+            "kind": "pickup",
+            "workflow_state": None,
+            "linear_state_type": None,
+        }
+    for name, body in states.items():
+        if not isinstance(body, dict):
+            continue
+        linear_state = body.get("linear_state")
+        if not isinstance(linear_state, str) or not linear_state:
+            continue
+        if linear_state in mapping:
+            continue
+        stype = body.get("type")
+        kind = "gate_waiting" if stype == "gate" else "state"
+        mapping[linear_state] = {
+            "kind": kind,
+            "workflow_state": name,
+            "linear_state_type": stype if stype in ("agent", "gate", "terminal") else None,
+        }
+    return mapping
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--workflow-path", default=None,
@@ -343,6 +386,7 @@ def main():
         "entry_state_name": entry if isinstance(entry, str) else None,
         "entry_subagent": (entry_body or {}).get("subagent") if isinstance(entry_body, dict) else None,
         "workflow_linear_states": _build_linear_states_set(states, pickup),
+        "linear_to_workflow": _build_linear_to_workflow(states, pickup),
         "pickup_state": pickup,
         "states": states,
     }

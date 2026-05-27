@@ -76,23 +76,19 @@ Then invoke Bash:
 
 ## Step 2 — Build the workflow-Linear-states set and reverse lookup
 
-Construct two structures:
+Read both structures directly from the validator output in step 1:
 
-1. `workflowLinearStates` — the set used to filter the query. This is the
-   `workflow_linear_states` array from the validator output in step 1
-   (`linear.pickup_state`, then every state's `linear_state`).
+1. `workflowLinearStates` — `workflow_linear_states` from the validator
+   (`linear.pickup_state`, then every state's `linear_state`). Used to
+   filter the issue query in step 3.
 
-2. `linearToWorkflow` — a map from each Linear column **back** to its
-   role in the workflow. Each entry is one of:
-   - `{ kind: "pickup", workflow_state: null }` for `linear.pickup_state`.
-   - `{ kind: "state", workflow_state: "<name>" }` for an agent or
-     terminal state's `linear_state`.
-   - `{ kind: "gate_waiting", workflow_state: "<gate>" }` for a gate's
-     `linear_state`.
-
-   If two configs would produce two entries for the same Linear column
-   (a uniqueness violation), keep the first and remember the conflict
-   for the **Config warnings** section.
+2. `linearToWorkflow` — the `linear_to_workflow` map from the validator.
+   Each entry is keyed by Linear column name and has the shape
+   `{ "kind": "pickup" | "state" | "gate_waiting", "workflow_state": "<name>" | null, "linear_state_type": "agent" | "gate" | "terminal" | null }`.
+   Duplicate Linear columns are caught by the validator's Rule 1
+   (first-wins in the map either way); when the validator exit was 2,
+   the Rule 1 `failure` already names the conflict for the **Config
+   warnings** section.
 
 ---
 

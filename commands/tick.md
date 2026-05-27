@@ -146,8 +146,12 @@ failure).
 
 The validator in step 3 already produced this. Keep its `workflow_linear_states`
 array in memory as `workflowLinearStates` (ordered: `linear.pickup_state`, then
-every state's `linear_state`). Step 5 uses it to filter the query; step 8 uses
-it to map a Linear column back to a workflow state.
+every state's `linear_state`). Step 5 uses it to filter the query.
+
+The validator also emits a `linear_to_workflow` reverse map — each Linear
+column name keyed to an entry of the shape
+`{ "kind": "pickup" | "state" | "gate_waiting", "workflow_state": "<name>" | null, "linear_state_type": "agent" | "gate" | "terminal" | null }`.
+Keep it in memory as `linearToWorkflow`; step 8 uses it.
 
 ---
 
@@ -315,17 +319,18 @@ Otherwise, leave the Linear state untouched.
 
 ## Step 8 — Determine the matched workflow state
 
-Re-read `issue`'s Linear state (after the possible move in step 7). Find the
-single workflow state whose `linear_state` equals it. Call this the
-**matched workflow state**. By the uniqueness rule in step 3 exactly one
-match is possible.
+Re-read `issue`'s Linear state (after the possible move in step 7). Look the
+column name up in `linearToWorkflow` (from step 4) and read its
+`workflow_state`. Call this the **matched workflow state**. By the uniqueness
+rule in step 3 each column appears at most once in the map.
 
 A gate now lives in exactly one column (its `linear_state`, the waiting
 queue) — verdicts are signalled by labels, not by moving the card to a
 different column. Step 10 handles the label branch.
 
-If **no** state matches (the issue moved to a column outside the workflow set
-between step 5 and now — possible if a human dragged it), post a plain comment:
+If the column is **not** present in `linearToWorkflow` (the issue moved to a
+column outside the workflow set between step 5 and now — possible if a human
+dragged it), post a plain comment:
 
 > **[Cadence]** Issue moved to unmapped Linear state `<state>` between pickup and
 > dispatch; releasing lock without action.
