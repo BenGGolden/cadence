@@ -385,6 +385,158 @@ class ValidateWorkflowTests(unittest.TestCase):
             self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 7)["result"],
                              "FAIL")
 
+    # ---------- linear_to_workflow reverse map (P2 determinism) ----------
+    # AC-1/2/3: tick.md step 8 and status.md step 2 both consume this map.
+
+    def test_linear_to_workflow_default_workflow_shape(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, _valid_workflow())
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            mapping = json.loads(r.stdout)["linear_to_workflow"]
+            # AC-1: agent state's linear_state.
+            self.assertEqual(
+                mapping["Implementing"],
+                {"kind": "state", "workflow_state": "implement",
+                 "linear_state_type": "agent"},
+            )
+            # AC-2: pickup column.
+            self.assertEqual(
+                mapping["Todo"],
+                {"kind": "pickup", "workflow_state": None,
+                 "linear_state_type": None},
+            )
+            # AC-3: gate's waiting column.
+            self.assertEqual(
+                mapping["Plan Review"],
+                {"kind": "gate_waiting", "workflow_state": "plan_review",
+                 "linear_state_type": "gate"},
+            )
+            # Terminal column.
+            self.assertEqual(
+                mapping["Done"],
+                {"kind": "state", "workflow_state": "done",
+                 "linear_state_type": "terminal"},
+            )
+
+    def test_linear_to_workflow_custom_pickup_name(self):
+        wf = _valid_workflow()
+        wf["linear"]["pickup_state"] = "Backlog"
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf)
+            mapping = json.loads(r.stdout)["linear_to_workflow"]
+            self.assertEqual(
+                mapping["Backlog"],
+                {"kind": "pickup", "workflow_state": None,
+                 "linear_state_type": None},
+            )
+            self.assertNotIn("Todo", mapping)
+
+    def test_linear_to_workflow_gate_only_workflow(self):
+        # A workflow whose only non-terminal/non-pickup state is a gate's
+        # waiting column. Confirms the gate_waiting branch fires even when
+        # no agent state contributes to the map.
+        wf = {
+            "linear": {"team": "ENG", "pickup_state": "Todo"},
+            "label": {
+                "cadence_active": "cadence-active",
+                "cadence_needs_human": "cadence-needs-human",
+                "cadence_approve": "cadence-approve",
+                "cadence_rework": "cadence-rework",
+            },
+            "entry": "plan",
+            "states": {
+                "plan": {
+                    "type": "agent", "subagent": "planner",
+                    "linear_state": "Planning", "next": "review",
+                },
+                "review": {
+                    "type": "gate", "linear_state": "Review",
+                    "on_approve": "done", "on_rework": "plan",
+                },
+                "done": {"type": "terminal", "linear_state": "Done"},
+            },
+        }
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, agents=("planner",))
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            mapping = json.loads(r.stdout)["linear_to_workflow"]
+            self.assertEqual(mapping["Review"]["kind"], "gate_waiting")
+            self.assertEqual(mapping["Review"]["workflow_state"], "review")
+            self.assertEqual(mapping["Review"]["linear_state_type"], "gate")
+
+    def test_linear_to_workflow_keys_are_workflow_linear_states(self):
+        # The map's keys should be exactly the workflow_linear_states set.
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, _valid_workflow())
+            payload = json.loads(r.stdout)
+            self.assertEqual(
+                sorted(payload["linear_to_workflow"].keys()),
+                sorted(payload["workflow_linear_states"]),
+            )
+
+    # ---------- raw config pass-through (P2 determinism) ----------
+    # The validator emits the raw `linear`, `label`, `limits` blocks so
+    # dispatch prose reads them from the script's JSON instead of doing
+    # its own Read of workflow.yaml. Without this, the LLM caches the
+    # earlier Read across fires and edits to the YAML go unnoticed.
+
+    def test_raw_linear_block_passthrough(self):
+        wf = _valid_workflow()
+        wf["linear"]["project_slug"] = "cadence"
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf)
+            payload = json.loads(r.stdout)
+            self.assertEqual(
+                payload["linear"],
+                {"team": "ENG", "pickup_state": "Todo", "project_slug": "cadence"},
+            )
+
+    def test_raw_label_block_passthrough(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, _valid_workflow())
+            payload = json.loads(r.stdout)
+            self.assertEqual(
+                payload["label"],
+                {
+                    "cadence_active": "cadence-active",
+                    "cadence_needs_human": "cadence-needs-human",
+                    "cadence_approve": "cadence-approve",
+                    "cadence_rework": "cadence-rework",
+                },
+            )
+
+    def test_raw_limits_block_passthrough(self):
+        wf = _valid_workflow()
+        wf["limits"] = {"max_attempts_per_issue": 3, "stale_after_minutes": 45}
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf)
+            payload = json.loads(r.stdout)
+            self.assertEqual(
+                payload["limits"],
+                {"max_attempts_per_issue": 3, "stale_after_minutes": 45},
+            )
+
+    def test_raw_blocks_absent_default_to_empty_dict(self):
+        # A config that omits `label` and `limits` entirely should still
+        # surface them as `{}` (so prose can `.get(...)` without crashing).
+        wf = _valid_workflow()
+        del wf["label"]
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf)
+            payload = json.loads(r.stdout)
+            self.assertEqual(payload["label"], {})
+            self.assertEqual(payload["limits"], {})
+
+    def test_raw_blocks_nondict_coerced_to_empty(self):
+        # YAML that puts a string where a mapping should be must not
+        # blow up downstream consumers.
+        wf = _valid_workflow()
+        wf["label"] = "not a mapping"
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf)
+            payload = json.loads(r.stdout)
+            self.assertEqual(payload["label"], {})
+
     # ---------- rule 8: legacy gate keys ----------
 
     def test_rule8_pass(self):

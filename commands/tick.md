@@ -59,14 +59,16 @@ in your available tool list — the verbs below describe intent, not exact names
 Trim `$ARGUMENTS` of surrounding whitespace. If the trimmed value matches `dry-run`
 case-insensitively (i.e. the user typed `/cadence:tick dry-run`):
 
-1. Run step 1 (read config) and step 2 (read global prompt) below exactly as
-   written. Then invoke Bash:
+1. Invoke Bash:
    `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/validate_workflow.py --evidence`
-   This replaces the prose validation (step 3) and the workflow-Linear-states
-   build (step 4) for the dry-run path — the script emits both the per-rule
-   evidence and the `workflow_linear_states` set as JSON on stdout. Parse that
-   JSON; if the script's stdout is not parseable, print stderr verbatim and
-   exit.
+   The `--evidence` flag is the dry-run substitute for step 1's live invocation;
+   the script also covers step 4's workflow-Linear-states build. It emits the
+   per-rule evidence array, the validated config blocks (`workflow_linear_states`,
+   `linear_to_workflow`, `entry_state_name`, `entry_subagent`, `pickup_state`,
+   `states`), and the raw `linear` / `label` / `limits` blocks as JSON on stdout.
+   Parse that JSON; if the script's stdout is not parseable, print stderr
+   verbatim and exit. Then run step 2 (read global prompt) below exactly as
+   written.
 2. Do **NOT** call any Linear MCP tool. Do **NOT** invoke any subagent. Do **NOT**
    write to any file.
 3. Compose the **Lifecycle Context block** (see step 13) for a *hypothetical* issue
@@ -97,6 +99,10 @@ case-insensitively (i.e. the user typed `/cadence:tick dry-run`):
    If the script exited zero, follow the Validation section with:
    - **Workflow Linear states queried:** the `workflow_linear_states` array
      from the script output, one per line.
+   - **Linear column → workflow map:** one bullet per entry in
+     `linear_to_workflow` from the script output, in the form
+     `` `<column>` → <kind> ``, with `` (<workflow_state>, <linear_state_type>) ``
+     appended when `workflow_state` is non-null.
    - **Entry state:** `entry_state_name` plus `entry_subagent` from the script
      output.
    - **Lifecycle Context (composed):** the block, fenced exactly as a normal
@@ -107,47 +113,56 @@ case-insensitively (i.e. the user typed `/cadence:tick dry-run`):
 
 ---
 
-## Step 1 — Read config
+## Step 1 — Read and validate config
 
-Read `.claude/workflow.yaml`. If the file is missing or unreadable, print a clear
-error naming the path and exit. **Do not write to Linear.**
+Invoke Bash: `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/validate_workflow.py`.
+
+This script reads `.claude/workflow.yaml` and enforces the config rules
+deterministically (uniqueness of every `linear_state` value plus
+`linear.pickup_state`; `entry` resolves to a `type: agent` state; every
+`next` / `on_approve` / `on_rework` resolves; every `subagent` resolves
+to `.claude/agents/{name}.md` on disk; `linear.pickup_state` non-empty;
+any `max_in_flight` value is a positive integer (>= 1) and appears only
+on `type: agent` or `type: gate` states (Rule 6 — terminals rejected);
+any `adversarial_context` field is a boolean and appears only on
+`type: agent` states (Rule 7); no gate state carries the legacy
+`approved_linear_state` / `rework_linear_state` keys — those were removed
+in P4 and the validator rejects them with a Rule 8 failure).
+
+- If the exit code is **non-zero**, print the script's stderr verbatim and
+  exit. **Do not write to Linear.** (Exit 1 means the YAML was missing or
+  unreadable; exit 2 means one or more rules failed.)
+- If the exit code is **zero**, parse the JSON on stdout. This is the
+  **sole source of truth** for the config in this fire — including
+  `workflow_linear_states`, `linear_to_workflow`, `entry_state_name`,
+  `entry_subagent`, `pickup_state`, `states`, and the raw `linear` /
+  `label` / `limits` blocks. **Do not read `.claude/workflow.yaml`
+  directly.** Reading the YAML yourself produces a model-cacheable
+  artifact that can go stale across fires in the same conversation;
+  re-invoking the script every fire is the only way edits to the config
+  are guaranteed to be picked up.
 
 ## Step 2 — Read global prompt
 
 Read `.claude/prompts/global.md`. If the file is missing, use the empty string.
 Hold the contents in memory as `globalPrompt` for step 13.
 
-## Step 3 — Validate config
+## Step 3 — (removed in determinism P2)
 
-Invoke Bash: `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/validate_workflow.py`.
-
-This script enforces the config rules deterministically (uniqueness of every
-`linear_state` value plus `linear.pickup_state`; `entry` resolves to a
-`type: agent` state; every `next` / `on_approve` / `on_rework` resolves;
-every `subagent` resolves to `.claude/agents/{name}.md` on disk;
-`linear.pickup_state` non-empty; any `max_in_flight` value is a positive
-integer (>= 1) and appears only on `type: agent` or `type: gate` states
-(Rule 6 — terminals rejected); any `adversarial_context` field is a
-boolean and appears only on `type: agent` states (Rule 7); no gate state
-carries the legacy `approved_linear_state` / `rework_linear_state` keys —
-those were removed in P4 and the validator rejects them with a Rule 8
-failure).
-
-- If the exit code is **non-zero**, print the script's stderr verbatim and
-  exit. **Do not write to Linear.** (Exit 1 means the YAML was unreadable;
-  exit 2 means one or more rules failed.)
-- If the exit code is **zero**, parse the JSON on stdout. Use it as the
-  validated workflow config for the rest of the fire — in particular
-  `workflow_linear_states`, `entry_state_name`, `entry_subagent`, and
-  `pickup_state`. The raw config you read in step 1 still supplies
-  `linear.team` / `linear.project_slug` / `label.*` / `limits.*`.
+*Step 3 previously re-invoked the validator. Step 1 now does both the
+file read and the validation in one script call. Numbering is preserved
+so external references to steps 4+ don't shift.*
 
 ## Step 4 — Build the workflow Linear-states set
 
-The validator in step 3 already produced this. Keep its `workflow_linear_states`
+The validator in step 1 already produced this. Keep its `workflow_linear_states`
 array in memory as `workflowLinearStates` (ordered: `linear.pickup_state`, then
-every state's `linear_state`). Step 5 uses it to filter the query; step 8 uses
-it to map a Linear column back to a workflow state.
+every state's `linear_state`). Step 5 uses it to filter the query.
+
+The validator also emits a `linear_to_workflow` reverse map — each Linear
+column name keyed to an entry of the shape
+`{ "kind": "pickup" | "state" | "gate_waiting", "workflow_state": "<name>" | null, "linear_state_type": "agent" | "gate" | "terminal" | null }`.
+Keep it in memory as `linearToWorkflow`; step 8 uses it.
 
 ---
 
@@ -315,17 +330,18 @@ Otherwise, leave the Linear state untouched.
 
 ## Step 8 — Determine the matched workflow state
 
-Re-read `issue`'s Linear state (after the possible move in step 7). Find the
-single workflow state whose `linear_state` equals it. Call this the
-**matched workflow state**. By the uniqueness rule in step 3 exactly one
-match is possible.
+Re-read `issue`'s Linear state (after the possible move in step 7). Look the
+column name up in `linearToWorkflow` (from step 4) and read its
+`workflow_state`. Call this the **matched workflow state**. By the uniqueness
+rule enforced in step 1 each column appears at most once in the map.
 
 A gate now lives in exactly one column (its `linear_state`, the waiting
 queue) — verdicts are signalled by labels, not by moving the card to a
 different column. Step 10 handles the label branch.
 
-If **no** state matches (the issue moved to a column outside the workflow set
-between step 5 and now — possible if a human dragged it), post a plain comment:
+If the column is **not** present in `linearToWorkflow` (the issue moved to a
+column outside the workflow set between step 5 and now — possible if a human
+dragged it), post a plain comment:
 
 > **[Cadence]** Issue moved to unmapped Linear state `<state>` between pickup and
 > dispatch; releasing lock without action.
