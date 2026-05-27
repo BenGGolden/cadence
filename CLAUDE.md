@@ -22,13 +22,14 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
   `/cadence:init`: `workflow.yaml`, `prompts/global.md`, `ticket-template.md`,
   `agents/*.md`, `hooks/*.py`, `settings.json` (the last is merged into
   `.claude/settings.json` rather than copied verbatim).
-- `templates/hooks/` — seven Python files copied to the consumer's
+- `templates/hooks/` — eight Python files copied to the consumer's
   `.claude/hooks/`. Three are PreToolUse / UserPromptSubmit / PostToolUse
   hooks (`validate_tracking_json.py`, `validate_workflow_on_prompt.py`,
-  `audit_linear_writes.py`); four are deterministic helpers the dispatch
+  `audit_linear_writes.py`); five are deterministic helpers the dispatch
   prose invokes via Bash (`validate_workflow.py`, `_common.py`,
-  `parse_comments.py`, `emit_tracking_comment.py`). All seven are always
-  overwritten on init — they are plugin-owned executables, not user config.
+  `parse_comments.py`, `emit_tracking_comment.py`,
+  `compose_lifecycle_context.py`). All eight are always overwritten on
+  init — they are plugin-owned executables, not user config.
 - `scripts/` — plugin-only init-time helpers (`merge_settings_hooks.py`,
   `merge_settings_permissions.py`). Never scaffolded to the consumer; only
   invoked from `commands/init.md`. Contract documented in
