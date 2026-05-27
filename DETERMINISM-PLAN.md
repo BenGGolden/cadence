@@ -338,48 +338,114 @@ collapses to "hand the data you already have to this script."
 
 **Motivation.** [tick.md step 5](./commands/tick.md) holds the
 candidate filter, priority sort, and bounded reachability walk for
-over-cap states. The MCP call stays in prose (constraint: scripts
-can't call MCP), but everything downstream of the call is pure logic.
-P8.2 shipped a bounded-walk correctness fix specifically because the
-prose was hard to audit; a tested script closes that gap permanently.
+over-cap states. The MCP queries themselves stay in prose
+(constraint: scripts can't call MCP), but the script can also tell
+prose **which** queries to run (plan-then-act) and render the empty-
+candidates message itself — so prose's job shrinks to "run the
+queries the script told you to, hand back the results." P8.2 shipped
+a bounded-walk correctness fix specifically because the prose was
+hard to audit; a tested script closes that gap permanently.
 
 **Deliverables**
 
-- `templates/hooks/filter_candidates.py` — `--workflow-config PATH`
-  (path to the validator's JSON output), `--candidates PATH` (JSON
-  array of raw candidates: `identifier`, `current_linear_state`,
-  `labels` array, `priority`, `createdAt`, optional `blockers` array
-  of blocker-linear-state strings), `--in-flight PATH` (JSON map
-  `{state_name: int}` of current in-flight counts per capped state).
-  Emits JSON on stdout:
+- `templates/hooks/filter_candidates.py` with two modes:
+
+  **Plan mode** (`--plan --workflow-config <path>`) emits JSON:
+
+  ```json
+  {
+    "pickup_query": {
+      "team": "ENG",
+      "project_slug": "cadence",
+      "workflow_linear_states": ["Todo", "Planning", "In Progress", ...]
+    },
+    "in_flight_queries": [
+      {"state_name": "plan_review", "linear_state": "Planning Review"},
+      {"state_name": "implement",   "linear_state": "In Progress"}
+    ]
+  }
+  ```
+
+  `pickup_query.project_slug` is `null` when absent in the config (so
+  prose knows to omit the project filter rather than pass an empty
+  string). `in_flight_queries` is empty when no state declares
+  `max_in_flight`. Prose runs the pickup query once with these
+  parameters and one in-flight query per entry — no per-state
+  scanning of the validator output in prose.
+
+  **Filter mode** (`--workflow-config <path> --candidates <path>
+  --in-flight <path>`) reads:
+  - `--candidates`: JSON array of raw MCP results (`identifier`,
+    `current_linear_state`, `labels`, `priority`, `createdAt`,
+    optional `blockers` array of blocker-linear-state strings).
+  - `--in-flight`: JSON map `{state_name: int}` of current in-flight
+    counts (one entry per `in_flight_queries` element from plan mode).
+
+  Emits JSON:
 
   ```json
   {
     "ordered_identifiers": ["ENG-3", "ENG-1", ...],
-    "over_cap_states_that_blocked": ["plan_review"]
+    "over_cap_states_that_blocked": ["plan_review"],
+    "diagnostic_message": "No eligible issues.\n(caps reached for: plan_review)"
   }
   ```
+
+  `diagnostic_message` is `null` when `ordered_identifiers` is
+  non-empty; otherwise it's the multi-line message prose prints
+  verbatim. The cap-reached parenthetical is omitted when no caps
+  blocked anything (matches today's behaviour: a brand-new board
+  with no candidates prints just `No eligible issues.`).
 
   Encapsulates: workflow-Linear-states membership filter, active /
   needs-human filter, blocker-resolved filter (skipped when blocker
   field absent), gate-waiting-without-verdict filter, priority +
   `createdAt` sort, per-candidate reachability walk bounded at the
   first gate or terminal, drain exemption for verdict-bearing
-  candidates at their own gate (P8.2).
-- Update [tick.md step 5](./commands/tick.md): the prose still
-  describes the *intent* (query MCP for candidates; query MCP for
-  in-flight counts for each capped state) so the orchestration spine
-  stays. The filter/sort/walk math becomes "write candidates JSON and
-  in-flight-counts JSON to temp files; invoke `filter_candidates.py
-  --workflow-config <validatorOutputPath> --candidates
-  <candidatesPath> --in-flight <inFlightPath>`; use the returned
-  `ordered_identifiers` and the `over_cap_states_that_blocked` array
-  for the diagnostic line."
-- Update [init.md](./commands/init.md) copy table + next-steps block.
-- `tests/test_filter_candidates.py`:
-  - Empty candidates → empty ordered list, no diagnostics.
-  - Candidates filtered out by `cadence_active` / `cadence_needs_human`.
-  - Candidates in foreign columns dropped.
+  candidates at their own gate (P8.2). The three "Examples for the
+  default workflow" walk-through bullets currently in
+  [tick.md step 5](./commands/tick.md) move into the script's
+  docstring + tests.
+
+- Update [tick.md step 5](./commands/tick.md). The new shape:
+
+  1. Invoke `filter_candidates.py --plan --workflow-config
+     <validatorOutputPath>` → query plan JSON.
+  2. Run the MCP pickup query with `pickup_query.team`,
+     `pickup_query.project_slug` (omit the project filter when
+     null), and `pickup_query.workflow_linear_states`. The
+     "verbatim / no-fallback / no-broader-retry" guardrails
+     (current [tick.md:180-199](./commands/tick.md#L180-L199)) stay
+     in prose — they constrain the LLM's MCP-calling behaviour, not
+     the script.
+  3. For each entry in `in_flight_queries`, run a per-state MCP
+     query for the `linear_state` column and record the count.
+  4. Write the pickup-query results and in-flight counts to temp
+     files. Invoke `filter_candidates.py --workflow-config
+     <validatorOutputPath> --candidates <candidatesPath> --in-flight
+     <inFlightPath>`.
+  5. If `diagnostic_message` is non-null, print it verbatim and exit.
+     Otherwise `candidates = ordered_identifiers`; proceed to step 6.
+
+- Update [init.md](./commands/init.md) copy table + next-steps file
+  list.
+
+- `tests/test_filter_candidates.py` matrix:
+
+  Plan mode:
+  - Workflow with no caps → empty `in_flight_queries`.
+  - Workflow with caps on agent + gate → both surface, with correct
+    `linear_state` names.
+  - `linear.project_slug` absent → `pickup_query.project_slug` is
+    `null` (not empty string).
+
+  Filter mode:
+  - Empty candidates → empty ordered list, `diagnostic_message ==
+    "No eligible issues."` (no parenthetical when no caps blocked
+    anything).
+  - Candidates filtered out by `cadence_active` /
+    `cadence_needs_human` labels.
+  - Candidates in foreign Linear columns dropped.
   - Blockers absent vs present (present + unresolved → dropped).
   - Gate-waiting candidates without verdict dropped.
   - Priority + `createdAt` sort stable on ties (input order
@@ -391,36 +457,53 @@ prose was hard to audit; a tested script closes that gap permanently.
   - Reachability walk bounded at first gate/terminal; over-cap on a
     state *past* the boundary doesn't affect candidate.
   - `over_cap_states_that_blocked` reports only states that actually
-    blocked at least one candidate.
+    blocked ≥ 1 candidate.
+  - Empty result from cap filtering → `diagnostic_message ==
+    "No eligible issues.\n(caps reached for: <names>)"` with names
+    matching `over_cap_states_that_blocked`.
 
 **Acceptance criteria**
 
-- [ ] **AC-1** Default workflow + one `Todo` candidate +
-  `plan_review` at cap → empty `ordered_identifiers`,
-  `over_cap_states_that_blocked == ["plan_review"]`.
-- [ ] **AC-2** Verdict-bearing candidate at `human_review` with
-  `cadence_approve`, `human_review` at cap → candidate IS in
-  `ordered_identifiers`.
-- [ ] **AC-3** Candidate at `plan_review` with `cadence_rework`
-  (walk = `implement → agent_review → human_review`), `human_review`
-  at cap → candidate dropped, `human_review` in the blocker list.
-- [ ] **AC-4** Two candidates with identical priority and `createdAt`
-  appear in input order in `ordered_identifiers`, across 10
-  repeated runs.
-- [ ] **AC-5** [tick.md step 5](./commands/tick.md) no longer contains
-  the words "reachability walk", "over-cap", or the "Examples for
-  the default workflow" block.
-- [ ] **AC-6** [init.md](./commands/init.md) updated.
+- [ ] **AC-1** Plan mode on the default workflow returns
+  `in_flight_queries` containing exactly the states whose config has
+  `max_in_flight` set, each with the correct `linear_state`.
+- [ ] **AC-2** Plan mode with `linear.project_slug` absent from the
+  config returns `pickup_query.project_slug == null` (asserted as
+  JSON null, not `""`).
+- [ ] **AC-3** Filter mode: default workflow + one `Todo` candidate +
+  `plan_review` at cap → `ordered_identifiers == []`,
+  `over_cap_states_that_blocked == ["plan_review"]`,
+  `diagnostic_message ==
+  "No eligible issues.\n(caps reached for: plan_review)"`.
+- [ ] **AC-4** Filter mode: verdict-bearing candidate at
+  `human_review` with `cadence_approve`, `human_review` at cap →
+  candidate IS in `ordered_identifiers` (drain exemption).
+- [ ] **AC-5** Filter mode: candidate at `plan_review` with
+  `cadence_rework` (walk = `implement → agent_review → human_review`),
+  `human_review` at cap → candidate dropped, `human_review` in the
+  blocker list.
+- [ ] **AC-6** Filter mode: two candidates with identical priority
+  and `createdAt` appear in input order in `ordered_identifiers`,
+  across 10 repeated runs.
+- [ ] **AC-7** [tick.md step 5](./commands/tick.md) no longer contains
+  the words "reachability walk", "over-cap", or the bulleted "Examples
+  for the default workflow" block. Step 5 no longer iterates the
+  workflow config looking for `max_in_flight` keys — that scan moves
+  into the script's plan mode.
+- [ ] **AC-8** [init.md](./commands/init.md) updated.
 
 **Manual testing**
 
 - Linear board with 3 issues queued in `Todo`, `plan_review` capped
   at 1, one issue already there. Run `/cadence:tick`. Confirm output
-  reports `caps reached for: plan_review` and no issue is picked up.
-  Add a fourth `Todo` issue — same result.
+  reports `(caps reached for: plan_review)` and no issue is picked
+  up. Add a fourth `Todo` issue — same result.
 - Approve one `human_review` issue while `human_review` is at cap.
   Run `/cadence:tick`. Confirm the approval drains normally (drain
   exemption).
+- Board with no candidates (everything in foreign columns). Run
+  `/cadence:tick`. Confirm output is the bare `No eligible issues.`
+  with no parenthetical.
 
 ---
 
