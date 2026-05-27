@@ -192,48 +192,83 @@ pure-templating block in the codebase (~140 lines of prose
 describing a Markdown render with branches for rework and
 adversarial-context). Every fire pays tokens to re-derive the same
 shape; prose edits silently change the contract subagents depend on.
-JSON-in → Markdown-out — highest-value extraction.
+The script absorbs the full subagent-prompt construction — not just
+the Markdown render, but also the input shaping, the globalPrompt
+append, and the dry-run placeholder issue — so the prose's job
+collapses to "hand the data you already have to this script."
 
 **Deliverables**
 
-- `templates/hooks/compose_lifecycle_context.py` — reads a single
-  JSON file via `--input PATH`, writes the full Lifecycle Context
-  block to stdout. Includes the `<!-- AUTO-GENERATED ... -->` header,
-  `<!-- END CADENCE LIFECYCLE -->` footer, conditional Rework Context
-  section, and adversarial-context variant. Suggested input shape
-  (document in the script's docstring):
+- `templates/hooks/compose_lifecycle_context.py`. CLI:
 
-  ```json
-  {
-    "issue": {
-      "identifier": "ENG-1", "title": "...", "url": "...",
-      "branchName": null, "priority": 2,
-      "labels": ["..."], "description": "..."
-    },
-    "target_state": {
-      "name": "implement", "linear_state": "In Progress",
-      "type": "agent", "adversarial_context": false
-    },
-    "next_state": {
-      "name": "agent_review", "linear_state": "In Review", "type": "agent"
-    },
-    "attempt": 2,
-    "team_key": "ENG",
-    "rework_comments": [],
-    "pr_url": null,
-    "default_branch": "main"
-  }
+  ```
+  compose_lifecycle_context.py
+    --workflow-config <validatorOutputPath>
+    --issue <issueJsonPath>
+    --target-state <name>
+    --attempt <int>
+    --parse-comments-output <parseCommentsOutputPath>
+    [--global-prompt-path .claude/prompts/global.md]
+    [--default-branch main]
+    [--dry-run]
   ```
 
+  Reads everything internally:
+  - From `--workflow-config`: `states[target_state]` (gives
+    `linear_state`, `type`, `adversarial_context`,
+    `next`/`on_approve`/`on_rework`) and the resolved `next_state`
+    block. Plus `linear.team` for branch-name derivation.
+  - From `--issue`: the raw MCP issue object (`identifier`, `title`,
+    `url`, `branchName`, `priority`, `labels`, `description`). The
+    bootstrap dumps the MCP response to a temp file once — no
+    shaping required.
+  - From `--parse-comments-output`: `rework_context` (the rework
+    comments) and `latest_implementer_summary.pr_url` (for the
+    adversarial-context variant).
+  - From `--global-prompt-path`: appended verbatim after two blank
+    lines. Missing file → empty string (matches today's step 2).
+  - With `--dry-run`: ignores `--issue` / `--parse-comments-output`
+    / `--attempt` and synthesises the EXAMPLE-1 placeholders from
+    step 0 internally; everything else (globalPrompt append, etc.)
+    still runs. The dry-run still requires `--workflow-config` so
+    the `entry` state's `linear_state` is real, matching step 0's
+    current behaviour.
+
+  Stdout is the **full subagent user prompt** — Lifecycle Context
+  block + two blank lines + globalPrompt — ready to hand to the
+  Agent tool's `prompt` parameter.
+
 - Update [tick.md step 13](./commands/tick.md): replace the ~140 lines
-  with "Write the lifecycle-context-input JSON (shape: see
-  `compose_lifecycle_context.py` docstring) to a temp file. Invoke
-  Bash `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/compose_lifecycle_context.py
-  --input <file>`. Append two blank lines, then the contents of
-  `globalPrompt`."
+  with "Invoke Bash `python
+  "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/compose_lifecycle_context.py
+  --workflow-config <validatorOutputPath> --issue <issueJsonPath>
+  --target-state <targetState> --attempt <attempt>
+  --parse-comments-output <parseCommentsOutputPath>`. The script's
+  stdout is the full subagent prompt; pass it as the Agent tool's
+  `prompt` in step 14."
+
+- **Delete [tick.md step 2 (Read global prompt)](./commands/tick.md)
+  entirely.** Its only consumer was step 13; the script handles the
+  read now. Renumber subsequent steps OR keep step numbers and mark
+  step 2 as `(removed in <phase-shipped-CHANGELOG-ref>)` — keeping
+  numbers stable is the safer call so external references (tests,
+  commits) don't churn.
+
+- Update [tick.md step 0 (Dry-run branch)](./commands/tick.md): the
+  current "compose the Lifecycle Context block (see step 13) for a
+  *hypothetical* issue" with the verbatim placeholder list collapses
+  to "invoke `compose_lifecycle_context.py --workflow-config
+  <validatorOutputPath> --dry-run`; the script's stdout is the
+  rendered Lifecycle Context. Print it under the
+  **Lifecycle Context (composed):** section." The hardcoded
+  EXAMPLE-1 placeholder list moves into the script.
+
 - Update [init.md](./commands/init.md) Step 4 copy table + Step 5
   "Files written" list with the new script.
-- `tests/test_compose_lifecycle_context.py` matrix:
+
+- `tests/test_compose_lifecycle_context.py` matrix (each test writes
+  the four input files into a `TemporaryDirectory` and invokes the
+  script):
   - Default (non-adversarial, no rework, next state `type: agent`).
   - Default with rework context: 1 comment / 2 comments / 0
     comments-but-rework-marked (boilerplate fallback).
@@ -242,16 +277,23 @@ JSON-in → Markdown-out — highest-value extraction.
     "Terminal state" line).
   - Adversarial-context: no PR URL → no PR: line; with PR URL → PR:
     line present.
-  - Adversarial-context: base branch defaults to `main` when not
-    supplied.
+  - Adversarial-context: `--default-branch` flag honoured; defaults
+    to `main`.
   - Adversarial-context with rework section preserved
-    (`step 13`'s contract).
+    (step 13's contract).
   - Branch derivation: `issue.branchName` present uses verbatim;
     absent derives `<team-key-lower>/<identifier-lower>-<title-slug>`
-    with title-slug ≤ 50 chars.
+    with title-slug ≤ 50 chars (`team_key` comes from the workflow
+    config's `linear.team`).
   - Priority rendering: "`2 (High)`" form when numeric; "(none)"
     when null.
   - Labels: comma-separated; "(none)" when empty.
+  - `--global-prompt-path` pointing at a present file → contents
+    appear after two blank lines; missing file → no appended content
+    (and no trailing blank lines from a phantom append).
+  - `--dry-run` → byte-identical to a stored
+    `tests/fixtures/lifecycle_context/dry_run.md` for the default
+    workflow config.
 
 **Acceptance criteria**
 
@@ -262,21 +304,28 @@ JSON-in → Markdown-out — highest-value extraction.
   `tests/fixtures/lifecycle_context/adversarial.md`.
 - [ ] **AC-3** Output stdout for the rework-with-two-comments fixture
   is byte-identical to `tests/fixtures/lifecycle_context/rework.md`.
-- [ ] **AC-4** Empty `--input` file → exit 1 with clear stderr;
-  malformed JSON → exit 1.
-- [ ] **AC-5** [tick.md step 13](./commands/tick.md) no longer contains
-  the literal strings `## Lifecycle Context`, `### Transitions`, or
-  `<!-- AUTO-GENERATED BY CADENCE` — they move to the script.
-- [ ] **AC-6** [init.md](./commands/init.md) Step 4 copy table includes
-  the new script, and Step 5's "Files written" block lists
+- [ ] **AC-4** Output stdout for `--dry-run` against the default
+  workflow config is byte-identical to
+  `tests/fixtures/lifecycle_context/dry_run.md`.
+- [ ] **AC-5** Missing required arg → exit 1 with clear stderr;
+  malformed `--issue` JSON → exit 1.
+- [ ] **AC-6** [tick.md](./commands/tick.md) no longer contains the
+  literal strings `## Lifecycle Context`, `### Transitions`,
+  `<!-- AUTO-GENERATED BY CADENCE`, or the hardcoded EXAMPLE-1
+  placeholder list (`Hypothetical entry-state issue`).
+- [ ] **AC-7** [tick.md](./commands/tick.md) no longer contains a
+  step that reads `.claude/prompts/global.md`. The script owns that
+  read.
+- [ ] **AC-8** [init.md](./commands/init.md) Step 4 copy table
+  includes the new script, and Step 5's "Files written" block lists
   `.claude/hooks/compose_lifecycle_context.py`.
 
 **Manual testing**
 
 - Capture `/cadence:tick dry-run` output against the default
   `workflow.yaml` **before** merging this PR. Apply Phase 3. Re-run
-  the dry-run. Diff the rendered Lifecycle Context blocks
-  byte-for-byte.
+  the dry-run. Diff byte-for-byte — both the Lifecycle Context block
+  and the appended globalPrompt should match.
 - Live `/cadence:tick` fire (Mode B, `claude /loop`) against a test
   Linear issue that has gone through at least one rework round, so
   default + rework branches both exercise. The implementer
