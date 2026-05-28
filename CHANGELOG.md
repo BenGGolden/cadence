@@ -6,6 +6,66 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Determinism Phase 3: extract `compose_lifecycle_context.py`
+- New `templates/hooks/compose_lifecycle_context.py` renders the full
+  subagent user prompt — Lifecycle Context block (default or
+  adversarial-context variant), optional Rework Context section, and the
+  appended `.claude/prompts/global.md` content — in deterministic Python
+  instead of the ~140 lines of prose that previously lived in
+  `commands/tick.md` step 13. CLI: `--workflow-config`, `--issue`,
+  `--target-state`, `--attempt`, `--parse-comments-output`, plus
+  `--rework`, `--global-prompt-path`, `--default-branch`, `--dry-run`.
+  Stdout is the prompt; pass it to the Agent tool verbatim.
+- The script absorbs the full subagent-prompt construction: input
+  shaping (validator output, issue object, parse-comments output), the
+  `linear.team` lookup for branch derivation, the title-slug derivation
+  (lowercased, non-alphanumerics collapsed to hyphens, trimmed to 50
+  chars), the default-vs-adversarial branch (the latter strips the
+  implementer narrative and adds Branch (under review) / Base branch /
+  optional PR lines), the rework-section rendering (one block-quoted
+  entry per human comment, with a zero-comments fallback), the
+  `.claude/prompts/global.md` read, and the two-blank-line separator
+  between the block and the global prompt.
+- New `tests/test_compose_lifecycle_context.py` (25 cases) covers every
+  branch: byte-identical golden fixtures for default / adversarial /
+  rework / dry-run; next-state-is-gate / terminal / agent transitions;
+  branch derivation with and without `issue.branchName` (and the
+  50-char slug truncation); priority and labels rendering (numeric vs
+  null, comma-separated vs `(none)`); globalPrompt append (present vs
+  missing); the `--rework` flag and the zero-comments fallback; and the
+  required-arg / malformed-JSON / missing-entry-state error paths.
+  Goldens live under `tests/fixtures/lifecycle_context/`.
+
+### Changed — Determinism Phase 3: tick.md / init.md
+- `commands/tick.md` step 13 collapses from ~140 lines of prose to a
+  single Bash invocation of `compose_lifecycle_context.py`. The
+  AUTO-GENERATED marker, the `## Lifecycle Context` heading, the
+  `### Transitions` section, the rework template, the
+  adversarial-context branch, the `<!-- END CADENCE LIFECYCLE -->`
+  footer, the EXAMPLE-1 dry-run placeholder list, and the
+  two-blank-lines + globalPrompt append are all owned by the script.
+- `commands/tick.md` step 2 (Read global prompt) is removed; the script
+  reads `.claude/prompts/global.md` itself. The step number is preserved
+  as a removed-stub so external references to later steps don't shift,
+  matching the P2 step-3 retirement.
+- `commands/tick.md` step 0 (dry-run) invokes
+  `compose_lifecycle_context.py --dry-run` to render the **Lifecycle
+  Context (composed):** section. The hardcoded `EXAMPLE-1` /
+  `Hypothetical entry-state issue` placeholder list moves into the
+  script.
+- `commands/tick.md` step 1 now also writes the validator JSON to a
+  temporary file (`validatorOutputPath`) for step 0 / step 13.
+- `commands/tick.md` step 9 now also writes the parse-comments output to
+  a temporary file (`parseCommentsOutputPath`) for step 13. The file
+  doesn't need refreshing in step 11 — `compose_lifecycle_context.py`
+  only reads `rework_context` and `latest_implementer_summary.pr_url`,
+  both of which are independent of `--target-state` and `--gate-name`.
+- `commands/init.md` Step 4 copy table adds the new script; Step 5
+  "Files written" block lists `.claude/hooks/compose_lifecycle_context.py`;
+  the overwrite-check block names the new file; the `seven files` /
+  `four .py files` references update to `eight` / `five` to account for
+  it. `CLAUDE.md` repo map updates the same counts.
+
 ### Changed — Determinism Phase 2: validator emits `linear_to_workflow` reverse map and owns the YAML read
 - `templates/hooks/validate_workflow.py` now includes a `linear_to_workflow`
   field in its JSON output: each Linear column name keyed to

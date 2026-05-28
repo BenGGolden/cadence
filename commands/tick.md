@@ -67,24 +67,21 @@ case-insensitively (i.e. the user typed `/cadence:tick dry-run`):
    `linear_to_workflow`, `entry_state_name`, `entry_subagent`, `pickup_state`,
    `states`), and the raw `linear` / `label` / `limits` blocks as JSON on stdout.
    Parse that JSON; if the script's stdout is not parseable, print stderr
-   verbatim and exit. Then run step 2 (read global prompt) below exactly as
-   written.
+   verbatim and exit. Also write the JSON verbatim to a temporary file (call
+   it `validatorOutputPath`) using the Write tool — step 0 step 3 below feeds
+   it to `compose_lifecycle_context.py`.
 2. Do **NOT** call any Linear MCP tool. Do **NOT** invoke any subagent. Do **NOT**
-   write to any file.
-3. Compose the **Lifecycle Context block** (see step 13) for a *hypothetical* issue
-   sitting in the `entry` state, using these placeholder values:
-   - `identifier`: `EXAMPLE-1`
-   - `title`: `Hypothetical entry-state issue`
-   - `url`: `https://linear.app/example/issue/EXAMPLE-1`
-   - `state_name`: the `entry` state's workflow-state name (from config)
-   - `attempt`: `1`
-   - `priority`: `3 (Medium)`
-   - `branchName`: `example/example-1-hypothetical-entry-state-issue`
-   - `labels`: `(none)`
-   - `description`: `No description provided.`
-   - No rework section.
+   write to any file other than the temp file from step 1.
+3. Invoke Bash:
+   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/compose_lifecycle_context.py --workflow-config <validatorOutputPath> --dry-run`
+   The script reads the validator's `entry_state_name` and the entry state's
+   `linear_state` / `next` / `adversarial_context` from `<validatorOutputPath>`,
+   synthesises a hypothetical `EXAMPLE-1` issue internally, and renders the
+   Lifecycle Context block plus the appended `.claude/prompts/global.md`
+   content (when that file exists) on stdout. Hold the stdout as
+   `dryRunComposed` for step 4.
 4. Print a single Markdown report. Start with a **Validation** section built
-   from the script's JSON output. The `evidence` array has one block per rule,
+   from the validator's JSON output. The `evidence` array has one block per rule,
    each with `rule`, `title`, `lines` (pre-formatted bullet strings),
    `result` (`PASS` / `FAIL`), and `failure`. For each block **in order**,
    print the `title`, every string in `lines` as a bullet, and the `result`.
@@ -105,9 +102,10 @@ case-insensitively (i.e. the user typed `/cadence:tick dry-run`):
      appended when `workflow_state` is non-null.
    - **Entry state:** `entry_state_name` plus `entry_subagent` from the script
      output.
-   - **Lifecycle Context (composed):** the block, fenced exactly as a normal
-     subagent invocation would receive it. Append `.claude/prompts/global.md`
-     content (or `(empty)`) after the block.
+   - **Lifecycle Context (composed):** `dryRunComposed` from step 3, fenced
+     exactly as a normal subagent invocation would receive it. (The script's
+     output already includes the appended global prompt content when
+     `.claude/prompts/global.md` exists — no additional rendering needed.)
 5. End the report with the literal line: `DRY RUN — no side effects.`
 6. Exit. Do not proceed to step 1 of the live path.
 
@@ -140,12 +138,17 @@ in P4 and the validator rejects them with a Rule 8 failure).
   directly.** Reading the YAML yourself produces a model-cacheable
   artifact that can go stale across fires in the same conversation;
   re-invoking the script every fire is the only way edits to the config
-  are guaranteed to be picked up.
+  are guaranteed to be picked up. Also write the JSON verbatim to a
+  temporary file (call it `validatorOutputPath`) using the Write tool;
+  step 0 (dry-run) and step 13 invoke deterministic helpers that take it
+  as input.
 
-## Step 2 — Read global prompt
+## Step 2 — (removed in determinism P3)
 
-Read `.claude/prompts/global.md`. If the file is missing, use the empty string.
-Hold the contents in memory as `globalPrompt` for step 13.
+*Step 2 previously read `.claude/prompts/global.md` and held it in memory
+for step 13. The `compose_lifecycle_context.py` script invoked from step
+13 now does the read itself. Numbering is preserved so external
+references to later steps don't shift.*
 
 ## Step 3 — (removed in determinism P2)
 
@@ -365,7 +368,14 @@ Invoke Bash:
 step 8 is a gate (this makes step 9's output also carry the `rework_count` and
 `rework_context` that step 10c needs, so it does not have to re-run the script).
 
-Parse the JSON on stdout. Read `latest_tracking_comment` — its `state` field is
+Parse the JSON on stdout. Also write it verbatim to a temporary file (call it
+`parseCommentsOutputPath`) using the Write tool — step 13 feeds it to
+`compose_lifecycle_context.py` for the `rework_context` and the
+`latest_implementer_summary.pr_url` (both of which are independent of
+`--target-state` and `--gate-name`, so step 11's re-invocation does not
+need to overwrite this file).
+
+Read `latest_tracking_comment` — its `state` field is
 the workflow-state name the *last* Cadence fire was working on. It is `null`
 when there is no prior `cadence:state` / `cadence:gate` / `cadence:reconcile`
 comment, or when the latest such comment is a reconcile (which carries no
@@ -534,119 +544,37 @@ fires.
 
 ## Step 13 — Compose the Lifecycle Context block
 
-The block below is the **prefix** of the subagent's user prompt. Construct it
-verbatim, in this shape (the comment delimiters and headings are part of the
-contract):
+Write the locked `issue` MCP object verbatim as JSON to a temporary file
+(call it `issueJsonPath`) using the Write tool. Then invoke Bash:
 
-```
-<!-- AUTO-GENERATED BY CADENCE — DO NOT EDIT -->
+`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/compose_lifecycle_context.py --workflow-config <validatorOutputPath> --issue <issueJsonPath> --target-state <targetState> --attempt <attempt> --parse-comments-output <parseCommentsOutputPath>`
 
-## Lifecycle Context
+If this fire entered via the **rework branch** (step 10c), append `--rework`
+so the script includes the Rework Context section.
 
-- **Issue:** {identifier} — {title}
-- **URL:** {url}
-- **State:** {targetState}
-- **Attempt:** {attempt}
-- **Priority:** {priority — render as "N (Label)" e.g. "2 (High)", or "(none)" if null}
-- **Branch (Linear suggested):** {issue.branchName, else derive: "<team-key-lowercased>/<identifier-lowercased>-<title-slug>" where title-slug is the title lowercased with runs of non-alphanumerics replaced by single hyphens and trimmed to 50 chars}
-- **Labels:** {comma-separated list of label names, or "(none)"}
+The script reads:
+- The validator output (`validatorOutputPath`, from step 1) — `states[<targetState>]`
+  for `adversarial_context` / `linear_state` / `next`, the resolved next
+  state for its `type` / `linear_state`, and `linear.team` for branch
+  derivation.
+- The issue object (`issueJsonPath`, written immediately above) —
+  `identifier` / `title` / `url` / `branchName` / `priority` / `labels` /
+  `description`.
+- The parse-comments output (`parseCommentsOutputPath`, from step 9) —
+  `rework_context` (the human comments rendered when `--rework` is
+  passed) and `latest_implementer_summary.pr_url` (rendered as the
+  **PR:** line in the adversarial-context variant).
+- `.claude/prompts/global.md` if it exists — appended verbatim after two
+  blank lines.
 
-### Description
+The script handles both the default and `adversarial_context: true`
+variants of the Lifecycle Context block (the latter strips
+implementer-narrative content and adds **Branch (under review)** / **Base
+branch** / optional **PR:** lines), the rework-section rendering
+(including the zero-comments fallback), and the global-prompt append.
 
-{issue.description verbatim, or the literal "No description provided." if empty/null}
-
-### Transitions
-
-- On success → **{nextState}** (Linear: "{nextState's linear_state}")
-- {If next state is type: gate: append a line "- Gate downstream: human will see this in Linear column \"{linear_state}\" and decide approve/rework."}
-- {If next state is type: terminal: append a line "- Terminal state: the bootstrap will close the workflow at \"{linear_state}\"."}
-```
-
-If this fire entered via the **rework branch** (step 10c), append a Rework Context
-section *before* the "When Done" footer. Otherwise omit it:
-
-```
-### Rework Context
-
-This is a **rework run** at state `{targetState}`. A previous submission was
-reviewed and sent back. Address the feedback below before resubmitting.
-
-> {reworkComment[0].body}
-> — {reworkComment[0].author} at {reworkComment[0].createdAt}
-
-> {reworkComment[1].body}
-> — {reworkComment[1].author} at {reworkComment[1].createdAt}
-
-(... one block-quoted entry per reworkComment, oldest first ...)
-```
-
-If `reworkComments` is empty but this is a rework run (the gate was rework-clicked
-with no accompanying human comments), include the Rework Context heading with
-the body: `(No human comments were left when this issue was sent back; address
-whatever you can infer from the prior review and proceed.)`.
-
-Always finish with the footer:
-
-```
-### When Done
-
-Do the work described by your subagent definition. When you are finished, return
-a Markdown summary of:
-- What you changed (files, branch, PR URL if relevant).
-- What you verified (tests passed, lints clean, etc.).
-- Anything the next state will need.
-
-Do NOT post anything to Linear yourself. Do NOT modify Linear state. The
-bootstrap will handle those.
-
-<!-- END CADENCE LIFECYCLE -->
-```
-
-**Adversarial-context variant**: if the target state's config has
-`adversarial_context: true`, compose the Lifecycle Context block
-differently:
-
-- The **Description** section is the ticket description verbatim — same
-  as the default.
-- The **Acceptance Criteria** are guaranteed to be in the description
-  (P3 makes this a planner-enforced contract); the subagent reads them
-  directly out of the description text.
-- **No "Plan summary" or implementer-narrative section is included.**
-  Even if prior tracking comments contain a plan summary or
-  implementation notes, do NOT lift them into the Lifecycle Context.
-- The **Branch** line is replaced with two lines:
-  - **Branch (under review):** the implementer's branch name (same
-    derivation as the default).
-  - **Base branch:** `main` unless the repo's default is something else
-    (read from `gh repo view --json defaultBranchRef -q
-    .defaultBranchRef.name` if available; otherwise default to `main`).
-- **PR URL**, if discoverable from `parse_comments.py`'s
-  `latest_implementer_summary.pr_url` field (see step 9's parsed output),
-  is included as a separate **PR:** line. If not discoverable, omit the
-  line (the subagent will fall back to `git diff`).
-- The **Transitions** section reads:
-
-  ```
-  ### Transitions
-
-  - On success → **<nextState>** (Linear: "<nextState's linear_state>")
-  - Your output is a Markdown findings comment. The bootstrap will post
-    it on the issue and move the issue to <nextState>.
-  ```
-
-- The "When Done" footer is unchanged.
-
-The Rework Context section, if any, is **included** for adversarial-context
-subagents (a rework run still needs the human's prior rework reasoning); it
-is the only narrative-style content carried into the context, and it comes
-from humans, not the implementer.
-
-If `adversarial_context` is absent or false (the default for all existing
-states), compose the original Lifecycle Context block unchanged.
-
-After the block, append two blank lines, then the contents of `globalPrompt`
-(from step 2). The full string — Lifecycle Context block + blank lines + global
-prompt — is the **user prompt** for the subagent invocation in step 14.
+**Stdout is the full subagent user prompt.** Pass it as the Agent tool's
+`prompt` parameter in step 14.
 
 ---
 
