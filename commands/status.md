@@ -155,153 +155,36 @@ render the Attempt column as `?`. Mention the degradation in the
 
 ## Step 5 — Render the report
 
-Print the following Markdown to the user's terminal verbatim (filling in
-the bracketed parts). No Linear writes have happened — this is the
-entire user-visible output.
+Write a JSON file to a temp path with the shape documented in the
+`render_status_report.py` docstring. Fill it from the data you've
+already gathered:
 
-```markdown
-## Cadence status — <now in UTC ISO 8601>
+- `validator` — the verbatim JSON object from step 1 (must include
+  `states`, `linear_to_workflow`, `linear`, `label`; include `evidence`
+  when the validator exited 2).
+- `issues` — for each issue from step 3, an object with `identifier`,
+  `title`, `state_name` (the Linear column, i.e. `state.name`),
+  `priority`, `updatedAt`, `labels`, `attempt_count` (from step 4; pass
+  the string `"?"` when the per-issue fetch was degraded), and
+  `last_state` (carried for callers but not rendered).
+- `now` — current UTC time in ISO 8601 (resolve via `/cadence:sweep`
+  step 2's recipe if you don't already have it).
+- `team`, `project_slug`, `pickup_state` — from `validator.linear`.
+- `degraded_issues` — list of identifiers whose per-issue comment fetch
+  was degraded (per step 4); omit or pass an empty list when none.
 
-Team: **<linear.team>**   Project: **<linear.project_slug, or "(any)" if unset>**   Pickup: **<linear.pickup_state>**
+Invoke Bash:
+`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/render_status_report.py --input <path-to-input-json>`.
 
-### Issues in workflow
+Print the script's stdout verbatim. It contains the entire user-visible
+report — header, issues table (or empty-set sentinel), per-state
+summary, optional Concurrency table, optional Config warnings, and the
+footer. No Linear writes have happened.
 
-| ID | Title | Linear column | Workflow state | Attempt | Lock | Needs human | Verdict |
-|----|-------|---------------|----------------|---------|------|-------------|---------|
-| <identifier> | <title truncated to ~50 chars> | <state.name> | <workflow_state from linearToWorkflow, formatted per below> | <attempt or "—"> | <"🔒" if cadence_active label present, else ""> | <"🛑" if cadence_needs_human label present, else ""> | <verdict cell per below> |
-```
-
-**Workflow-state column formatting** (per `linearToWorkflow` entry):
-
-| Reverse-lookup kind | Render as                       |
-|---------------------|---------------------------------|
-| `pickup`            | `(pickup)`                      |
-| `state`             | the workflow state name         |
-| `gate_waiting`      | `<gate> (waiting)`              |
-
-**Verdict column** (only meaningful for `gate_waiting` rows; otherwise
-leave empty):
-
-- `cadence-approve` if the `label.cadence_approve` label is present and
-  `label.cadence_rework` is not — the next fire will route this issue
-  to the gate's `on_approve` target.
-- `cadence-rework` if the `label.cadence_rework` label is present and
-  `label.cadence_approve` is not — the next fire will route to
-  `on_rework`.
-- `both (→ rework)` if both labels are present — the next fire's
-  defensive guard treats this as rework.
-- empty if neither is present — the gate is still waiting for a human.
-
-**Row ordering**: by Linear priority ascending, then `updatedAt`
-descending (newest first within a priority). This mirrors the order in
-which `/cadence:tick` would pick issues up — the top of the
-table is "what fires next".
-
-If the row set is empty, replace the table with a single italic line:
-`*No issues currently in workflow states.*`
-
-### Per-state summary
-
-Below the table, print a per-workflow-state summary. Walk the `states:`
-map in declaration order and emit one line per state:
-
-```markdown
-### Per-state counts
-
-- **<state name>** (`<linear_state>`) — N issues   <"  🔒 N locked" if any> <"  🛑 N needs-human" if any>
-- **<state name>** (`<linear_state>`) — N issues   ...
-```
-
-For **gates**, render the single waiting column plus a verdict-label
-breakdown so the human can see what is queued up for the next fire:
-
-```markdown
-- **<gate name>** (gate, `<linear_state>`) — N issues
-  - awaiting verdict — N issues
-  - 👍 cadence-approve — N issues
-  - 👎 cadence-rework — N issues
-  - ⚠️ both labels (treated as rework) — N issues
-```
-
-Omit any breakdown line whose count is 0. If all N issues are in the
-"awaiting verdict" bucket, collapse to the single-line form.
-
-For **terminal** states, render as the single-line form. Include them
-even when count is 0 — the empty terminal column tells the reader the
-workflow is healthy.
-
-Also emit a single line for `pickup_state`:
-
-```markdown
-- **(pickup)** (`<pickup_state>`) — N issues
-```
-
-### Concurrency
-
-If any workflow state declares `max_in_flight` (agent or gate; P6 + P8),
-append a Concurrency table after the per-state summary so the human can
-see whether pickup is currently throttled by caps. Walk every state in
-the `states:` map (in declaration order); compute `inFlight` as the
-number of issues from step 3 whose Linear column equals the state's
-`linear_state` (the same counts the per-state summary already has).
-
-```markdown
-### Concurrency
-
-| State                   | In flight | Cap    | Status   |
-|-------------------------|-----------|--------|----------|
-| plan                    | 1         | (none) |          |
-| plan_review (gate)      | 4         | 5      |          |
-| implement               | 2         | 3      |          |
-| agent_review            | 1         | (none) |          |
-| human_review (gate)     | 5         | 5      | AT CAP   |
-| done                    | 12        | n/a    |          |
-```
-
-Cells:
-
-- **State** — workflow-state name, suffixed with `(gate)` for gates and
-  `(terminal)` for terminals. The `(pickup)` row is omitted; pickup is
-  not a workflow state.
-- **In flight** — `inFlight` for this state.
-- **Cap** — the state's `max_in_flight` if set; `(none)` for agent or
-  gate states without a cap; `n/a` for terminals (Rule 6 forbids caps
-  on terminal states).
-- **Status** —
-  - empty when `Cap` is `(none)` or `n/a`, or when `inFlight < cap`;
-  - `AT CAP` when `inFlight == cap` (the next fire's reachability walk
-    will drop candidates whose happy-path downstream passes through
-    this state — except verdict-bearing issues already in a capped
-    gate's column, which drain regardless);
-  - `OVER CAP` when `inFlight > cap` (a human moved issues in manually;
-    the next fire will block upstream candidates until the count
-    drops to the cap or below).
-
-Omit the entire Concurrency section if no state declares `max_in_flight`
-— a workflow without caps does not need the noise.
-
-### Config warnings
-
-If any of the following hold, append a **Config warnings** section after
-the summary:
-
-- The validator (step 1) exited **2** — one or more rules failed. For each
-  `FAIL` block in its `evidence` array, print the rule `title` and its
-  `failure` string. This covers duplicate Linear columns, an invalid `entry`,
-  dangling `next` / `on_approve` / `on_rework` targets, and missing subagent
-  files — all checked deterministically by the script.
-- A per-issue comment fetch was degraded or returned `parse_errors`
-  (per step 4).
-
-If none, omit the section entirely.
-
-### Footer
-
-End with one blank line and the literal line:
-
-```
-Read-only — no Linear writes performed.
-```
+Workflow-state column formatting, verdict-cell rules, gate-bucket
+collapsing, Concurrency `AT CAP` / `OVER CAP` thresholds, and the
+footer line are all encoded in the script — see its docstring and tests
+for the exact contract.
 
 ---
 
