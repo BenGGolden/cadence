@@ -6,6 +6,71 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Determinism Phase 5: extract `render_status_report.py`
+- New `templates/hooks/render_status_report.py` owns the entire
+  `/cadence:status` Markdown render — header, issues table, per-state
+  summary, optional Concurrency table, optional Config warnings, and
+  the read-only footer — that used to live as ~120 lines of prose in
+  `commands/status.md` step 5. CLI: `--input <path>`. Input JSON shape
+  (documented in the script's docstring): the verbatim validator output
+  (must include `states`, `linear_to_workflow`, `linear`, `label`; may
+  include `evidence` when the validator exited 2), a per-issue list
+  (`identifier`, `title`, `state_name` = Linear column, `priority`,
+  `updatedAt`, `labels`, `attempt_count`, optional `last_state`), the
+  current `now` ISO timestamp, `team` / `project_slug` / `pickup_state`
+  for the header, and an optional `degraded_issues` list for the
+  Config-warnings section.
+- The script encapsulates: the workflow-state column formatting
+  (`(pickup)` / `<state>` / `<gate> (waiting)`) via the validator's
+  `linear_to_workflow` reverse map; the verdict cell logic (approve /
+  rework / both-as-rework / empty on non-gates); the priority + updatedAt
+  sort (null and `0`/"No priority" sort last; `updatedAt` descending
+  within a priority tier); title truncation at ~50 chars with a trailing
+  `…`; newline collapsing and pipe-escaping for table cells; the per-state
+  summary's gate four-bucket breakdown (awaiting / 👍 approve / 👎 rework
+  / ⚠️ both labels) with the "collapse to single line when all awaiting"
+  rule and the 0-count omissions; the agent / terminal `🔒 N locked` /
+  `🛑 N needs-human` suffix counts; the always-emitted `(pickup)` and
+  terminal-with-zero-issues lines; the Concurrency table (AT CAP / OVER
+  CAP / `n/a` for terminals / `(none)` for uncapped agents and gates),
+  omitted entirely when no state declares `max_in_flight`; and the
+  Config-warnings section that surfaces the validator's `evidence` FAIL
+  blocks (rule title + failure string) plus any degraded per-issue
+  fetches.
+- New `tests/test_render_status_report.py` (32 cases) covers all of the
+  above. Three byte-identical fixture comparisons (the broad-stroke
+  acceptance criteria): `tests/fixtures/status/default_full.md` (one
+  issue per workflow state, mixed verdict labels on the two gates),
+  `tests/fixtures/status/empty.md` (empty issue set → sentinel line, no
+  Concurrency section), and `tests/fixtures/status/concurrency.md`
+  (one AT CAP state + one OVER CAP state). The remaining cases target
+  the header, the issue-table column logic (pickup / state / gate_waiting
+  cells, verdicts, title truncation, newline + pipe escaping, attempt-0
+  `—` and degraded `?` rendering), the priority + updatedAt sort, the
+  per-state summary (terminal-zero, lock + needs-human suffixes, gate
+  collapse-when-all-awaiting, gate-omit-zero-buckets, four-bucket render,
+  pickup line), the Concurrency table (omit / append / AT CAP / OVER
+  CAP / terminal-`n/a` / gate + terminal markers), Config warnings
+  (validator FAIL surface, degraded-fetch surface, clean run omits
+  section), the footer, and the CLI error paths.
+
+### Changed — Determinism Phase 5: status.md / init.md
+- `commands/status.md` step 5 collapses from the ~120-line render block
+  (Markdown table headers, workflow-state column formatting table,
+  verdict-column rules, row ordering rule, per-state summary template,
+  gate four-bucket breakdown template, Concurrency table template + cell
+  rules, Config-warnings rules, and footer line) to a thin invocation:
+  compose the input JSON from the data step 1-4 already gathered, call
+  `render_status_report.py --input <path>`, and print the script's
+  stdout verbatim.
+- `commands/init.md` Step 4 copy table adds the new script; Step 2's
+  overwrite-check block and Step 5's "Files written" block list
+  `.claude/hooks/render_status_report.py`; the `nine files` /
+  `six .py files` references update to `ten` / `seven`.
+- `CLAUDE.md`'s `templates/hooks/` repo-map entry updates the same
+  counts and adds `render_status_report.py` to the dispatch-prose
+  helper list.
+
 ### Added — Determinism Phase 4: extract `filter_candidates.py`
 - New `templates/hooks/filter_candidates.py` owns the pickup-side query
   plan, the candidate filter, the priority + `createdAt` sort, and the
