@@ -16,14 +16,14 @@ Team: **ENG**   Project: **cadence**   Pickup: **Todo**
 
 ### Per-state counts
 
-- **plan** (`Planning`) — 1 issues
-- **plan_review** (gate, `Plan Review`) — 1 issues
-  - 👎 cadence-rework — 1 issues
-- **implement** (`Implementing`) — 1 issues   🔒 1 locked
-- **agent_review** (`Reviewing`) — 1 issues
-- **human_review** (gate, `In Review`) — 1 issues
-  - 👍 cadence-approve — 1 issues
-- **done** (`Done`) — 1 issues
-- **(pickup)** (`Todo`) — 1 issues
+- **plan** (`Planning`) — 1 issue
+- **plan_review** (gate, `Plan Review`) — 1 issue
+  - 👎 cadence-rework — 1 issue
+- **implement** (`Implementing`) — 1 issue   🔒 1 locked
+- **agent_review** (`Reviewing`) — 1 issue
+- **human_review** (gate, `In Review`) — 1 issue
+  - 👍 cadence-approve — 1 issue
+- **done** (`Done`) — 1 issue
+- **(pickup)** (`Todo`) — 1 issue
 
 Read-only — no Linear writes performed.

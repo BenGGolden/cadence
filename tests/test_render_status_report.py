@@ -540,8 +540,8 @@ class PerStateSummaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             r = _run(payload, Path(td))
             self.assertEqual(r.returncode, 0, msg=r.stderr)
-            self.assertIn("awaiting verdict — 1 issues", r.stdout)
-            self.assertIn("\U0001F44D cadence-approve — 1 issues", r.stdout)
+            self.assertIn("awaiting verdict — 1 issue", r.stdout)
+            self.assertIn("\U0001F44D cadence-approve — 1 issue", r.stdout)
             self.assertNotIn("cadence-rework — ", r.stdout)
             self.assertNotIn("both labels", r.stdout)
 
@@ -559,10 +559,10 @@ class PerStateSummaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             r = _run(payload, Path(td))
             self.assertEqual(r.returncode, 0, msg=r.stderr)
-            self.assertIn("awaiting verdict — 1 issues", r.stdout)
-            self.assertIn("\U0001F44D cadence-approve — 1 issues", r.stdout)
-            self.assertIn("\U0001F44E cadence-rework — 1 issues", r.stdout)
-            self.assertIn("⚠️ both labels (treated as rework) — 1 issues",
+            self.assertIn("awaiting verdict — 1 issue", r.stdout)
+            self.assertIn("\U0001F44D cadence-approve — 1 issue", r.stdout)
+            self.assertIn("\U0001F44E cadence-rework — 1 issue", r.stdout)
+            self.assertIn("⚠️ both labels (treated as rework) — 1 issue",
                           r.stdout)
 
     def test_pickup_line_appears_after_states(self):
@@ -575,6 +575,38 @@ class PerStateSummaryTests(unittest.TestCase):
             r = _run(payload, Path(td))
             self.assertEqual(r.returncode, 0, msg=r.stderr)
             self.assertIn("- **(pickup)** (`Todo`) — 2 issues", r.stdout)
+
+    def test_pluralisation_singular_vs_plural(self):
+        """Counts of exactly 1 render as `1 issue`; 0 and >=2 as `N issues`.
+        Guards both the per-state line and the gate sub-bullets."""
+        payload = _empty_payload()
+        payload["issues"] = [
+            # implement gets exactly 1 → singular
+            _issue("ENG-1", column="Implementing"),
+            # human_review gate gets 2 verdicts → top line plural, each
+            # bucket singular
+            _issue("ENG-2", column="In Review",
+                   labels=["cadence-approve"]),
+            _issue("ENG-3", column="In Review",
+                   labels=["cadence-rework"]),
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            r = _run(payload, Path(td))
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            # Singular for count == 1.
+            self.assertIn("- **implement** (`Implementing`) — 1 issue",
+                          r.stdout)
+            self.assertNotIn("- **implement** (`Implementing`) — 1 issues",
+                             r.stdout)
+            # Plural for count >= 2.
+            self.assertIn(
+                "- **human_review** (gate, `In Review`) — 2 issues",
+                r.stdout)
+            # Plural for count == 0.
+            self.assertIn("- **plan** (`Planning`) — 0 issues", r.stdout)
+            # Gate sub-bullets respect singular.
+            self.assertIn("\U0001F44D cadence-approve — 1 issue", r.stdout)
+            self.assertIn("\U0001F44E cadence-rework — 1 issue", r.stdout)
 
 
 class ConcurrencyTests(unittest.TestCase):

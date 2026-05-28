@@ -13,7 +13,7 @@ Team: **ENG**   Project: **cadence**   Pickup: **Todo**
 ### Per-state counts
 
 - **plan** (`Planning`) — 0 issues
-- **plan_review** (gate, `Plan Review`) — 1 issues
+- **plan_review** (gate, `Plan Review`) — 1 issue
 - **implement** (`Implementing`) — 0 issues
 - **agent_review** (`Reviewing`) — 0 issues
 - **human_review** (gate, `In Review`) — 2 issues

@@ -239,6 +239,12 @@ def _render_issue_table(issues, *, linear_to_workflow, label_active,
     return "\n".join(rows)
 
 
+def _issues(n):
+    """English-pluralised "N issue(s)" — keeps the single-/multi-issue
+    forms readable in both the per-state summary and the gate buckets."""
+    return f"{n} issue" if n == 1 else f"{n} issues"
+
+
 def _count_issues_by_column(issues):
     counts = {}
     for i in issues:
@@ -305,7 +311,7 @@ def _render_per_state_section(states, issues, *, pickup_state,
         stype = body.get("type")
         if stype == "gate":
             head = (f"- **{name}** (gate, `{linear_state}`) "
-                    f"— {count} issues")
+                    f"— {_issues(count)}")
             if count == 0:
                 lines.append(head)
                 continue
@@ -316,22 +322,22 @@ def _render_per_state_section(states, issues, *, pickup_state,
                 continue
             lines.append(head)
             if awaiting:
-                lines.append(f"  - awaiting verdict — {awaiting} issues")
+                lines.append(f"  - awaiting verdict — {_issues(awaiting)}")
             if approve:
-                lines.append(f"  - \U0001F44D cadence-approve — {approve} issues")
+                lines.append(f"  - \U0001F44D cadence-approve — {_issues(approve)}")
             if rework:
-                lines.append(f"  - \U0001F44E cadence-rework — {rework} issues")
+                lines.append(f"  - \U0001F44E cadence-rework — {_issues(rework)}")
             if both:
                 lines.append(f"  - ⚠️ both labels (treated as rework) "
-                             f"— {both} issues")
+                             f"— {_issues(both)}")
         else:
             suffix = _suffix_counts(at_col)
             lines.append(f"- **{name}** (`{linear_state}`) "
-                         f"— {count} issues{suffix}")
+                         f"— {_issues(count)}{suffix}")
 
     pickup_count = len(issues_by_col.get(pickup_state, []))
     lines.append(f"- **(pickup)** (`{pickup_state}`) — "
-                 f"{pickup_count} issues")
+                 f"{_issues(pickup_count)}")
 
     return "\n".join(lines)
 
