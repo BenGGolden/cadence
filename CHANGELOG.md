@@ -6,6 +6,79 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Determinism Phase 6: extract sweep classification + reporting
+- `templates/hooks/emit_tracking_comment.py` gains `--kind sweep`. New
+  required args: `--cleared-at`, `--last-activity`, `--stale-minutes`,
+  `--threshold-minutes`. Emits the existing `<!-- cadence:sweep
+  {"cleared_at":...,"last_activity":...,"stale_minutes":...} -->` JSON
+  marker plus the visible `**[Cadence]** Stale lock cleared (last
+  activity ..., N minutes ago, threshold M minutes).` line — same
+  shape `commands/sweep.md` used to hand-author inline. Every Cadence
+  comment now flows through one emitter; the sweep-comment body can no
+  longer drift from the JSON the audit hook expects.
+- New `templates/hooks/render_sweep_report.py` owns the entire
+  `/cadence:sweep` summary that used to live as time math + Markdown
+  templating in `commands/sweep.md` steps 2 + 4 + 6. CLI: `--input
+  <path>`. Input JSON shape (documented in the script's docstring): the
+  current `now` ISO timestamp, the configured `threshold_minutes`, and
+  a `locked_issues` list (each with `identifier`, `title`, `updated_at`,
+  `state_name`). The script encapsulates: cutoff computation (`now -
+  threshold_minutes`), per-issue `stale_minutes = floor((now -
+  updated_at) / 60)` with a clamp to zero for future-dated updates
+  (MCP/bootstrap clock skew), the stale-vs-fresh classification at
+  `updated_at <= cutoff`, ascending-`updated_at` ordering of both
+  result lists, title truncation at 60 chars with a trailing `…`,
+  newline collapsing and pipe escaping for table cells, and the
+  `(none cleared)` / `(none)` empty-table substitutions.
+- The script uses a **dual-stream contract**: stdout is the full Markdown
+  report (`## Cadence sweep — <now>` header, both `### Cleared` and
+  `### Still locked` sections); stderr is a JSON object `{"cutoff":
+  "...", "stale": [...], "fresh": [...]}` carrying the per-issue
+  `stale_minutes` the prose needs for the `emit_tracking_comment.py
+  --kind sweep` invocation in step 5. The prose prints stdout verbatim
+  in step 6 and iterates the stderr `stale` list in step 5; the
+  pre-rendered report assumes every stale issue is swept, with per-issue
+  failures appended as `Failed to sweep <ID>: <error>` lines below
+  the report.
+- `tests/test_emit_tracking_comment.py` extends to cover `--kind sweep`
+  (7 new cases): the full happy path, every required-arg-missing exit-1
+  path, argparse rejection of non-integer `--stale-minutes` and
+  `--threshold-minutes`, the zero-stale-minutes edge case, and an
+  added `sweep` entry in the JSON-validity round-trip matrix.
+- New `tests/test_render_sweep_report.py` (27 cases) covers the
+  classification (empty / all-stale / all-fresh / boundary at the
+  cutoff / `stale_minutes` floor / future-update clamp), sort order
+  (ascending `updated_at` on both lists), title truncation + newline
+  + pipe handling, threshold-0 and threshold-99999 edge cases (AC-3),
+  fractional-seconds + non-UTC-offset timestamp parsing (Linear
+  commonly emits the former), header cutoff display + classification
+  cutoff field, and the CLI error paths. One byte-identical fixture
+  (`tests/fixtures/sweep/mixed.md`, 2 stale + 1 fresh) guards AC-2 —
+  the broad-stroke acceptance criterion against future renderer drift.
+
+### Changed — Determinism Phase 6: sweep.md / init.md / CLAUDE.md
+- `commands/sweep.md` step 2 keeps only the `now` resolution; the
+  cutoff math moves into the renderer. Step 3 keeps the MCP query but
+  hands off to step 4 by writing `now` + `threshold_minutes` +
+  `locked_issues` to a temp JSON instead of doing the sort inline.
+  Step 4 replaces the inline "compare each `updatedAt` to `cutoff`"
+  block with `render_sweep_report.py --input "$sweepInputPath"` — the
+  prose reads the stderr classification for step 5 and holds stdout
+  for step 6. Step 5's hand-authored `<!-- cadence:sweep ... -->`
+  body (HTML-comment marker + visible line) collapses to an
+  `emit_tracking_comment.py --kind sweep ...` invocation per stale
+  issue. Step 6 prints the pre-rendered `sweepReport` verbatim and
+  appends per-issue failure lines from step 5. The "Side-effect
+  ordering" constraint block documents the new "pre-rendered report +
+  failure-line append" contract.
+- `commands/init.md` Step 4 copy table adds the new script;
+  Step 2's overwrite-check block and Step 5's "Files written" block
+  list `.claude/hooks/render_sweep_report.py`; the `ten files` /
+  `seven .py files` references update to `eleven` / `eight`.
+- `CLAUDE.md`'s `templates/hooks/` repo-map entry updates the same
+  counts and adds `render_sweep_report.py` to the dispatch-prose
+  helper list.
+
 ### Added — Determinism Phase 5: extract `render_status_report.py`
 - New `templates/hooks/render_status_report.py` owns the entire
   `/cadence:status` Markdown render — header, issues table, per-state

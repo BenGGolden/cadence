@@ -82,8 +82,8 @@ not include a reliable current time, invoke Bash:
 - POSIX: `date -u +%Y-%m-%dT%H:%M:%SZ`
 - Windows PowerShell: `Get-Date -AsUTC -Format yyyy-MM-ddTHH:mm:ssZ`
 
-Hold this as `now`. Compute `cutoff = now - stale_after_minutes minutes`
-(also UTC ISO 8601). Any issue with `updatedAt <= cutoff` is stale.
+Hold this as `now`. The cutoff and per-issue stale-minutes math is owned
+by `render_sweep_report.py` in step 4 — do not derive either inline.
 
 ---
 
@@ -101,8 +101,12 @@ for each:
 - Any field your MCP exposes that identifies the issue (commonly an `id`
   string used by subsequent calls)
 
-Sort by `updatedAt` ascending (oldest first). If the result is empty,
-print `No cadence-active locks found.` and exit cleanly.
+If the result is empty, print `No cadence-active locks found.` and exit
+cleanly. Otherwise write the results to a temporary JSON file under the
+key `locked_issues` (one object per issue with `identifier`, `title`,
+`updated_at`, `state_name`) together with `now` (step 2) and
+`threshold_minutes` (= `limits.stale_after_minutes` from step 1).
+Hold the path as `sweepInputPath`.
 
 **Scope.** Only query issues in the configured `linear.team` (and
 `linear.project_slug` if it is set). Do **not** scan workspace-wide —
@@ -110,42 +114,55 @@ another team may use the same label name for a different purpose.
 
 ---
 
-## Step 4 — Classify each locked issue
+## Step 4 — Classify and pre-render the report
 
-For each issue in the query result, compare its `updatedAt` to `cutoff`:
+Invoke Bash: `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/render_sweep_report.py --input "$sweepInputPath"`.
 
-- `updatedAt > cutoff` → **fresh**. Another fire is plausibly still
-  working on it; leave the lock alone.
-- `updatedAt <= cutoff` → **stale**. Sweep it (step 5).
+The script owns the cutoff math, the per-issue stale-minutes derivation,
+the stale/fresh split, the ascending-`updated_at` ordering, and the
+title-truncation in the report. Its dual-stream contract:
 
-Build two lists: `staleIssues` and `freshIssues` (the latter is only used
-for the summary in step 6).
+- **stdout** — the full Markdown report (the `## Cadence sweep — <now>`
+  block, both `### Cleared` and `### Still locked` sections, with
+  `(none cleared)` / `(none)` already substituted when a section is
+  empty). Hold this verbatim as `sweepReport` for step 6 — do not edit.
+- **stderr** — a JSON object `{"cutoff": "...", "stale": [...], "fresh":
+  [...]}`. Each entry in `stale` and `fresh` carries `identifier`,
+  `title`, `updated_at`, `stale_minutes`, `state_name`. Hold the parsed
+  `stale` list as `staleIssues` for step 5.
+
+If the script exits non-zero, print its stderr verbatim and exit
+without touching Linear.
 
 ---
 
 ## Step 5 — Sweep stale issues
 
-For each issue in `staleIssues`, in `updatedAt`-ascending order:
+For each entry in `staleIssues` (already ordered by `updated_at`
+ascending):
 
 1. Remove the `label.cadence_active` label via Linear MCP. (If the label
    was already removed between query and write — race with a `/loop` operator
    manually clearing it — treat the removal as a no-op and proceed to step 2
    anyway.)
 
-2. Post a brief Linear comment naming the staleness, body verbatim:
+2. Build the sweep-comment body by invoking Bash:
 
    ```
-   <!-- cadence:sweep {"cleared_at":"<now>","last_activity":"<updatedAt>","stale_minutes":<integer minutes between updatedAt and now>} -->
-   **[Cadence]** Stale lock cleared (last activity <updatedAt>, <integer minutes> minutes ago, threshold <stale_after_minutes> minutes).
+   python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py \
+     --kind sweep \
+     --cleared-at "<now>" \
+     --last-activity "<entry.updated_at>" \
+     --stale-minutes <entry.stale_minutes> \
+     --threshold-minutes <stale_after_minutes>
    ```
 
-   The integer-minutes value is `floor((now - updatedAt) / 60 seconds)`.
-   If your MCP server rejects the JSON HTML-comment prefix for any
-   reason, fall back to posting just the human-readable line — the
-   important side effect is the label removal, not the audit comment.
-
-3. Capture `{identifier, title, updatedAt, stale_minutes}` for the
-   summary in step 6.
+   The script's stdout is the full comment body — the HTML-comment JSON
+   marker line followed by the human-readable `**[Cadence]** Stale lock
+   cleared ...` line. Post it verbatim via Linear MCP. If your MCP server
+   rejects the HTML-comment prefix for any reason, fall back to posting
+   just the visible second line — the important side effect is the label
+   removal, not the audit comment.
 
 **Important constraints**:
 
@@ -155,7 +172,7 @@ For each issue in `staleIssues`, in `updatedAt`-ascending order:
   `cadence-needs-human` label, etc.).
 - **Do not** add `cadence-needs-human`. A stranded lock is not the same as
   a permanently failed issue; let the regular retry path decide.
-- **Do not** delete or modify existing tracking comments. The `cadence:sweep`
+- **Do not** delete or modify existing tracking comments. The sweep
   comment is added as new audit history.
 - The sweep comment is **not** a tracking comment in the
   `/cadence:tick` sense — step 11's attempt counter ignores it.
@@ -164,32 +181,10 @@ For each issue in `staleIssues`, in `updatedAt`-ascending order:
 
 ## Step 6 — Print summary
 
-Print a short Markdown report to the user:
-
-```markdown
-## Cadence sweep — <now>
-
-- Threshold: **<stale_after_minutes>** minutes (cutoff <cutoff>)
-- Locked issues found: **<total>**  (stale: **<stale count>**, fresh: **<fresh count>**)
-
-### Cleared
-
-| Identifier | Title | Last activity | Stale (min) |
-|------------|-------|---------------|-------------|
-| <ID>       | <title truncated to ~60 chars> | <updatedAt> | <stale_minutes> |
-| ...        | ...   | ...           | ...         |
-
-### Still locked (fresh — below threshold)
-
-| Identifier | Title | Last activity |
-|------------|-------|---------------|
-| <ID>       | <title truncated to ~60 chars> | <updatedAt> |
-| ...        | ...   | ...           |
-```
-
-If `staleIssues` is empty, omit the **Cleared** table and print
-`(none cleared)` in its place. Likewise for the fresh table. End the
-report with a blank line and exit.
+Print `sweepReport` (the stdout captured in step 4) verbatim. If any
+per-issue write in step 5 failed, append one line per failure to the
+end of the report (`Failed to sweep <ID>: <error>`). End with a blank
+line and exit.
 
 ---
 
@@ -203,11 +198,17 @@ second run's `cadence:sweep` comment will not duplicate the first.
 
 ### Side-effect ordering
 
-- Errors **before** step 5 cause a clean exit with no Linear writes.
+- Errors **before** step 5 (config read, MCP query, classification
+  render) cause a clean exit with no Linear writes.
+- Step 4 pre-renders the full report on the assumption that every stale
+  issue gets swept. The actual label removal + comment post happens in
+  step 5; a per-issue failure does **not** reach back into the report's
+  `### Cleared` table.
 - Errors **during** step 5 (per-issue) should not abort the whole sweep.
-  Catch the error, log a single line to the report (`Failed to sweep
-  <ID>: <error>`), and continue with the next issue. Partial progress is
-  better than none — the next sweep will retry the failed ones.
+  Catch the error, append a single line at the end of `sweepReport`
+  (`Failed to sweep <ID>: <error>`), and continue with the next issue.
+  Partial progress is better than none — the next sweep will retry the
+  failed ones.
 
 ### Concurrency
 
@@ -230,9 +231,3 @@ second run's `cadence:sweep` comment will not duplicate the first.
 - If you want faster recovery and your fires always finish in ≤5 minutes,
   setting `stale_after_minutes: 10` is reasonable.
 
-### Quoting
-
-The `cadence:sweep` JSON in step 5 must be valid JSON. The `updatedAt`
-value comes straight from Linear; pass it through unchanged. The
-`cleared_at` value is the `now` from step 2. The `stale_minutes` value
-is an integer (not a string).

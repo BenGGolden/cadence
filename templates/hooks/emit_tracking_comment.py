@@ -8,6 +8,7 @@ Caller(s):
   - commands/tick.md step 16 (waiting gate comment)
   - commands/tick.md step 9 (reconcile comment)
   - commands/tick.md Failure path (failure record)
+  - commands/sweep.md step 5 (stale-lock sweep comment)
 
 Failure mode eliminated:
   "JSON emission errors": tracking-comment bodies embed JSON, and an LLM that
@@ -16,12 +17,14 @@ Failure mode eliminated:
   guaranteed well-formed and canonically spaced.
 
 CLI:
-  python emit_tracking_comment.py --kind {state|gate|reconcile} [...]
+  python emit_tracking_comment.py --kind {state|gate|reconcile|sweep} [...]
 
 Required args by kind:
   state      --state, plus --status OR (--attempt and --started-at)
   gate       --state and --status
   reconcile  --observed-linear-state, --expected-state, --reason
+  sweep      --cleared-at, --last-activity, --stale-minutes,
+             --threshold-minutes
 
 Stdout: the full comment body (HTML-comment marker line + visible markdown).
 Exit codes: 0 success; 1 bad / missing required input.
@@ -107,6 +110,28 @@ def build_gate(args):
     return _emit("gate", payload, visible)
 
 
+def build_sweep(args):
+    missing = [name for name, val in (
+        ("--cleared-at", args.cleared_at),
+        ("--last-activity", args.last_activity),
+    ) if not val]
+    if args.stale_minutes is None:
+        missing.append("--stale-minutes")
+    if args.threshold_minutes is None:
+        missing.append("--threshold-minutes")
+    if missing:
+        die(f"Cadence: --kind sweep requires {', '.join(missing)}.", 1)
+    payload = {
+        "cleared_at": args.cleared_at,
+        "last_activity": args.last_activity,
+        "stale_minutes": args.stale_minutes,
+    }
+    visible = (f"**[Cadence]** Stale lock cleared (last activity "
+               f"{args.last_activity}, {args.stale_minutes} minutes ago, "
+               f"threshold {args.threshold_minutes} minutes).")
+    return _emit("sweep", payload, visible)
+
+
 def build_reconcile(args):
     missing = [name for name, val in (
         ("--observed-linear-state", args.observed_linear_state),
@@ -127,7 +152,8 @@ def build_reconcile(args):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--kind", required=True, choices=["state", "gate", "reconcile"])
+    ap.add_argument("--kind", required=True,
+                    choices=["state", "gate", "reconcile", "sweep"])
     ap.add_argument("--state")
     ap.add_argument("--attempt", type=int)
     ap.add_argument("--started-at")
@@ -140,12 +166,25 @@ def main():
     ap.add_argument("--observed-linear-state")
     ap.add_argument("--expected-state")
     ap.add_argument("--reason")
+    ap.add_argument("--cleared-at",
+                    help="UTC ISO 8601 timestamp the sweeper cleared the "
+                         "lock at (--kind sweep).")
+    ap.add_argument("--last-activity",
+                    help="Issue's last updatedAt timestamp (--kind sweep).")
+    ap.add_argument("--stale-minutes", type=int,
+                    help="Integer minutes between --last-activity and "
+                         "--cleared-at (--kind sweep).")
+    ap.add_argument("--threshold-minutes", type=int,
+                    help="Configured stale-after-minutes threshold "
+                         "(--kind sweep).")
     args = ap.parse_args()
 
     if args.kind == "state":
         body = build_state(args)
     elif args.kind == "gate":
         body = build_gate(args)
+    elif args.kind == "sweep":
+        body = build_sweep(args)
     else:
         body = build_reconcile(args)
 

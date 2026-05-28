@@ -52,6 +52,7 @@ Check whether `.claude/workflow.yaml` already exists.
     - .claude/hooks/compose_lifecycle_context.py
     - .claude/hooks/filter_candidates.py
     - .claude/hooks/render_status_report.py
+    - .claude/hooks/render_sweep_report.py
     - .claude/commands/cadence/tick.md
     - .claude/commands/cadence/sweep.md
     - .claude/commands/cadence/status.md
@@ -101,6 +102,7 @@ relative path under `.claude/`. The three slash-command files live at
 | `${CLAUDE_PLUGIN_ROOT}/templates/hooks/compose_lifecycle_context.py` | `.claude/hooks/compose_lifecycle_context.py` |
 | `${CLAUDE_PLUGIN_ROOT}/templates/hooks/filter_candidates.py`      | `.claude/hooks/filter_candidates.py` |
 | `${CLAUDE_PLUGIN_ROOT}/templates/hooks/render_status_report.py`   | `.claude/hooks/render_status_report.py` |
+| `${CLAUDE_PLUGIN_ROOT}/templates/hooks/render_sweep_report.py`    | `.claude/hooks/render_sweep_report.py` |
 | `${CLAUDE_PLUGIN_ROOT}/commands/tick.md`                          | `.claude/commands/cadence/tick.md` |
 | `${CLAUDE_PLUGIN_ROOT}/commands/sweep.md`                         | `.claude/commands/cadence/sweep.md` |
 | `${CLAUDE_PLUGIN_ROOT}/commands/status.md`                        | `.claude/commands/cadence/status.md` |
@@ -109,25 +111,26 @@ The agent templates already carry their final `name:` (`planner`,
 `implementer`, `reviewer`) in their frontmatter — copy them verbatim. The
 consumer's `workflow.yaml` references these short names.
 
-The ten files copied into `.claude/hooks/` and the three files copied
+The eleven files copied into `.claude/hooks/` and the three files copied
 into `.claude/commands/cadence/` are always overwritten on init (including
 without `--force`). They are plugin-owned executables and dispatch prose,
 not user config; keeping them in sync with the installed plugin is the
-point. The seven `.py` files at `templates/hooks/` that are also called from
+point. The eight `.py` files at `templates/hooks/` that are also called from
 the dispatch prose (`validate_workflow.py`, `_common.py`, `parse_comments.py`,
 `emit_tracking_comment.py`, `compose_lifecycle_context.py`,
-`filter_candidates.py`, `render_status_report.py`) are siblings of the three event-hook scripts so
-that the `UserPromptSubmit` hook and the copied `/cadence:*` commands can
-call them via `$CLAUDE_PROJECT_DIR/.claude/hooks/...` without resolving a
-plugin path at runtime — which is what makes the workflow runnable from a
-`/schedule` cloud routine (where `${CLAUDE_PLUGIN_ROOT}` is not defined
-because the plugin is not installed in the cloud session).
+`filter_candidates.py`, `render_status_report.py`, `render_sweep_report.py`)
+are siblings of the three event-hook scripts so that the `UserPromptSubmit`
+hook and the copied `/cadence:*` commands can call them via
+`$CLAUDE_PROJECT_DIR/.claude/hooks/...` without resolving a plugin path at
+runtime — which is what makes the workflow runnable from a `/schedule` cloud
+routine (where `${CLAUDE_PLUGIN_ROOT}` is not defined because the plugin
+is not installed in the cloud session).
 
 If `--force` was supplied and a destination already exists, overwrite it.
 If `--force` was NOT supplied (which means step 2 fell through because
 `.claude/workflow.yaml` was absent), still avoid clobbering any of the
 agent or prompt destinations that happen to exist already — print a warning
-naming each one you skipped, but continue with the rest. The ten files
+naming each one you skipped, but continue with the rest. The eleven files
 under `.claude/hooks/` and the three files under `.claude/commands/cadence/`
 are always copied regardless (see paragraph above).
 
@@ -273,6 +276,7 @@ Files written:
   .claude/hooks/compose_lifecycle_context.py
   .claude/hooks/filter_candidates.py
   .claude/hooks/render_status_report.py
+  .claude/hooks/render_sweep_report.py
   .claude/commands/cadence/tick.md
   .claude/commands/cadence/sweep.md
   .claude/commands/cadence/status.md
