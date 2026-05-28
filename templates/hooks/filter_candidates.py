@@ -249,12 +249,30 @@ def _filter(config, candidates, in_flight_counts):
         if count >= cap:
             over_cap_set.add(name)
 
+    # Map column -> state body for the terminal-drop check below.
+    states_by_linear_body = {}
+    for name, body in states.items():
+        if not isinstance(body, dict):
+            continue
+        ls = body.get("linear_state")
+        if isinstance(ls, str) and ls:
+            states_by_linear_body.setdefault(ls, body)
+
     pre_filtered = []
     for c in candidates:
         if not isinstance(c, dict):
             continue
         col = c.get("current_linear_state")
         if not isinstance(col, str) or col not in workflow_linear_states:
+            continue
+        # Terminal-column issues have no useful work for any subagent.
+        # The bootstrap's job there is to leave them alone; the workflow
+        # is already complete for that issue. Without this drop, a Done
+        # issue would surface as a candidate, step 14 would look up the
+        # (absent) terminal subagent, and the fire would die in the
+        # failure path — burning an attempt count for nothing.
+        col_body = states_by_linear_body.get(col)
+        if isinstance(col_body, dict) and col_body.get("type") == "terminal":
             continue
         labels_present = set(_label_names(c.get("labels")))
         if label_active and label_active in labels_present:

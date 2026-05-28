@@ -23,9 +23,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     empty; the canonical `No eligible issues.` / `No eligible issues.\n(caps reached for: ...)`
     rendering moves from prose to the script.
 - The script encapsulates: workflow-Linear-states membership filter;
-  the `cadence_active` / `cadence_needs_human` label drops; the
-  blocker-resolved filter (skipped when the `blockers` field is absent,
-  per the MCP-data-availability fallback in step 5); the
+  a new drop for issues sitting in a `type: terminal` state's Linear
+  column (the workflow is complete for them — step 14 would have no
+  subagent to invoke; the pre-refactor prose let this through because
+  the bug only bites when an issue genuinely sits in Done while the
+  pickup pipeline is otherwise capped); the `cadence_active` /
+  `cadence_needs_human` label drops; the blocker-resolved filter
+  (skipped when the `blockers` field is absent, per the
+  MCP-data-availability fallback in step 5); the
   gate-waiting-without-verdict filter; the priority sort (null and
   `0`/"No priority" sort last); per-candidate effective-target
   resolution (pickup → entry, gate + approve / rework → `on_approve` /
@@ -34,7 +39,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   gate or terminal); and the P8.2 drain exemption (the candidate's own
   gate's cap is excluded from the over-cap check for verdict-bearing
   gate issues).
-- New `tests/test_filter_candidates.py` (37 cases) covers both modes:
+- New `tests/test_filter_candidates.py` (39 cases) covers both modes:
   plan-mode in-flight surfacing (no caps / agent + gate caps / only the
   AC-1 set), `project_slug` JSON-null behaviour for absent / empty /
   present configs; filter-mode pre-filters (`cadence_active`,

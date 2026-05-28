@@ -266,6 +266,30 @@ class FilterModeBasicsTests(unittest.TestCase):
             out = json.loads(r.stdout)
             self.assertEqual(out["ordered_identifiers"], [])
 
+    def test_terminal_column_drops_candidate(self):
+        """Issues sitting in a terminal-type state's Linear column ("Done"
+        in the default workflow) are not picked up. The workflow is
+        complete for them; step 14 would have no subagent to invoke."""
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            cands = [_candidate("ENG-DONE", column="Done")]
+            r = self._run_filter(td, _default_validator_output(), cands, {})
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            out = json.loads(r.stdout)
+            self.assertEqual(out["ordered_identifiers"], [])
+            self.assertEqual(out["diagnostic_message"], "No eligible issues.")
+
+    def test_terminal_drop_does_not_apply_to_pickup_state(self):
+        """The pickup state ("Todo") is not terminal — issues there must
+        still be picked up (that's the entry path into the workflow)."""
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            cands = [_candidate("ENG-1", column="Todo")]
+            r = self._run_filter(td, _default_validator_output(), cands, {})
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            out = json.loads(r.stdout)
+            self.assertEqual(out["ordered_identifiers"], ["ENG-1"])
+
     def test_blockers_absent_is_skipped(self):
         """blockers field absent → filter not applied; candidate passes."""
         with tempfile.TemporaryDirectory() as td:
