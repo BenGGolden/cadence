@@ -156,145 +156,85 @@ references to later steps don't shift.*
 file read and the validation in one script call. Numbering is preserved
 so external references to steps 4+ don't shift.*
 
-## Step 4 — Build the workflow Linear-states set
+## Step 4 — Hold the Linear-column reverse map for step 8
 
-The validator in step 1 already produced this. Keep its `workflow_linear_states`
-array in memory as `workflowLinearStates` (ordered: `linear.pickup_state`, then
-every state's `linear_state`). Step 5 uses it to filter the query.
-
-The validator also emits a `linear_to_workflow` reverse map — each Linear
-column name keyed to an entry of the shape
+The validator in step 1 emits a `linear_to_workflow` reverse map — each
+Linear column name keyed to an entry of the shape
 `{ "kind": "pickup" | "state" | "gate_waiting", "workflow_state": "<name>" | null, "linear_state_type": "agent" | "gate" | "terminal" | null }`.
 Keep it in memory as `linearToWorkflow`; step 8 uses it.
+
+(The `workflow_linear_states` array the validator also emits is consumed
+by step 5 via `filter_candidates.py --plan`; you don't need to track it
+yourself.)
 
 ---
 
 ## Step 5 — Pick work
 
-Using the Linear MCP, query the team named in `linear.team` (narrowed to
-`linear.project_slug` when that field is present) for issues where:
+The candidate filter, priority sort, and bounded-reachability cap walk
+live in `filter_candidates.py`. The bootstrap's job here is to run the
+MCP queries the script tells it to and feed the results back in.
 
-- Linear state ∈ `workflowLinearStates`.
-- The `label.cadence_active` label is **NOT** set.
-- The `label.cadence_needs_human` label is **NOT** set.
-- All Linear "blocked by" relations are resolved — every blocker issue must be
-  in a Linear state **outside** `workflowLinearStates` (i.e. a foreign terminal
-  state like "Done" or "Cancelled", or one not modelled by this workflow). If
-  blocker data is not available from the MCP query, skip this filter and proceed.
-- The issue is **not** sitting in a gate state's waiting column without a
-  verdict label. Concretely: if the issue's current Linear column equals some
-  `<gate>.linear_state` for any state in the config whose `type` is `gate`,
-  the issue must carry either `label.cadence_approve` or `label.cadence_rework`.
-  If neither verdict label is present, the issue is ineligible — there is
-  nothing the bootstrap can do for it until a human acts, and claiming it
-  would consume this fire to no useful effect (the lock would be acquired,
-  step 10a would see no verdict, the lock would be released, and the fire
-  would exit). The set of gate `linear_state` values is derivable from the
-  validator's `states` output: iterate states and pick the ones where
-  `type == "gate"`. Apply this filter client-side against the labels already
-  returned by the pickup query (the `cadence_active` / `cadence_needs_human`
-  filters above already require labels in the response).
+1. **Get the query plan.** Invoke Bash:
+   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/filter_candidates.py --plan --workflow-config <validatorOutputPath>`
+   Parse the JSON on stdout. It has two fields: `pickup_query`
+   (with `team`, `project_slug`, `workflow_linear_states`) and
+   `in_flight_queries` (zero or more `{state_name, linear_state}`
+   entries — one per state declaring `max_in_flight` in the config).
 
-**Query shape requirements** (do not deviate):
+2. **Run the pickup query.** Using the Linear MCP, query for issues in
+   `pickup_query.team` whose Linear state is in
+   `pickup_query.workflow_linear_states`. If `pickup_query.project_slug`
+   is non-null, also narrow to that project (commonly the MCP tool's
+   `project` parameter); if it is `null`, **do not pass any project
+   filter** — a team-wide query is intended in that case.
 
-- Pass `linear.team` to the MCP tool's team filter parameter (commonly
-  named `team`) verbatim.
-- If `linear.project_slug` is present in the config, pass its value to
-  the MCP tool's project filter parameter (commonly named `project`)
-  verbatim. Do **not** transform the value, strip suffixes, attempt to
-  resolve it to a different identifier, or split it. If the consumer
-  wrote a malformed value, the empty result below is the correct
-  response.
-- If `linear.project_slug` is **absent** (omitted, null, or empty
-  string), do **not** pass any project filter — the query is team-wide
-  and picks up eligible issues regardless of project assignment.
-- If the query returns zero issues, that is the answer. Do **NOT** retry
-  with a broader query (e.g. dropping the project filter when one was
-  configured, or removing the team filter) and do **NOT** fall back to
-  per-issue lookups by identifier. A misconfigured `project_slug` or
-  `team` must surface as "no eligible issues" so the operator notices
-  and fixes the config, rather than being papered over by an improvised
-  fallback that masks the misconfiguration.
+   **Query shape requirements** (do not deviate):
 
-Sort the results by Linear priority ascending (lower numeric = higher priority;
-treat null / "No priority" as the worst), then by `createdAt` ascending. Keep
-the result as an ordered list, `candidates`.
+   - Pass `pickup_query.team` to the MCP tool's team filter parameter
+     (commonly named `team`) verbatim.
+   - Pass `pickup_query.project_slug` verbatim when non-null. Do **not**
+     transform the value, strip suffixes, attempt to resolve it to a
+     different identifier, or split it. If the consumer wrote a
+     malformed value, the empty result below is the correct response.
+   - If the query returns zero issues, that is the answer. Do **NOT**
+     retry with a broader query (e.g. dropping the project filter when
+     one was configured, or removing the team filter) and do **NOT**
+     fall back to per-issue lookups by identifier. A misconfigured
+     `project_slug` or `team` must surface as "no eligible issues" so
+     the operator notices and fixes the config, rather than being
+     papered over by an improvised fallback.
 
-**Apply per-state concurrency caps.** For each workflow state that has a
-`max_in_flight` key (an optional positive integer; valid on `type: agent`
-and `type: gate` states — Rule 6 forbids it on terminals):
+   Ask the MCP for each issue's `identifier`, `current_linear_state` (the
+   Linear column name), `labels`, `priority`, `createdAt`, and — if the
+   MCP exposes them — its blocker issues' Linear states (as a list of
+   strings on a `blockers` field; absent if the MCP does not surface
+   this, in which case the blocker filter is skipped per the script's
+   contract).
 
-1. Query the Linear MCP for issues in `linear.team` (narrowed to
-   `linear.project_slug` if present) whose current Linear column equals this
-   state's `linear_state`. Count the result; call it `inFlightCount`. This
-   count includes any issues with the `cadence_active` lock label — a paused
-   in-flight issue still occupies a slot from a downstream coordination
-   perspective. For gates, the count also includes verdict-bearing issues
-   (the gate is full regardless of whether the queue is drainable on the
-   next fire).
-2. If `inFlightCount >= max_in_flight`, mark this state as **over-cap** for
-   this fire.
+3. **Run the per-state in-flight queries.** For each entry in
+   `in_flight_queries`, query the Linear MCP for issues in
+   `pickup_query.team` (narrowed to `pickup_query.project_slug` when
+   non-null) whose current Linear column equals `entry.linear_state`.
+   Count the results. Build a JSON object `inFlightCounts` mapping
+   `entry.state_name` to that integer count. The count includes any
+   issues with the `cadence_active` lock label and (for gates) any
+   verdict-bearing issues — the script's drain exemption handles the
+   gate edge case; do not pre-filter here. When `in_flight_queries` is
+   empty, `inFlightCounts` is `{}`.
 
-Then filter `candidates`. For each candidate, run a **bounded reachability
-walk** and drop the candidate if any state on its walk is over its cap:
+4. **Hand the results back to the script.** Write the pickup-query
+   results to a temp file as a JSON array (call it `candidatesPath`)
+   using the Write tool. Write `inFlightCounts` to a second temp file
+   (call it `inFlightPath`). Invoke Bash:
+   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/filter_candidates.py --workflow-config <validatorOutputPath> --candidates <candidatesPath> --in-flight <inFlightPath>`
+   Parse the JSON on stdout.
 
-1. Determine the candidate's **effective target state**:
-   - If the candidate's current Linear column equals `linear.pickup_state`,
-     the target is the `entry` state.
-   - If the candidate is sitting in a gate's waiting column AND carries
-     `label.cadence_approve`, the target is `<gate>.on_approve`.
-   - If the candidate is sitting in a gate's waiting column AND carries
-     `label.cadence_rework` (or both verdict labels — treated as rework
-     per Step 10), the target is `<gate>.on_rework`.
-   - Otherwise, the target is the workflow state whose `linear_state`
-     matches the candidate's current Linear column.
-2. Walk the **happy-path downstream** from the effective target state.
-   Follow `next` for `type: agent` states. The walk is **bounded at the
-   next gate or terminal**: include the effective target and every
-   subsequent agent state, plus the first `type: gate` or `type: terminal`
-   state reached. Stop there — do not continue past it. Track visited
-   states; if the walk would re-visit one, break (the validator does not
-   currently reject happy-path cycles, and the guard is cheap insurance
-   against a pathological config).
-
-   **Why bounded**: each gate is a parking spot for a distinct human's
-   attention. A candidate that enters the workflow only needs to pass
-   through *its* next gate's queue — downstream gates are a different
-   reviewer's concern until the candidate is closer to them. Conflating
-   them means an at-cap gate one reviewer owns silently blocks pickups
-   that would have parked at an earlier gate a *different* reviewer
-   owns and could clear. Operators get gate-level backpressure by
-   capping each gate individually; that's the intended lever.
-3. If any visited state is over-cap, drop the candidate from
-   `candidates` and continue with the next one. **Exception**: when the
-   candidate is a verdict-bearing gate issue (it sits in some gate's
-   waiting column and carries `cadence_approve` or `cadence_rework`),
-   that gate is **excluded** from the over-cap check for this candidate.
-   Acting on a verdict drains the gate, so the gate's own cap must not
-   block the action — otherwise an at-cap gate would lock itself.
-
-Examples for the default workflow (`plan → plan_review → implement →
-agent_review → human_review → done`):
-
-- A `Todo` candidate's walk is `plan → plan_review`. Caps on
-  `plan` and `plan_review` bind; caps on `implement`, `agent_review`,
-  or `human_review` do **not** affect this candidate.
-- A candidate at `plan_review` with `cadence_approve` has its walk start
-  at `implement` and run `implement → agent_review → human_review`. Caps
-  on `implement`, `agent_review`, and `human_review` all bind.
-- A candidate at `human_review` with `cadence_approve` has its walk
-  start at `done` (terminal); no caps bind. With `cadence_rework` the
-  walk is `implement → agent_review → human_review` (with `human_review`
-  drain-exempt), so caps on `implement` and `agent_review` bind.
-
-If `candidates` is empty (either no eligible issues to begin with, or every
-candidate is blocked by an over-cap state on its walk), print
-`No eligible issues.` and exit — if the empty set came from cap filtering,
-append the line `(caps reached for: <comma-separated over-cap state names>)`
-on the next line before exiting. The named states are the union of every
-over-cap state that blocked at least one candidate (not the entire set of
-over-cap states, since a state can be over-cap without any candidate's walk
-passing through it).
+5. **Act on the script's output.** If `diagnostic_message` is non-null,
+   print it verbatim and exit — that is the canonical "no work to do"
+   message (with or without the `(caps reached for: ...)` line). If
+   `diagnostic_message` is null, set `candidates = ordered_identifiers`
+   and proceed to step 6 below.
 
 ---
 

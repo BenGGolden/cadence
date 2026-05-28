@@ -6,6 +6,74 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Determinism Phase 4: extract `filter_candidates.py`
+- New `templates/hooks/filter_candidates.py` owns the pickup-side query
+  plan, the candidate filter, the priority + `createdAt` sort, and the
+  bounded reachability walk that used to live inline in
+  `commands/tick.md` step 5. Two modes:
+  - `--plan --workflow-config <path>` emits the parameters for the MCP
+    pickup query (`team`, `project_slug` — JSON `null` when absent, not
+    `""` — and `workflow_linear_states`) plus one `{state_name, linear_state}`
+    entry per state declaring `max_in_flight` for the dispatch prose to
+    query as in-flight counts.
+  - `--workflow-config <path> --candidates <path> --in-flight <path>`
+    reads the prose-returned pickup results + per-state counts and
+    emits `{ordered_identifiers, over_cap_states_that_blocked, diagnostic_message}`.
+    `diagnostic_message` is non-null only when `ordered_identifiers` is
+    empty; the canonical `No eligible issues.` / `No eligible issues.\n(caps reached for: ...)`
+    rendering moves from prose to the script.
+- The script encapsulates: workflow-Linear-states membership filter;
+  the `cadence_active` / `cadence_needs_human` label drops; the
+  blocker-resolved filter (skipped when the `blockers` field is absent,
+  per the MCP-data-availability fallback in step 5); the
+  gate-waiting-without-verdict filter; the priority sort (null and
+  `0`/"No priority" sort last); per-candidate effective-target
+  resolution (pickup → entry, gate + approve / rework → `on_approve` /
+  `on_rework`, otherwise the matched workflow state); the bounded walk
+  (include target and every subsequent agent state, plus the first
+  gate or terminal); and the P8.2 drain exemption (the candidate's own
+  gate's cap is excluded from the over-cap check for verdict-bearing
+  gate issues).
+- New `tests/test_filter_candidates.py` (37 cases) covers both modes:
+  plan-mode in-flight surfacing (no caps / agent + gate caps / only the
+  AC-1 set), `project_slug` JSON-null behaviour for absent / empty /
+  present configs; filter-mode pre-filters (`cadence_active`,
+  `cadence_needs_human`, foreign columns, blockers absent vs present
+  vs resolved, gate-waiting without verdict, gate-waiting with each
+  verdict); priority sort (high-first, null and `0` sort last,
+  `createdAt` tie-break, 10-run stable-sort sanity check on total
+  ties); the AC walks (Todo blocked by `plan_review` cap; drain
+  exemption at own gate; rework walk blocked by downstream
+  `human_review` cap; walk bounded so downstream caps past the
+  boundary do not bind; cap on a state that is not on any walk is not
+  reported); both-verdict-labels routed as rework; terminal target
+  (no caps bind); multiple blocking states reported together; the
+  GraphQL `{"nodes": [...]}` label shape; and the CLI error paths
+  (missing args, unreadable config, non-array candidates, non-object
+  in-flight).
+
+### Changed — Determinism Phase 4: tick.md / init.md
+- `commands/tick.md` step 5 collapses from the ~125-line filter / sort /
+  cap-walk block to a five-step shell: invoke `--plan`, run the MCP
+  pickup query, run one MCP count per `in_flight_queries` entry, hand
+  the results back via `--candidates` / `--in-flight`, then act on
+  `diagnostic_message` / `ordered_identifiers`. The "reachability walk"
+  paragraph, the "over-cap" loop, the bulleted "Examples for the
+  default workflow" block, and the per-state `max_in_flight` scan all
+  move to the script. The MCP-query guardrails (verbatim team /
+  project_slug, no fallback on empty results, no broader retry) stay
+  in prose — they constrain the LLM's MCP-calling behaviour, not the
+  script's pure data work.
+- `commands/tick.md` step 4 no longer asks the agent to track a
+  `workflowLinearStates` variable; the script consumes
+  `workflow_linear_states` directly via plan mode. `linearToWorkflow`
+  is still kept in memory for step 8.
+- `commands/init.md` Step 4 copy table adds the new script; Step 5
+  "Files written" block lists `.claude/hooks/filter_candidates.py`;
+  the overwrite-check block names the new file; the `eight files` /
+  `five .py files` references update to `nine` / `six` to account for
+  it.
+
 ### Added — Determinism Phase 3: extract `compose_lifecycle_context.py`
 - New `templates/hooks/compose_lifecycle_context.py` renders the full
   subagent user prompt — Lifecycle Context block (default or
