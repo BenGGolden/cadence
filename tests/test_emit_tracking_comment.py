@@ -17,7 +17,7 @@ SCRIPT = REPO_ROOT / "templates" / "hooks" / "emit_tracking_comment.py"
 
 # Body shape: "<!-- cadence:<prefix> {json} -->\n<visible markdown>"
 BODY_RE = re.compile(
-    r"^<!--\s+cadence:(?P<prefix>state|gate|reconcile)\s+"
+    r"^<!--\s+cadence:(?P<prefix>state|gate|reconcile|sweep)\s+"
     r"(?P<json>\{.*?\})\s+-->\n(?P<visible>.*)$",
     re.DOTALL,
 )
@@ -141,6 +141,87 @@ class EmitTrackingCommentTests(unittest.TestCase):
         })
         self.assertIn("Cadence", visible)
 
+    # ---------- sweep ----------
+
+    def test_sweep_record(self):
+        r = run_emit("--kind", "sweep",
+                     "--cleared-at", "2026-05-26T12:00:00Z",
+                     "--last-activity", "2026-05-26T11:00:00Z",
+                     "--stale-minutes", "60",
+                     "--threshold-minutes", "30")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+        prefix, payload, visible = parse_body(r.stdout)
+        self.assertEqual(prefix, "sweep")
+        self.assertEqual(payload, {
+            "cleared_at": "2026-05-26T12:00:00Z",
+            "last_activity": "2026-05-26T11:00:00Z",
+            "stale_minutes": 60,
+        })
+        self.assertIn("Stale lock cleared", visible)
+        self.assertIn("2026-05-26T11:00:00Z", visible)
+        self.assertIn("60 minutes ago", visible)
+        self.assertIn("threshold 30 minutes", visible)
+
+    def test_sweep_rejects_non_integer_stale_minutes(self):
+        r = run_emit("--kind", "sweep",
+                     "--cleared-at", "2026-05-26T12:00:00Z",
+                     "--last-activity", "2026-05-26T11:00:00Z",
+                     "--stale-minutes", "sixty",
+                     "--threshold-minutes", "30")
+        # argparse type=int rejects non-integer values with exit 2.
+        self.assertNotEqual(r.returncode, 0)
+
+    def test_sweep_rejects_non_integer_threshold_minutes(self):
+        r = run_emit("--kind", "sweep",
+                     "--cleared-at", "2026-05-26T12:00:00Z",
+                     "--last-activity", "2026-05-26T11:00:00Z",
+                     "--stale-minutes", "60",
+                     "--threshold-minutes", "thirty")
+        self.assertNotEqual(r.returncode, 0)
+
+    def test_sweep_missing_cleared_at_exits_1(self):
+        r = run_emit("--kind", "sweep",
+                     "--last-activity", "2026-05-26T11:00:00Z",
+                     "--stale-minutes", "60",
+                     "--threshold-minutes", "30")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("--cleared-at", r.stderr)
+
+    def test_sweep_missing_last_activity_exits_1(self):
+        r = run_emit("--kind", "sweep",
+                     "--cleared-at", "2026-05-26T12:00:00Z",
+                     "--stale-minutes", "60",
+                     "--threshold-minutes", "30")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("--last-activity", r.stderr)
+
+    def test_sweep_missing_stale_minutes_exits_1(self):
+        r = run_emit("--kind", "sweep",
+                     "--cleared-at", "2026-05-26T12:00:00Z",
+                     "--last-activity", "2026-05-26T11:00:00Z",
+                     "--threshold-minutes", "30")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("--stale-minutes", r.stderr)
+
+    def test_sweep_missing_threshold_minutes_exits_1(self):
+        r = run_emit("--kind", "sweep",
+                     "--cleared-at", "2026-05-26T12:00:00Z",
+                     "--last-activity", "2026-05-26T11:00:00Z",
+                     "--stale-minutes", "60")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("--threshold-minutes", r.stderr)
+
+    def test_sweep_zero_stale_minutes_renders_cleanly(self):
+        r = run_emit("--kind", "sweep",
+                     "--cleared-at", "2026-05-26T12:00:00Z",
+                     "--last-activity", "2026-05-26T12:00:00Z",
+                     "--stale-minutes", "0",
+                     "--threshold-minutes", "30")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+        _, payload, visible = parse_body(r.stdout)
+        self.assertEqual(payload["stale_minutes"], 0)
+        self.assertIn("0 minutes ago", visible)
+
     # ---------- error paths (exit 1 via die()) ----------
 
     def test_kind_state_missing_state_exits_1(self):
@@ -220,6 +301,11 @@ class EmitTrackingCommentTests(unittest.TestCase):
                            "--observed-linear-state", "Done",
                            "--expected-state", "implement",
                            "--reason", "human moved")),
+            ("sweep", ("--kind", "sweep",
+                       "--cleared-at", "2026-05-26T12:00:00Z",
+                       "--last-activity", "2026-05-26T11:00:00Z",
+                       "--stale-minutes", "60",
+                       "--threshold-minutes", "30")),
         ]
         for name, args in cases:
             with self.subTest(case=name):
