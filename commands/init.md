@@ -40,9 +40,9 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/scaffold_files.py" \
 
 Pass `--force` only when the operator passed it to `/cadence:init`.
 
-- **Exit 0** → print stdout (the scaffold summary) and proceed to step 4b.
+- **Exit 0** → print stdout (the scaffold summary) and proceed to step 3.
 - **Exit 2** → print stdout (the "already initialized" abort message) and
-  stop. Do not run step 4b or 4c.
+  stop. Do not run step 3 or 4.
 - **Exit 1** → print stderr (the file error) and stop. Partial scaffolding
   is acceptable — the operator can fix the underlying problem and re-run
   with `--force`.
@@ -55,7 +55,7 @@ with the installed plugin. User-config files (`workflow.yaml`,
 overwritten only with `--force`; otherwise an existing one is preserved and
 named in the summary.
 
-## Step 4b — Merge hook entries into .claude/settings.json
+## Step 3 — Merge hook entries into .claude/settings.json
 
 After the scaffold succeeds, run this command via Bash to merge Cadence's
 hook entries into the consumer's `.claude/settings.json` (creating it if
@@ -75,9 +75,9 @@ If the script exits non-zero, print its stderr and stop — Cadence's hooks
 never fire without this merge, so a broken `.claude/settings.json` means
 Cadence is broken. The consumer can fix the underlying problem (usually a
 hand-broken settings file) and re-run with `--force`. This is the one
-stop-on-failure step after the scaffold; step 4c below is best-effort.
+stop-on-failure step after the scaffold; step 4 below is best-effort.
 
-## Step 4c — Configure Linear MCP permissions and print next steps
+## Step 4 — Configure Linear MCP permissions and print next steps
 
 Cadence's bootstrap calls a small fixed set of Linear MCP verbs every
 fire. In Mode A (`/schedule`) every one of those must be pre-allowed on
@@ -87,7 +87,7 @@ keeps long unattended stretches from stalling on prompts. The permission
 list is **operator-specific** (different installs, different MCP
 namespaces), so it belongs in the untracked per-operator
 `.claude/settings.local.json` — *not* in the tracked `.claude/settings.json`
-where step 4b's hooks block lives.
+where step 3's hooks block lives.
 
 Run this single pipe via Bash. `claude mcp list` provides the installed-MCP
 inventory on stdin; `configure_linear.py` detects the Linear namespace,
@@ -121,4 +121,4 @@ can re-run with `--force` once they fix the underlying problem.
 
 Never modify Linear, never invoke a subagent, never run shell commands
 beyond the scaffold driver, the two settings-merge scripts, and the
-`claude mcp list` inventory feeding step 4c.
+`claude mcp list` inventory feeding step 4.

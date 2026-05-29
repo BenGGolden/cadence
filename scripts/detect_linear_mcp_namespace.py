@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Detect the consumer's Linear MCP server namespace for /cadence:init.
 
-Plugin-only helper — invoked from commands/init.md Step 4c. Not scaffolded
-to the consumer; lives in scripts/ (init-time only).
+Plugin-only helper — imported by scripts/configure_linear.py (the
+commands/init.md Step 4 orchestrator). Not scaffolded to the consumer;
+lives in scripts/ (init-time only).
 
 Three Linear MCP namespaces show up in the wild:
   - `linear`              — the official Linear MCP server installed under
@@ -12,7 +13,7 @@ Three Linear MCP namespaces show up in the wild:
                             docs).
   - `claude_ai_Linear`    — the claude.ai workspace connector.
 
-The bootstrap (init.md Step 4c) needs the namespace string so
+The orchestrator (init.md Step 4) needs the namespace string so
 `scripts/merge_settings_permissions.py` can write
 `mcp__<namespace>__<verb>` entries into `.claude/settings.local.json`.
 

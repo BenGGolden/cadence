@@ -49,14 +49,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `scaffold_success_no_skips.txt`, `scaffold_success_with_skip.txt`.
 
 ### Changed — init.md shrinks; render_next_steps sources its file list
-- `commands/init.md` collapses from Steps 1 → 2 → 3 → 4 → 4b → 4c → 5 to
-  Steps 1 → 2 (scaffold driver) → 4b (hooks merge) → 4c (Linear-config pipe).
-  Steps 3 and 4 are deleted; Step 5 is absorbed into the 4c orchestrator. The
+- `commands/init.md` collapses from seven steps (1 → 2 → 3 → 4 → 4b → 4c → 5)
+  to four cleanly-numbered ones: 1 (confirm cwd) → 2 (scaffold driver) → 3
+  (hooks merge) → 4 (Linear-config pipe). The old 4b/4c sub-letters are gone
+  — they only made sense as branches of a Step 4 that no longer exists. The
   ~25-line verbatim abort block, the 20-row copy table, the per-file policy
   paragraph, the detection exit-code branching, the "Detection failed"
   subsection, the `--print-only` second invocation, and the
   `permissionsBlock` / `detectionNote` variable-threading no longer appear in
-  the dispatch. Step 4b keeps its label and its stop-on-failure contract.
+  the dispatch. The hooks merge (now Step 3) keeps its stop-on-failure
+  contract.
 - `scripts/render_next_steps.py` now derives `_FILES_WRITTEN` from
   `scaffold_files.SCAFFOLD_PLAN`'s destination column instead of declaring a
   parallel literal tuple — killing one of the four hand-synced copies of the

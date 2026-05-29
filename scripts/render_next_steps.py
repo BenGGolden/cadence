@@ -2,7 +2,7 @@
 """Render the `/cadence:init` "Next steps" block.
 
 Plugin-only helper — its `render()` is called by `scripts/configure_linear.py`
-(the init.md Step 4c orchestrator) after detection + the settings merges, and
+(the init.md Step 4 orchestrator) after detection + the settings merges, and
 it remains independently invocable as a CLI. Not scaffolded to the consumer;
 lives in scripts/ (init-time only).
 
@@ -75,7 +75,7 @@ _SETTINGS_LOCAL_LINE = (
 )
 
 # The block below is the operator-facing handoff rendered at the end of
-# /cadence:init (Step 4c, via configure_linear.py). The `{...}` placeholders
+# /cadence:init (Step 4, via configure_linear.py). The `{...}` placeholders
 # are substituted by render(); everything else is emitted verbatim.
 _TEMPLATE = """\
 Cadence initialised.
@@ -97,7 +97,7 @@ Permissions for /schedule routines (paste into the routine's permissions panel):
 {permissions_section}
 
 Cloud /schedule routines do NOT read .claude/settings.local.json, so the
-allowlist above is required on the routine even if step 4c already wrote
+allowlist above is required on the routine even if step 4 already wrote
 your local copy.
 
 Next steps:
@@ -163,7 +163,7 @@ def render(settings_local_written, detection_note, permissions_block):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--settings-local-written", required=True,
-                    help="'true' if step 4c wrote .claude/settings.local.json, "
+                    help="'true' if step 4 wrote .claude/settings.local.json, "
                          "'false' otherwise.")
     ap.add_argument("--permissions-detection-note", required=True,
                     help="Single-line note describing the Linear MCP "
