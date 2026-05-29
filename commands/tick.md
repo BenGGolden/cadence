@@ -52,6 +52,19 @@ server vendor; commonly they look like `mcp__linear__list_issues`, `mcp__linear_
 `mcp__linear__add_label`, `mcp__linear__remove_label`. Use whichever names are present
 in your available tool list — the verbs below describe intent, not exact names.
 
+### Scratch files
+
+Every transient JSON file this fire writes with the Write tool (the validator
+output, the comment list, the candidate/in-flight lists, the composed issue
+object) goes under **`.cadence/`** — Cadence's per-repo scratch directory.
+Step 1 (and step 0's `--evidence` call) runs `validate_workflow.py`, which
+creates `.cadence/` and a self-ignoring `.cadence/.gitignore` (`*`) before you
+write anything, so these files never show up in the consumer's `git status`.
+Use the stable names given below (`.cadence/validator-output.json`, etc.);
+reusing a name across fires is fine — each is overwritten and read back within
+the same fire. **Do not** write scratch to the repo root, `tmp/`, or an OS
+temp directory.
+
 ---
 
 ## Step 0 — Dry-run branch
@@ -67,11 +80,11 @@ case-insensitively (i.e. the user typed `/cadence:tick dry-run`):
    `linear_to_workflow`, `entry_state_name`, `entry_subagent`, `pickup_state`,
    `states`), and the raw `linear` / `label` / `limits` blocks as JSON on stdout.
    Parse that JSON; if the script's stdout is not parseable, print stderr
-   verbatim and exit. Also write the JSON verbatim to a temporary file (call
-   it `validatorOutputPath`) using the Write tool — step 0 step 3 below feeds
-   it to `compose_lifecycle_context.py`.
+   verbatim and exit. Also write the JSON verbatim to `.cadence/validator-output.json`
+   (call it `validatorOutputPath`) using the Write tool — step 0 step 3 below
+   feeds it to `compose_lifecycle_context.py`.
 2. Do **NOT** call any Linear MCP tool. Do **NOT** invoke any subagent. Do **NOT**
-   write to any file other than the temp file from step 1.
+   write to any file other than the scratch file from step 1.
 3. Invoke Bash:
    `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/compose_lifecycle_context.py --workflow-config <validatorOutputPath> --dry-run`
    The script reads the validator's `entry_state_name` and the entry state's
@@ -138,10 +151,10 @@ in P4 and the validator rejects them with a Rule 8 failure).
   directly.** Reading the YAML yourself produces a model-cacheable
   artifact that can go stale across fires in the same conversation;
   re-invoking the script every fire is the only way edits to the config
-  are guaranteed to be picked up. Also write the JSON verbatim to a
-  temporary file (call it `validatorOutputPath`) using the Write tool;
-  step 0 (dry-run) and step 13 invoke deterministic helpers that take it
-  as input.
+  are guaranteed to be picked up. Also write the JSON verbatim to
+  `.cadence/validator-output.json` (call it `validatorOutputPath`) using the
+  Write tool; step 0 (dry-run) and step 13 invoke deterministic helpers that
+  take it as input.
 
 ## Step 2 — (removed in determinism P3)
 
@@ -225,9 +238,9 @@ MCP queries the script tells it to and feed the results back in.
    empty, `inFlightCounts` is `{}`.
 
 4. **Hand the results back to the script.** Write the pickup-query
-   results to a temp file as a JSON array (call it `candidatesPath`)
-   using the Write tool. Write `inFlightCounts` to a second temp file
-   (call it `inFlightPath`). Invoke Bash:
+   results as a JSON array to `.cadence/candidates.json` (call it
+   `candidatesPath`) using the Write tool. Write `inFlightCounts` to
+   `.cadence/in-flight.json` (call it `inFlightPath`). Invoke Bash:
    `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/filter_candidates.py --workflow-config <validatorOutputPath> --candidates <candidatesPath> --in-flight <inFlightPath>`
    Parse the JSON on stdout.
 
@@ -291,10 +304,10 @@ bootstrap remains the sole Linear writer; the router only decides.
 2. Re-read `issue`'s current label list (the step-6 lock re-read covers this
    if your MCP returned labels). Reduce it to the present label **names**.
 3. Fetch the issue's full comment list via the Linear MCP. Write it verbatim
-   as a JSON array to a temporary file — call it `commentsFile` (Write tool;
-   any writable path, an OS temp directory is fine). Each element carries
-   whatever `id` / `body` / `createdAt` / `user` fields the MCP returns; the
-   router tolerates both camelCase and snake_case keys.
+   as a JSON array to `.cadence/comments.json` — call it `commentsFile`
+   (Write tool). Each element carries whatever `id` / `body` / `createdAt` /
+   `user` fields the MCP returns; the router tolerates both camelCase and
+   snake_case keys.
 
 ### Route (one Bash call)
 
@@ -346,9 +359,10 @@ it** — the bootstrap's job is to apply the plan.
 
 - If `invoke_subagent` is **true**: apply every action in `pre_actions` in
   order via the Linear MCP. Then write `parse_comments_output` verbatim as
-  JSON to a temporary file (Write tool) — call it `parseCommentsOutputPath`;
-  step 13 feeds it to `compose_lifecycle_context.py`. Carry `target_state`,
-  `attempt`, and `rework` forward and continue at step 12.
+  JSON to `.cadence/parse-comments.json` (Write tool) — call it
+  `parseCommentsOutputPath`; step 13 feeds it to
+  `compose_lifecycle_context.py`. Carry `target_state`, `attempt`, and
+  `rework` forward and continue at step 12.
 
 ---
 
@@ -370,7 +384,7 @@ field — this comment **is** the attempt marker counted by the Route step
 
 ## Step 13 — Compose the Lifecycle Context block
 
-Write the locked `issue` MCP object verbatim as JSON to a temporary file
+Write the locked `issue` MCP object verbatim as JSON to `.cadence/issue.json`
 (call it `issueJsonPath`) using the Write tool. Then invoke Bash:
 
 `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/compose_lifecycle_context.py --workflow-config <validatorOutputPath> --issue <issueJsonPath> --target-state <targetState> --attempt <attempt> --parse-comments-output <parseCommentsOutputPath>`

@@ -565,5 +565,37 @@ class ValidateWorkflowTests(unittest.TestCase):
                              "FAIL")
 
 
+class ScratchDirTests(unittest.TestCase):
+    """The validator creates `.cadence/` + a self-ignoring `.gitignore` so the
+    dispatch prose's scratch JSON (validator output, comment lists, etc.) never
+    shows up in the consumer's `git status` — even on the dry-run path, which
+    fires no Linear write and so never triggers the audit hook."""
+
+    def test_valid_run_creates_self_ignoring_cadence_dir(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, _valid_workflow())
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            gi = Path(td) / ".cadence" / ".gitignore"
+            self.assertTrue(gi.is_file())
+            self.assertEqual(gi.read_text(encoding="utf-8"), "*\n")
+
+    def test_evidence_run_creates_cadence_dir(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, _valid_workflow(), evidence=True)
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertTrue((Path(td) / ".cadence" / ".gitignore").is_file())
+
+    def test_existing_gitignore_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as td:
+            cadence = Path(td) / ".cadence"
+            cadence.mkdir()
+            (cadence / ".gitignore").write_text("custom\n", encoding="utf-8")
+            r = run_validator(td, _valid_workflow())
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertEqual(
+                (cadence / ".gitignore").read_text(encoding="utf-8"),
+                "custom\n")
+
+
 if __name__ == "__main__":
     unittest.main()

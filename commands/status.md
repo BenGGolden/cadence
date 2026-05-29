@@ -129,8 +129,11 @@ is better than one per state).
 For **each** issue from step 3:
 
 1. Query its comments via the Linear MCP and write them verbatim as a JSON
-   array to a temporary file (you may reuse one path, overwriting it per
-   issue).
+   array to `.cadence/comments.json` — call it `commentsFile`, reusing the
+   one path and overwriting it per issue. (Step 1's `validate_workflow.py`
+   already created `.cadence/` with a self-ignoring `.gitignore`, so this
+   scratch file stays out of `git status`. Do not write it to the repo root
+   or an OS temp directory.)
 2. Determine the issue's workflow-state name from its `linearToWorkflow`
    entry (step 2). For a `pickup` entry there is no workflow state — use
    `entry_state_name` from step 1. Invoke Bash:

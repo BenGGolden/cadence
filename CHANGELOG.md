@@ -42,6 +42,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `exit_plan` + `exit_summary`; the bootstrap re-derives no verdict.
 - `SCAFFOLD_PLAN` gains the three plugin-owned rows; `CLAUDE.md` repo-map
   lists the new helpers.
+- The dispatch prose's transient JSON (validator output, comment lists,
+  candidate / in-flight lists, the composed issue object) now lands under
+  `.cadence/` with stable names instead of an unspecified "temporary file" the
+  model was placing at the repo root (e.g. `tmp/validator-output.json`).
+  `validate_workflow.py` — the first Bash call in every `/cadence:*` fire,
+  dry-run included — now creates `.cadence/` and a self-ignoring
+  `.cadence/.gitignore` (`*`) via a new `_common.ensure_cadence_dir()`, so
+  scratch never shows up in the consumer's `git status` (the audit hook only
+  created that `.gitignore` on a Linear write, which a dry-run never makes).
 
 ### Added — init scaffold driver + Linear-config orchestrator
 - New `scripts/scaffold_files.py` collapses `commands/init.md` Steps 2 + 3 + 4
