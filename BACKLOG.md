@@ -9,6 +9,27 @@ served live in [GUIDEPOSTS.md](./GUIDEPOSTS.md).
 
 ---
 
+## tick.md contiguous step renumber (follow-up to route_fire extraction)
+
+**Idea**: renumber `commands/tick.md` steps to a contiguous `1..N`
+sequence. The route_fire extraction collapsed old steps 8–11 into one
+ranged "Steps 8–11 — Route the fire" section and the file still carries
+the pre-existing "Step 2 / Step 3 — (removed)" stubs, so the numbering
+has gaps. A clean renumber would drop the stubs and the range.
+
+**Why**: removes the last numbering discontinuities; the determinism pass
+that added `route_fire.py` deliberately deferred this to keep that PR's
+diff focused on behaviour.
+
+**Cost / care**: external references to tick.md step numbers must move in
+lockstep — `parse_comments.py` / `emit_tracking_comment.py` /
+`compose_lifecycle_context.py` / `validate_workflow.py` docstrings, and
+`status.md` / `sweep.md` prose. Grep the repo for `step <n>` before and
+after. Low value, moderate churn — bundle it with the next substantive
+tick.md edit rather than as a standalone PR.
+
+---
+
 ## Linear OAuth app (Cadence as a first-class integration)
 
 **Idea**: register Cadence as a Linear OAuth app so the workspace sees

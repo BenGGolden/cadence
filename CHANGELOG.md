@@ -6,6 +6,43 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Determinism Phase 8: extract tick.md routing into route_fire.py
+- New `templates/hooks/route_fire.py` collapses `commands/tick.md` steps 8–11
+  — the matched-state lookup + unmapped-column release (8), drift
+  classification (9), gate verdict routing (10), and attempt-cap check (11) —
+  from model-executed branching prose into one pure orchestrator. It answers
+  *"given where this issue sits and its history, what should this fire do to
+  it?"* as a pure function of `(config, current Linear column, present labels,
+  comment history)` and emits a single routing **plan** (pre-actions, target
+  state + attempt, or an exit plan with summary). The bootstrap remains the
+  sole Linear writer — `route_fire.py` makes no MCP/network/shell call; it
+  only decides, and `tick.md` executes every post/move/label-op.
+- New `templates/hooks/classify_drift.py` and `classify_gate.py` — the two
+  pure sub-decisions (`route_fire.py` wires them). `classify_drift` reproduces
+  the ordered step-9 branch (null / Match / forward-progression-via-`next` /
+  drift-otherwise); `classify_gate` reproduces the step-10 verdict routing
+  (waiting / approve / rework, both-labels→rework, `max_rework` escalation).
+- `parse_comments.py` gains an importable `parse_comment_list()` (and
+  `coerce_comment_list()`); `route_fire.py` calls it directly so the parse
+  runs **exactly once** per fire — the old step-11 second `parse_comments.py`
+  invocation (re-counting attempts against the gate-resolved target) is gone.
+  The router counts attempts against the *resolved* target internally. CLI
+  output is byte-identical (existing fixtures unchanged).
+- `route_fire.py` imports `emit_tracking_comment`'s `build_gate` /
+  `build_reconcile` formatters, so the plan carries finished reconcile / gate
+  rework / gate escalation comment bodies — no tracking-comment templates are
+  re-inlined in the router.
+- New `tests/test_route_fire.py` (decision-parity matrix for every step 8–11
+  branch, plus the double-run-subsumption and legacy-`stokowski:` cases),
+  `tests/test_classify_drift.py`, and `tests/test_classify_gate.py`.
+- `commands/tick.md` steps 8–11 collapse to **Gather → Route → Execute**: the
+  bootstrap re-reads the column / labels / comments, runs one `route_fire.py`
+  Bash call, and applies the returned plan. The early-exit paths (unmapped /
+  waiting / approve-terminal / escalate / cap-hit) are driven by the router's
+  `exit_plan` + `exit_summary`; the bootstrap re-derives no verdict.
+- `SCAFFOLD_PLAN` gains the three plugin-owned rows; `CLAUDE.md` repo-map
+  lists the new helpers.
+
 ### Added — init scaffold driver + Linear-config orchestrator
 - New `scripts/scaffold_files.py` collapses `commands/init.md` Steps 2 + 3 + 4
   (overwrite check, directory creation, the 20-row source→destination copy

@@ -27,9 +27,14 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
   hooks (`validate_tracking_json.py`, `validate_workflow_on_prompt.py`,
   `audit_linear_writes.py`); the rest are deterministic helpers the dispatch
   prose invokes via Bash (`validate_workflow.py`, `_common.py`,
-  `parse_comments.py`, `emit_tracking_comment.py`,
-  `compose_lifecycle_context.py`, `filter_candidates.py`,
-  `render_status_report.py`, `render_sweep_report.py`). All are always
+  `parse_comments.py`, `emit_tracking_comment.py`, `classify_drift.py`,
+  `classify_gate.py`, `route_fire.py`, `compose_lifecycle_context.py`,
+  `filter_candidates.py`, `render_status_report.py`,
+  `render_sweep_report.py`). `route_fire.py` is the tick.md routing
+  orchestrator (the old steps 8–11 decision core) — it imports
+  `parse_comments`, `classify_drift`, `classify_gate`, and
+  `emit_tracking_comment`'s formatters to emit one routing plan; the
+  bootstrap still executes every Linear write. All are always
   overwritten on init — they are plugin-owned executables, not user config.
   The canonical, count-free copy list lives in
   [`scripts/scaffold_files.py`](./scripts/scaffold_files.py)'s

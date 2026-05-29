@@ -175,7 +175,7 @@ ascending):
 - **Do not** delete or modify existing tracking comments. The sweep
   comment is added as new audit history.
 - The sweep comment is **not** a tracking comment in the
-  `/cadence:tick` sense — step 11's attempt counter ignores it.
+  `/cadence:tick` sense — the router's attempt counter ignores it.
 
 ---
 

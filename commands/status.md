@@ -33,10 +33,10 @@ any time, from anywhere, with no side effects.
   the legacy `<!-- stokowski:state` / `<!-- stokowski:gate` prefixes.
 - **Attempt marker**: a `cadence:state` (or legacy `stokowski:state`)
   comment whose JSON has **no** `status` field. This is what
-  `/cadence:tick` step 11 counts.
+  `/cadence:tick`'s Route step (steps 8–11) counts.
 - **Failure record**: a `cadence:state` comment whose JSON includes
   `"status": "failed"`. Emitted on a subagent exception. **Not** an attempt
-  marker — `/cadence:tick` step 11 does not count it.
+  marker — `/cadence:tick`'s Route step does not count it.
 
 You only need one Linear MCP server connected to this session. Tool names
 vary by vendor; commonly `mcp__linear__list_issues`,
