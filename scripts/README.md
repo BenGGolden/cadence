@@ -1,45 +1,49 @@
 # Cadence init-time scripts
 
-The four helpers in this directory are invoked **only by
+The six helpers in this directory are invoked **only by
 [`commands/init.md`](../commands/init.md)** during `/cadence:init`. They
 are plugin-internal — they are never scaffolded into a consumer repo and
 they never run after init.
 
 | Script                              | Purpose                                                                                       |
 |-------------------------------------|-----------------------------------------------------------------------------------------------|
-| `merge_settings_hooks.py`           | Merge the Cadence hooks block from [`templates/settings.json`](../templates/settings.json) into the consumer's `.claude/settings.json`. Idempotent — re-running replaces Cadence-owned hook entries without disturbing non-Cadence ones. |
-| `merge_settings_permissions.py`     | Merge the Linear MCP allowlist into the consumer's `.claude/settings.local.json` (or `--print-only` for the copy-pasteable block surfaced for `/schedule` cloud routines). |
-| `detect_linear_mcp_namespace.py`    | Scan `claude mcp list` stdout (via stdin) and/or `.mcp.json` to detect the consumer's Linear MCP server namespace. Used by Step 4c to drive `merge_settings_permissions.py`'s `--namespace`. Exit 2 = no Linear server found. |
-| `render_next_steps.py`              | Render the "Cadence initialised." operator handoff block (Step 5) — file list, gate-label hint, permissions block, next-step checklist — with three interpolation points for the settings.local outcome, detection note, and permissions block. |
+| `scaffold_files.py`                 | Step 2 driver. Owns the overwrite check, directory creation, and the canonical source→destination copy plan (`SCAFFOLD_PLAN`). Copies plugin-owned files (hooks, `/cadence:*` commands) unconditionally and user-config files only with `--force`. Exit 2 = already initialized (abort message on stdout). Single source of truth for the file list — `render_next_steps.py` imports `SCAFFOLD_PLAN`. |
+| `merge_settings_hooks.py`           | Step 4b. Merge the Cadence hooks block from [`templates/settings.json`](../templates/settings.json) into the consumer's `.claude/settings.json`. Idempotent — re-running replaces Cadence-owned hook entries without disturbing non-Cadence ones. Stop-on-failure (hooks never fire without it). |
+| `configure_linear.py`               | Step 4c orchestrator. Reads `claude mcp list` on stdin, detects the Linear MCP namespace, merges the allowlist into `.claude/settings.local.json` (placeholder path on detection failure), and renders the "Next steps" block on stdout. Thin layer over the three helpers below — no detection/merge/render logic of its own. Best-effort. |
+| `merge_settings_permissions.py`     | Merge the Linear MCP allowlist into the consumer's `.claude/settings.local.json` (or `--print-only` for the copy-pasteable block surfaced for `/schedule` cloud routines). Imported by `configure_linear.py`. |
+| `detect_linear_mcp_namespace.py`    | Scan `claude mcp list` stdout (via stdin) and/or `.mcp.json` to detect the consumer's Linear MCP server namespace. Exit 2 = no Linear server found. Imported by `configure_linear.py`. |
+| `render_next_steps.py`              | Render the "Cadence initialised." operator handoff block — file list (from `SCAFFOLD_PLAN`), gate-label hint, permissions block, next-step checklist — with three interpolation points for the settings.local outcome, detection note, and permissions block. `render()` is called by `configure_linear.py`. |
 
 The runtime helpers that ship to the consumer's `.claude/hooks/` live
-under [`templates/hooks/`](../templates/hooks/). That directory contains
-three event-hook scripts (`validate_tracking_json.py`,
-`validate_workflow_on_prompt.py`, `audit_linear_writes.py`) plus four
-helpers the dispatch prose invokes directly (`validate_workflow.py`,
-`_common.py`, `parse_comments.py`, `emit_tracking_comment.py`). All seven
-are copied verbatim by `/cadence:init` regardless of the `--force` flag —
-keeping them in sync with the installed plugin is the point. The
-dispatch-prose helpers are siblings of the event-hook scripts so the
-copied `/cadence:*` commands can call them via
-`$CLAUDE_PROJECT_DIR/.claude/hooks/...` without resolving a plugin path
-at runtime (which would not exist under `/schedule`).
+under [`templates/hooks/`](../templates/hooks/) — three event-hook scripts
+plus the dispatch-prose helpers the `/cadence:*` commands invoke directly.
+They are copied verbatim by `scaffold_files.py` regardless of the `--force`
+flag (they are tagged `plugin-owned` in `SCAFFOLD_PLAN`) — keeping them in
+sync with the installed plugin is the point. The dispatch-prose helpers are
+siblings of the event-hook scripts so the copied `/cadence:*` commands can
+call them via `$CLAUDE_PROJECT_DIR/.claude/hooks/...` without resolving a
+plugin path at runtime (which would not exist under `/schedule`). The full,
+canonical list of what gets copied lives in
+[`scaffold_files.py`](./scaffold_files.py)'s `SCAFFOLD_PLAN`.
 
 ## Invocation contract
 
-Both scripts use `argparse` for required args, exit `0` on success, `1`
-on bad input, and emit human-readable stderr on failure. The bootstrap
-prints stderr verbatim before continuing or exiting. Neither script
-makes MCP or network calls — they read and write local JSON only.
+These scripts use `argparse` for required args, exit `0` on success, `1`
+on bad input, and emit human-readable stderr on failure (`scaffold_files.py`
+and `merge_*` also use exit `2` for a stop signal that isn't an internal
+error). The bootstrap prints stderr verbatim before continuing or exiting.
+No script makes MCP or network calls — they read and write local files
+only; `configure_linear.py` reads the `claude mcp list` inventory on stdin
+but never spawns a CLI child of its own.
 
 ## Constraints
 
 - **Stdlib only.** No third-party dependencies (the Anthropic `/schedule`
   cloud image ships Python 3.x with the standard library; we don't take
-  a `pip install` step on it). Both scripts use `json` / `argparse` /
-  `re` only.
-- **No MCP calls.** Writes are limited to the two settings files inside
-  the consumer's `.claude/`.
+  a `pip install` step on it). The scripts use only `json` / `argparse` /
+  `re` / `pathlib` / `io`.
+- **No MCP calls.** Writes are limited to the scaffolded `.claude/` tree
+  and the two settings files inside it.
 
 ## Tests
 

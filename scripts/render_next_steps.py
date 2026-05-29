@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Render the `/cadence:init` "Next steps" block.
 
-Plugin-only helper — invoked from commands/init.md Step 5 after the
-file-copy / settings-merge work has succeeded. Not scaffolded to the
-consumer; lives in scripts/ (init-time only).
+Plugin-only helper — its `render()` is called by `scripts/configure_linear.py`
+(the init.md Step 4c orchestrator) after detection + the settings merges, and
+it remains independently invocable as a CLI. Not scaffolded to the consumer;
+lives in scripts/ (init-time only).
 
 The block is the operator's after-init handoff: it lists every file
 written, the recommended Linear-label setup, the `/schedule` permissions
@@ -60,38 +61,22 @@ if hasattr(sys.stderr, "buffer"):
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8",
                                   newline="")
 
+# Single source of truth for the copied-file list — the destination column of
+# the scaffold plan. Adding a hook means editing one row in scaffold_files.py;
+# this section follows automatically. (scaffold_files lives alongside this
+# script in scripts/, so it resolves on sys.path[0] when run as a subprocess.)
+from scaffold_files import SCAFFOLD_PLAN
 
-_FILES_WRITTEN = (
-    ".claude/workflow.yaml",
-    ".claude/prompts/global.md",
-    ".claude/ticket-template.md",
-    ".claude/agents/planner.md",
-    ".claude/agents/implementer.md",
-    ".claude/agents/reviewer.md",
-    ".claude/hooks/validate_tracking_json.py",
-    ".claude/hooks/validate_workflow_on_prompt.py",
-    ".claude/hooks/audit_linear_writes.py",
-    ".claude/hooks/validate_workflow.py",
-    ".claude/hooks/_common.py",
-    ".claude/hooks/parse_comments.py",
-    ".claude/hooks/emit_tracking_comment.py",
-    ".claude/hooks/compose_lifecycle_context.py",
-    ".claude/hooks/filter_candidates.py",
-    ".claude/hooks/render_status_report.py",
-    ".claude/hooks/render_sweep_report.py",
-    ".claude/commands/cadence/tick.md",
-    ".claude/commands/cadence/sweep.md",
-    ".claude/commands/cadence/status.md",
-)
+_FILES_WRITTEN = tuple(dest for _, dest, _ in SCAFFOLD_PLAN)
 
 _SETTINGS_JSON_LINE = ".claude/settings.json (Cadence hook entries merged in)"
 _SETTINGS_LOCAL_LINE = (
     ".claude/settings.local.json (Linear MCP allowlist merged in)"
 )
 
-# The block below is a verbatim copy of the operator-facing handoff from
-# init.md Step 5. The four `{{...}}` placeholders are substituted by
-# render(); everything else is byte-identical to the prose.
+# The block below is the operator-facing handoff rendered at the end of
+# /cadence:init (Step 4c, via configure_linear.py). The `{...}` placeholders
+# are substituted by render(); everything else is emitted verbatim.
 _TEMPLATE = """\
 Cadence initialised.
 
