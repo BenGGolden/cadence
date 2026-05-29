@@ -30,6 +30,83 @@ tick.md edit rather than as a standalone PR.
 
 ---
 
+## Fold the validator-output scratch hop into the consumers
+
+**Idea**: stop having the bootstrap write `validate_workflow.py`'s JSON to
+`.cadence/validator-output.json` and thread it to four downstream scripts.
+Instead let `route_fire.py`, `filter_candidates.py`, and
+`compose_lifecycle_context.py` accept `--workflow-path` and run the
+validator internally (importing `validate_workflow`), so the model never
+materialises or couriers that artifact.
+
+**Why**: of the ~6 scratch files a live fire writes, this one (and
+`parse-comments.json`) are pure *script→script* handoffs — the model is a
+needless middleman threading a deterministic artifact between scripts. The
+other four (`candidates` / `in-flight` / `comments` / `issue`) are MCP-sourced
+and irreducible: only the model can call the Linear MCP, so it must hand that
+data to the scripts. Removing the validator hop is the cleanest "prose that
+should be code" reduction left in the tick path, and re-running the cheap
+validator per consumer is *more* correct than reusing a model-held copy (no
+cacheable-staleness risk — the same reason tick.md already forbids the model
+reading `workflow.yaml` directly).
+
+**Cost / care**: validation runs ~3–4× per fire instead of once (cheap — one
+YAML read + pure rule checks). Each consumer grows a `--workflow-path` mode
+that internally calls `validate_workflow` and bails on a non-zero result the
+same way the bootstrap does today; keep `--workflow-config <path>` working too
+so the dry-run / test fixtures that feed a pre-built validator dict don't have
+to change. `parse-comments.json` could be folded similarly only if `route_fire`
+and `compose_lifecycle_context` merge — lower priority, leave for now.
+
+---
+
+## Direct Linear API (vs MCP) — architectural fork, not an incremental change
+
+**Question raised**: the model-as-courier overhead exists because only the
+model can call MCP tools — a script run via Bash cannot. Would a direct Linear
+GraphQL API (personal key / OAuth) let scripts make the Linear calls
+themselves, so nearly the whole fire becomes deterministic code (everything
+but the subagent invocation)?
+
+**Trade-off**: technically yes — a script with a Linear token could query
+candidates, lock, read, decide, and write in one deterministic pass, and the
+"bootstrap is the sole writer" invariant would become trivially enforceable.
+But it changes *what Cadence is*:
+
+- **Secrets.** Today Cadence rides whatever Linear MCP the operator already
+  connected and (in `/schedule`) authenticates via the claude.ai connector —
+  the plugin bundles no credentials. A direct API means storing, scoping, and
+  rotating a Linear token and making it available to a script inside the
+  `/schedule` cloud image. New security surface the plugin currently doesn't
+  own. (Intersects the "Linear OAuth app" entry below.)
+- **`/schedule` fit.** The connector/MCP is the blessed integration path in the
+  cloud routine image; arbitrary outbound HTTPS to `api.linear.app` from a
+  script may not be as stable/sanctioned. `/schedule` is the design target.
+- **Bespoke client.** Cadence is built on OOTB Claude Code primitives; MCP is
+  the OOTB way it talks to Linear. A direct API means vendoring a GraphQL
+  client and owning pagination / rate-limits / schema drift — re-introducing
+  the bespoke integration the project avoided — and dropping MCP-server
+  agnosticism (the three namespace variants consumers point at today).
+- **It doesn't remove the model from the part that needs it.** The one
+  irreducibly model-driven act is *running the subagent* (the actual plan /
+  code / review work). A fully-scripted fire is essentially a daemon that calls
+  the Anthropic API to run subagents — a traditional service holding both a
+  Linear key and an Anthropic key, not a Claude Code plugin. That's the
+  no-daemon design bet Cadence deliberately made (see GUIDEPOSTS; built
+  from-scratch on OOTB primitives after Stokowski).
+
+**Recommendation**: keep MCP for the plugin. The determinism gap MCP imposes is
+real but narrow — decisions are already scripted; the residue is I/O courier
+overhead, only ~2 hops of which are removable without an API (see the
+validator-fold entry above). The cost of going direct (secrets, cloud-env fit,
+bespoke client, lost agnosticism) outweighs eliminating a few courier hops.
+
+**If revisited**: frame it as a *separate* "Cadence-as-service / headless"
+variant for users who want a true daemon and accept managing keys — an
+architectural fork, not a refactor of the plugin.
+
+---
+
 ## Linear OAuth app (Cadence as a first-class integration)
 
 **Idea**: register Cadence as a Linear OAuth app so the workspace sees
