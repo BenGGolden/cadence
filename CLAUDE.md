@@ -22,18 +22,23 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
   `/cadence:init`: `workflow.yaml`, `prompts/global.md`, `ticket-template.md`,
   `agents/*.md`, `hooks/*.py`, `settings.json` (the last is merged into
   `.claude/settings.json` rather than copied verbatim).
-- `templates/hooks/` — eleven Python files copied to the consumer's
-  `.claude/hooks/`. Three are PreToolUse / UserPromptSubmit / PostToolUse
+- `templates/hooks/` — Python files copied to the consumer's
+  `.claude/hooks/`. Some are PreToolUse / UserPromptSubmit / PostToolUse
   hooks (`validate_tracking_json.py`, `validate_workflow_on_prompt.py`,
-  `audit_linear_writes.py`); eight are deterministic helpers the dispatch
+  `audit_linear_writes.py`); the rest are deterministic helpers the dispatch
   prose invokes via Bash (`validate_workflow.py`, `_common.py`,
   `parse_comments.py`, `emit_tracking_comment.py`,
   `compose_lifecycle_context.py`, `filter_candidates.py`,
-  `render_status_report.py`, `render_sweep_report.py`). All eleven are
-  always overwritten on init — they are plugin-owned executables, not
-  user config.
-- `scripts/` — plugin-only init-time helpers (`merge_settings_hooks.py`,
-  `merge_settings_permissions.py`). Never scaffolded to the consumer; only
+  `render_status_report.py`, `render_sweep_report.py`). All are always
+  overwritten on init — they are plugin-owned executables, not user config.
+  The canonical, count-free copy list lives in
+  [`scripts/scaffold_files.py`](./scripts/scaffold_files.py)'s
+  `SCAFFOLD_PLAN` (the single source of truth — add a hook = add one row).
+- `scripts/` — plugin-only init-time helpers (`scaffold_files.py` is the
+  Step 2 copy driver and owns `SCAFFOLD_PLAN`; `merge_settings_hooks.py`,
+  `merge_settings_permissions.py`, `detect_linear_mcp_namespace.py`,
+  `render_next_steps.py`; and `configure_linear.py`, the Step 4c
+  orchestrator over the last three). Never scaffolded to the consumer; only
   invoked from `commands/init.md`. Contract documented in
   [`scripts/README.md`](./scripts/README.md).
 - `.claude-plugin/plugin.json` — plugin manifest (name, version, metadata).

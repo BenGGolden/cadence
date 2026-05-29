@@ -54,6 +54,30 @@ class McpListDetectionTests(unittest.TestCase):
         self.assertEqual(out.returncode, 0, msg=out.stderr)
         self.assertEqual(out.stdout.strip(), "claude_ai_Linear")
 
+    def test_detects_claude_ai_connector_display_name(self):
+        # The claude.ai connector lists by display name, not a bare token.
+        # Its tools are namespaced mcp__claude_ai_Linear__*.
+        out = _run_stdin(
+            "claude.ai Linear: https://mcp.linear.app/mcp - ✓ Connected\n")
+        self.assertEqual(out.returncode, 0, msg=out.stderr)
+        self.assertEqual(out.stdout.strip(), "claude_ai_Linear")
+
+    def test_claude_ai_display_name_among_other_servers(self):
+        stdin = (
+            "github: ✔ connected\n"
+            "claude.ai Linear: https://mcp.linear.app/mcp - ✓ Connected\n"
+            "context7: ✔ connected\n"
+        )
+        out = _run_stdin(stdin)
+        self.assertEqual(out.returncode, 0, msg=out.stderr)
+        self.assertEqual(out.stdout.strip(), "claude_ai_Linear")
+
+    def test_claude_ai_non_linear_connector_ignored(self):
+        # A claude.ai connector for some other product must not match.
+        out = _run_stdin("claude.ai GitHub: https://example - ✓ Connected\n")
+        self.assertEqual(out.returncode, 2, msg=out.stderr)
+        self.assertEqual(out.stdout.strip(), "")
+
     def test_detects_with_bullet_prefix(self):
         # Some CLI versions render the list as bulleted entries.
         out = _run_stdin("* linear-server: connected\n")

@@ -45,7 +45,7 @@ Permissions for /schedule routines (paste into the routine's permissions panel):
   mcp__REPLACE_WITH_YOUR_LINEAR_MCP_NAMESPACE__remove_label
 
 Cloud /schedule routines do NOT read .claude/settings.local.json, so the
-allowlist above is required on the routine even if step 4c already wrote
+allowlist above is required on the routine even if step 4 already wrote
 your local copy.
 
 Next steps:

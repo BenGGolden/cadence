@@ -1,0 +1,3 @@
+Cadence: scaffolded 19 files (1 skipped).
+  Skipped existing (re-run with --force to overwrite):
+    .claude/agents/planner.md

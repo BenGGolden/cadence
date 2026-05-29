@@ -350,7 +350,7 @@ MCP server actually exposes. Check `claude mcp list` and look at the
 permission prompt the first time a Cadence subagent tries to read or
 write Linear.
 
-> **`/cadence:init` automates this for local sessions.** Step 4c
+> **`/cadence:init` automates this for local sessions.** Step 4
 > detects your Linear MCP namespace and writes the canonical Cadence
 > allowlist into `.claude/settings.local.json` so you don't have to
 > paste it yourself. **Cloud `/schedule` routines do NOT read

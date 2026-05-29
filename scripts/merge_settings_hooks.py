@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Merge Cadence's hook entries into a consumer's .claude/settings.json.
 
-Plugin-only helper — invoked from `commands/init.md` step 4b. Not scaffolded
+Plugin-only helper — invoked from `commands/init.md` step 3. Not scaffolded
 to the consumer; it lives in `scripts/` (init-time only) and is called by
 `/cadence:init`.
 

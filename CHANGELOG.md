@@ -6,6 +6,85 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — init scaffold driver + Linear-config orchestrator
+- New `scripts/scaffold_files.py` collapses `commands/init.md` Steps 2 + 3 + 4
+  (overwrite check, directory creation, the 20-row source→destination copy
+  plan and its per-file overwrite policy) into one subprocess. The prose
+  used to tell the model to "Read each source, then Write the destination,"
+  which on a `--force` re-init invited it to read the destination, diff it
+  against the source, and *patch* — silently leaving stale plugin code on
+  disk. The driver does `Path.read_bytes()` → `Path.write_bytes()`
+  unconditionally (modulo policy), so plugin-owned files are byte-identical
+  to the installed plugin on every run. The canonical copy plan lives in one
+  module-level constant, `SCAFFOLD_PLAN`: `plugin-owned` rows (hooks,
+  `/cadence:*` commands) always overwrite; `user-config` rows (`workflow.yaml`,
+  prompts, agents) overwrite only with `--force`. Exit 2 = already
+  initialized (verbatim abort message on stdout); exit 1 = read/write error.
+- New `scripts/configure_linear.py` folds Steps 4c + 5 into one orchestrator.
+  The detect-namespace / branch-on-exit-code / capture-`permissionsBlock` /
+  thread-it-into-the-render plumbing that used to live as model-driven prose
+  is now a single process: it reads `claude mcp list` on stdin (same shell
+  pipe as before — no new CLI nesting), detects the Linear MCP namespace
+  (with `.mcp.json` fallback), merges the allowlist into
+  `.claude/settings.local.json` (placeholder path on detection failure), and
+  renders the "Next steps" block on stdout. It reuses
+  `detect_linear_mcp_namespace`, `merge_settings_permissions`, and
+  `render_next_steps` by import — no detection/merge/render logic duplicated.
+- New `tests/test_scaffold_files.py` (16 cases) covers the clean-tree happy
+  path (every destination byte-identical, five dirs, success summary fixture),
+  `--force` idempotence, the abort path (workflow.yaml present → exit 2,
+  writes nothing), the defensive user-config skip, plugin-owned always-
+  overwrite, the **re-init byte-for-byte regression guard** (every destination
+  pre-scrambled, `--force`, then sha256-compared to source), error paths
+  (missing plugin root, missing source, missing arg), and plan-integrity
+  assertions (policy tagging, destination uniqueness, parity with
+  `render_next_steps`'s file list).
+- New `tests/test_configure_linear.py` (8 cases) covers the four branches the
+  4c prose enumerated — detected-via-stdin, detected-via-`.mcp.json` fallback,
+  multiple-servers stderr note, and detection-failed placeholder — each
+  asserting the rendered "Next steps" stdout against a byte-identical fixture
+  (reusing `next_steps_success.md` / `next_steps_failure.md`), plus a
+  malformed-`settings.local.json` graceful-degradation case.
+- New fixtures `tests/fixtures/init/scaffold_abort.txt`,
+  `scaffold_success_no_skips.txt`, `scaffold_success_with_skip.txt`.
+
+### Changed — init.md shrinks; render_next_steps sources its file list
+- `commands/init.md` collapses from seven steps (1 → 2 → 3 → 4 → 4b → 4c → 5)
+  to four cleanly-numbered ones: 1 (confirm cwd) → 2 (scaffold driver) → 3
+  (hooks merge) → 4 (Linear-config pipe). The old 4b/4c sub-letters are gone
+  — they only made sense as branches of a Step 4 that no longer exists. The
+  ~25-line verbatim abort block, the 20-row copy table, the per-file policy
+  paragraph, the detection exit-code branching, the "Detection failed"
+  subsection, the `--print-only` second invocation, and the
+  `permissionsBlock` / `detectionNote` variable-threading no longer appear in
+  the dispatch. The hooks merge (now Step 3) keeps its stop-on-failure
+  contract.
+- `scripts/render_next_steps.py` now derives `_FILES_WRITTEN` from
+  `scaffold_files.SCAFFOLD_PLAN`'s destination column instead of declaring a
+  parallel literal tuple — killing one of the four hand-synced copies of the
+  file list. Output is byte-identical (existing fixtures unchanged).
+- `scripts/README.md` table grows from four rows to six (`scaffold_files.py`,
+  `configure_linear.py` documented); `CLAUDE.md`'s repo-map drops the
+  hard-coded `templates/hooks/` count in favour of a pointer to
+  `SCAFFOLD_PLAN`, closing the last of the four duplicate file lists.
+
+### Fixed — detect the claude.ai Linear connector's display-name format
+- `scripts/detect_linear_mcp_namespace.py` now recognises the claude.ai
+  workspace connector in `claude mcp list` output. That connector lists by
+  display name (`claude.ai Linear: https://mcp.linear.app/mcp - ✓ Connected`)
+  rather than a bare namespace token, so the line-anchored `_NAME_RE` matched
+  `claude`, hit the `.` before reaching `linear`, and fell through to the
+  "detection failed" placeholder — even though the connector's tools are
+  plainly namespaced `mcp__claude_ai_Linear__*`. A new per-line matcher tries
+  the bare token first (unchanged for `linear` / `linear-server` /
+  `claude_ai_Linear` keys), then maps the `claude.ai <Name>:` display form to
+  its underscore namespace (`claude.ai Linear` → `claude_ai_Linear`). Four new
+  cases in `tests/test_detect_linear_mcp_namespace.py` cover the display-name
+  line alone, among other servers, and the non-Linear claude.ai connector that
+  must *not* match. Surfaced during this PR's manual-test setup (the operator
+  here runs the claude.ai connector); the matching `BACKLOG.md` item is
+  removed in the same commit.
+
 ### Added — Determinism Phase 7: init-time scripts for MCP detection + next-steps render
 - New `scripts/detect_linear_mcp_namespace.py` owns the Linear MCP
   namespace detection that used to live as parsing prose + a regex
