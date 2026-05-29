@@ -178,24 +178,27 @@ show up in the wild:
   (common on Windows installs that follow Linear's docs).
 - `claude_ai_Linear` — the claude.ai workspace connector.
 
-In priority order, try:
+Run `claude mcp list` via Bash and pipe its stdout to
+`scripts/detect_linear_mcp_namespace.py`:
 
-1. **Run `claude mcp list`** via Bash and parse its output. Look for a
-   line whose server name contains the substring `linear` or `Linear`
-   (case-insensitive). The exact line format varies across Claude Code
-   CLI versions; treat anything matching `^\s*([A-Za-z0-9_-]*[Ll]inear[A-Za-z0-9_-]*)\s` (or the human-readable bullet form
-   `*   <name>` / `- <name>`) as the namespace.
-2. **If the CLI is unavailable or its output is unparseable**, read
-   `.mcp.json` at the repo root (if present) and look for a top-level
-   `mcpServers` key whose object has a key matching the same
-   `*linear*` pattern.
-3. **If neither yields a match**, treat detection as **failed** and skip
-   to "Detection failed" below.
+```
+claude mcp list 2>/dev/null \
+  | python "${CLAUDE_PLUGIN_ROOT}/scripts/detect_linear_mcp_namespace.py" --mcp-list-stdin
+```
 
-Call the matched namespace `linearNamespace`. If the CLI / `.mcp.json`
-surface multiple Linear servers, pick the first match and note the
-extras in the "Next steps" output so the operator can adjust if they
-chose the wrong one.
+- Exit 0 → stdout is the detected namespace. Capture it as
+  `linearNamespace`. Any "multiple Linear MCP servers" warning the script
+  writes to stderr is included for the operator and can be passed through
+  verbatim.
+- Exit 2 → CLI detection found nothing. Re-invoke against `.mcp.json`:
+
+  ```
+  python "${CLAUDE_PLUGIN_ROOT}/scripts/detect_linear_mcp_namespace.py" \
+    --mcp-json-path .mcp.json
+  ```
+
+  Exit 0 → use the printed namespace. Exit 2 → treat detection as
+  **failed** and skip to "Detection failed" below.
 
 ### Run the merge
 
@@ -241,91 +244,38 @@ error — the consumer can still hand-edit.
 
 ## Step 5 — Print next steps
 
-After all writes succeed, print the block below verbatim, substituting
-the runtime values noted in `{braces}`:
+After all writes succeed, invoke `scripts/render_next_steps.py` and
+print its stdout verbatim. The renderer owns the file list, the gate-
+label hint, and the next-step checklist; the dispatch supplies three
+runtime values:
 
-- `{settings_local_line}` is `  .claude/settings.local.json (Linear MCP allowlist merged in)`
-  when step 4c wrote the file, or omitted entirely (drop the line) when
-  detection failed.
-- `{permissions_detection_note}` is one of:
-  - `Detected Linear MCP namespace: <linearNamespace>` when detection
-    succeeded;
-  - `No Linear MCP server detected. Substitute <REPLACE_WITH_YOUR_LINEAR_MCP_NAMESPACE>
-    below with your actual namespace (see README "Linear MCP tools" for
-    the three variants in the wild), then add each line to your
-    .claude/settings.local.json permissions.allow array.` when it failed.
-- `{permissionsBlock}` is the stdout captured in step 4c.
+- `--settings-local-written` — `true` when step 4c wrote
+  `.claude/settings.local.json` (the renderer includes the line under
+  "Files written"); `false` when detection failed (line omitted).
+- `--permissions-detection-note` — a single-line note for the operator.
+  Either `Detected Linear MCP namespace: <linearNamespace>` when
+  detection succeeded, or the longer
+  `No Linear MCP server detected. Substitute
+  <REPLACE_WITH_YOUR_LINEAR_MCP_NAMESPACE> below with your actual
+  namespace (see README "Linear MCP tools" for the three variants in the
+  wild), then add each line to your .claude/settings.local.json
+  permissions.allow array.` when it failed.
+- `--permissions-block` — the raw `permissionsBlock` stdout captured in
+  step 4c (one canonical allowlist entry per line). The renderer
+  indents each line two spaces under the section header.
+
+Invoke via Bash:
 
 ```
-Cadence initialised.
-
-Files written:
-  .claude/workflow.yaml
-  .claude/prompts/global.md
-  .claude/ticket-template.md
-  .claude/agents/planner.md
-  .claude/agents/implementer.md
-  .claude/agents/reviewer.md
-  .claude/hooks/validate_tracking_json.py
-  .claude/hooks/validate_workflow_on_prompt.py
-  .claude/hooks/audit_linear_writes.py
-  .claude/hooks/validate_workflow.py
-  .claude/hooks/_common.py
-  .claude/hooks/parse_comments.py
-  .claude/hooks/emit_tracking_comment.py
-  .claude/hooks/compose_lifecycle_context.py
-  .claude/hooks/filter_candidates.py
-  .claude/hooks/render_status_report.py
-  .claude/hooks/render_sweep_report.py
-  .claude/commands/cadence/tick.md
-  .claude/commands/cadence/sweep.md
-  .claude/commands/cadence/status.md
-  .claude/settings.json (Cadence hook entries merged in)
-{settings_local_line}
-
-Gate labels:
-  Create two Linear labels — `cadence-approve` and `cadence-rework` —
-  alongside the existing `cadence-active` / `cadence-needs-human`. A
-  reviewer adds one of these to an issue sitting in a gate's waiting
-  column to signal approve/rework on the next /cadence:tick fire.
-  Recommended: put both labels into a Linear label group so the picker
-  renders the verdict as a single-select control.
-
-Permissions for /schedule routines (paste into the routine's permissions panel):
-  {permissions_detection_note}
-
-  {permissionsBlock}
-
-Cloud /schedule routines do NOT read .claude/settings.local.json, so the
-allowlist above is required on the routine even if step 4c already wrote
-your local copy.
-
-Next steps:
-  1. Edit .claude/workflow.yaml to point at your Linear team/project and
-     set the Linear state names that map to each workflow stage. Every
-     linear_state value must correspond to a real column on your Linear
-     board.
-  2. Edit .claude/prompts/global.md with the always-on instructions you
-     want every Cadence subagent to receive (coding standards, repo
-     conventions, secrets-handling rules).
-  3. Tune .claude/agents/{planner,implementer,reviewer}.md — model, tools,
-     and system prompt.
-  4. Pick an invocation mode:
-       • Remote: create a /schedule routine running /cadence:tick
-         every minute, with Linear MCP and GH_TOKEN configured on it. Add
-         a second routine for /cadence:sweep every 15 minutes. Paste the
-         permissions block above into the routine's permissions panel.
-       • Local: from an interactive Claude Code session in this repo, run
-         `claude /loop 1m /cadence:tick` (after `gh auth login`).
-  5. Smoke test with /cadence:tick dry-run before going live.
-
-To create well-formed tickets, run `/cadence:create-ticket` in your
-local Claude Code session and paste the output into Linear's New
-Issue form. The planner subagent will refuse tickets that lack an
-`## Acceptance Criteria` block.
-
-See the plugin README for the full Consumer Setup walkthrough.
+python "${CLAUDE_PLUGIN_ROOT}/scripts/render_next_steps.py" \
+  --settings-local-written {true|false} \
+  --permissions-detection-note "$detectionNote" \
+  --permissions-block "$permissionsBlock"
 ```
+
+Print its stdout verbatim. If the script exits non-zero, print its
+stderr — partial scaffolding is acceptable, the operator can re-run
+with `--force`.
 
 ## Errors
 

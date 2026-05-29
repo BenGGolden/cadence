@@ -6,6 +6,77 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Determinism Phase 7: init-time scripts for MCP detection + next-steps render
+- New `scripts/detect_linear_mcp_namespace.py` owns the Linear MCP
+  namespace detection that used to live as parsing prose + a regex
+  literal in `commands/init.md` Step 4c. CLI: `--mcp-list-stdin`
+  (reads `claude mcp list` stdout from stdin), `--mcp-json-path PATH`
+  (fallback against `.mcp.json`'s top-level `mcpServers` keys), or
+  both together (stdin first, JSON fallback when stdin yields no hit).
+  The script encapsulates: leading-bullet/whitespace stripping
+  (`*`, `-`, spaces, tabs) per Claude Code CLI version, the case-
+  insensitive substring match against the namespace charset
+  (`[A-Za-z0-9_-]*[Ll]inear[A-Za-z0-9_-]*`), the first-match-wins rule
+  with extras reported on stderr ("multiple Linear MCP servers found"),
+  and the empty-stdout-with-exit-2 contract that init.md treats as
+  detection failed. Stdlib only (no PyYAML); lives in `scripts/` per
+  the init-time-helper convention.
+- New `scripts/render_next_steps.py` owns the ~70-line "Cadence
+  initialised." operator handoff block that used to live as verbatim
+  prose in `commands/init.md` Step 5. CLI: `--settings-local-written
+  {true|false}` (controls whether the `.claude/settings.local.json`
+  line appears under "Files written"), `--permissions-detection-note
+  '<text>'` (verbatim single-line note printed under the Permissions
+  section), `--permissions-block '<text>'` (raw
+  `merge_settings_permissions.py --print-only` stdout — the script
+  indents each line two spaces). The renderer owns the full file list,
+  the gate-label hint, the Permissions / `/schedule` reminder, the
+  Next-steps checklist, and the create-ticket pointer; the dispatch
+  supplies only the three runtime values above. Forces UTF-8 on stdout
+  so the em dashes (`—`) and bullets (`•`) survive Windows shells.
+- New `tests/test_detect_linear_mcp_namespace.py` (16 cases) covers
+  the three known namespaces (`linear`, `linear-server`,
+  `claude_ai_Linear`), bullet/dash CLI prefixes, multi-match warnings
+  on stderr, the empty-input → exit 2 contract, the stdin-empty →
+  `.mcp.json` fallback, the short-circuit when stdin already yields a
+  hit, unparseable / missing JSON paths, and the no-flags error path.
+- New `tests/test_render_next_steps.py` (11 cases) covers the
+  settings.local.json toggle in both directions, case-insensitive
+  bool parsing, the bad-bool exit-1 path, multi-line permissions
+  block indentation, detection-note verbatim placement, and the
+  argparse missing-arg path. Two byte-identical fixture comparisons
+  (the broad-stroke acceptance criteria): `tests/fixtures/init/
+  next_steps_success.md` (detection succeeded, settings.local.json
+  written) and `tests/fixtures/init/next_steps_failure.md` (detection
+  failed, settings.local.json omitted, placeholder namespace
+  substituted into both the note and the verb list) — these guard
+  against any future edit that changes the operator handoff shape.
+
+### Changed — Determinism Phase 7: init.md / scripts/README.md
+- `commands/init.md` Step 4c replaces the three-step detection prose
+  (run `claude mcp list`; parse output via the literal regex
+  `^\s*([A-Za-z0-9_-]*[Ll]inear[A-Za-z0-9_-]*)\s`; fall back to
+  `.mcp.json`'s `mcpServers` keys) with two Bash invocations of
+  `detect_linear_mcp_namespace.py`. The exit-2 contract lives in the
+  script; the prose only routes between stdin and `--mcp-json-path`.
+- `commands/init.md` Step 5 replaces the ~70-line verbatim "Cadence
+  initialised." block plus the three interpolation-point definitions
+  with a single Bash invocation of `render_next_steps.py`. The
+  prose's job collapses to "print the script's stdout verbatim."
+- `scripts/README.md` table grows from two rows to four — the two
+  new init-time helpers documented alongside `merge_settings_hooks.py`
+  and `merge_settings_permissions.py`. The "two helpers" intro
+  updates to "four helpers."
+
+### Removed — Determinism plan retired
+- `DETERMINISM-PLAN.md` deleted. Every phase (P1 test scaffolding;
+  P2 `linear_to_workflow` reverse map; P3 `compose_lifecycle_context.py`;
+  P4 `filter_candidates.py`; P5 `render_status_report.py`; P6 sweep
+  classification + reporting + `emit_tracking_comment.py --kind sweep`;
+  P7 init-time scripts) shipped. The matching `BACKLOG.md` entry
+  ("Move more slash-command logic into deterministic scripts") is
+  removed in the same PR.
+
 ### Added — Determinism Phase 6: extract sweep classification + reporting
 - `templates/hooks/emit_tracking_comment.py` gains `--kind sweep`. New
   required args: `--cleared-at`, `--last-activity`, `--stale-minutes`,

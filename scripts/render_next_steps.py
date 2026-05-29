@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+"""Render the `/cadence:init` "Next steps" block.
+
+Plugin-only helper — invoked from commands/init.md Step 5 after the
+file-copy / settings-merge work has succeeded. Not scaffolded to the
+consumer; lives in scripts/ (init-time only).
+
+The block is the operator's after-init handoff: it lists every file
+written, the recommended Linear-label setup, the `/schedule` permissions
+block, and the next-step checklist. The dispatch prose used to carry
+this as a ~70-line verbatim block with three interpolation points; the
+script absorbs the block + the interpolations so the prose's job
+collapses to "invoke this and print stdout."
+
+Interpolation points:
+
+  --settings-local-written {true|false}
+      true   → include the
+               `  .claude/settings.local.json (Linear MCP allowlist merged in)`
+               line in the "Files written" section.
+      false  → omit that line entirely.
+
+  --permissions-detection-note '<text>'
+      A single-line note describing the detection outcome. Either:
+        "Detected Linear MCP namespace: <linearNamespace>"
+      or:
+        "No Linear MCP server detected. Substitute ..."
+      The script prints it verbatim under the "Permissions for /schedule
+      routines" header — line-wrap and capitalisation are the caller's
+      responsibility.
+
+  --permissions-block '<text>'
+      The raw stdout from `scripts/merge_settings_permissions.py
+      --print-only` — one canonical allowlist entry per line. The script
+      indents each line with two spaces so it aligns with the section
+      header above it.
+
+CLI:
+  python render_next_steps.py \\
+      --settings-local-written true \\
+      --permissions-detection-note 'Detected Linear MCP namespace: linear' \\
+      --permissions-block "$(cat block.txt)"
+
+Exit codes:
+  0  success — block printed on stdout
+  1  bad input (missing required arg, --settings-local-written not bool)
+"""
+
+import argparse
+import io
+import sys
+
+# The block contains em dashes (—) and bullets (•); on Windows the default
+# stdout encoding is cp1252 and emitting them mangles the output. Force
+# UTF-8 so the rendered block survives Windows shells.
+if hasattr(sys.stdout, "buffer"):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8",
+                                  newline="")
+if hasattr(sys.stderr, "buffer"):
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8",
+                                  newline="")
+
+
+_FILES_WRITTEN = (
+    ".claude/workflow.yaml",
+    ".claude/prompts/global.md",
+    ".claude/ticket-template.md",
+    ".claude/agents/planner.md",
+    ".claude/agents/implementer.md",
+    ".claude/agents/reviewer.md",
+    ".claude/hooks/validate_tracking_json.py",
+    ".claude/hooks/validate_workflow_on_prompt.py",
+    ".claude/hooks/audit_linear_writes.py",
+    ".claude/hooks/validate_workflow.py",
+    ".claude/hooks/_common.py",
+    ".claude/hooks/parse_comments.py",
+    ".claude/hooks/emit_tracking_comment.py",
+    ".claude/hooks/compose_lifecycle_context.py",
+    ".claude/hooks/filter_candidates.py",
+    ".claude/hooks/render_status_report.py",
+    ".claude/hooks/render_sweep_report.py",
+    ".claude/commands/cadence/tick.md",
+    ".claude/commands/cadence/sweep.md",
+    ".claude/commands/cadence/status.md",
+)
+
+_SETTINGS_JSON_LINE = ".claude/settings.json (Cadence hook entries merged in)"
+_SETTINGS_LOCAL_LINE = (
+    ".claude/settings.local.json (Linear MCP allowlist merged in)"
+)
+
+# The block below is a verbatim copy of the operator-facing handoff from
+# init.md Step 5. The four `{{...}}` placeholders are substituted by
+# render(); everything else is byte-identical to the prose.
+_TEMPLATE = """\
+Cadence initialised.
+
+Files written:
+{files_section}
+
+Gate labels:
+  Create two Linear labels — `cadence-approve` and `cadence-rework` —
+  alongside the existing `cadence-active` / `cadence-needs-human`. A
+  reviewer adds one of these to an issue sitting in a gate's waiting
+  column to signal approve/rework on the next /cadence:tick fire.
+  Recommended: put both labels into a Linear label group so the picker
+  renders the verdict as a single-select control.
+
+Permissions for /schedule routines (paste into the routine's permissions panel):
+  {detection_note}
+
+{permissions_section}
+
+Cloud /schedule routines do NOT read .claude/settings.local.json, so the
+allowlist above is required on the routine even if step 4c already wrote
+your local copy.
+
+Next steps:
+  1. Edit .claude/workflow.yaml to point at your Linear team/project and
+     set the Linear state names that map to each workflow stage. Every
+     linear_state value must correspond to a real column on your Linear
+     board.
+  2. Edit .claude/prompts/global.md with the always-on instructions you
+     want every Cadence subagent to receive (coding standards, repo
+     conventions, secrets-handling rules).
+  3. Tune .claude/agents/{{planner,implementer,reviewer}}.md — model, tools,
+     and system prompt.
+  4. Pick an invocation mode:
+       • Remote: create a /schedule routine running /cadence:tick
+         every minute, with Linear MCP and GH_TOKEN configured on it. Add
+         a second routine for /cadence:sweep every 15 minutes. Paste the
+         permissions block above into the routine's permissions panel.
+       • Local: from an interactive Claude Code session in this repo, run
+         `claude /loop 1m /cadence:tick` (after `gh auth login`).
+  5. Smoke test with /cadence:tick dry-run before going live.
+
+To create well-formed tickets, run `/cadence:create-ticket` in your
+local Claude Code session and paste the output into Linear's New
+Issue form. The planner subagent will refuse tickets that lack an
+`## Acceptance Criteria` block.
+
+See the plugin README for the full Consumer Setup walkthrough.
+"""
+
+
+def _parse_bool(value, flag):
+    if isinstance(value, str) and value.lower() in ("true", "false"):
+        return value.lower() == "true"
+    print(
+        f"Cadence: {flag} must be 'true' or 'false' (got {value!r}).",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
+def _indent_block(block, prefix="  "):
+    """Indent each non-empty line of `block` with `prefix`. Empty lines
+    stay empty so multi-paragraph blocks render consistently."""
+    lines = block.splitlines()
+    return "\n".join(prefix + line if line else line for line in lines)
+
+
+def render(settings_local_written, detection_note, permissions_block):
+    files = list(_FILES_WRITTEN) + [_SETTINGS_JSON_LINE]
+    if settings_local_written:
+        files.append(_SETTINGS_LOCAL_LINE)
+
+    files_section = "\n".join(f"  {f}" for f in files)
+    permissions_section = _indent_block(permissions_block)
+
+    return _TEMPLATE.format(
+        files_section=files_section,
+        detection_note=detection_note,
+        permissions_section=permissions_section,
+    )
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--settings-local-written", required=True,
+                    help="'true' if step 4c wrote .claude/settings.local.json, "
+                         "'false' otherwise.")
+    ap.add_argument("--permissions-detection-note", required=True,
+                    help="Single-line note describing the Linear MCP "
+                         "detection outcome.")
+    ap.add_argument("--permissions-block", required=True,
+                    help="Raw stdout from merge_settings_permissions.py "
+                         "--print-only.")
+    args = ap.parse_args()
+
+    settings_local = _parse_bool(args.settings_local_written,
+                                 "--settings-local-written")
+
+    sys.stdout.write(render(
+        settings_local,
+        args.permissions_detection_note,
+        args.permissions_block,
+    ))
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

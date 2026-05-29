@@ -1,14 +1,16 @@
 # Cadence init-time scripts
 
-The two helpers in this directory are invoked **only by
+The four helpers in this directory are invoked **only by
 [`commands/init.md`](../commands/init.md)** during `/cadence:init`. They
 are plugin-internal — they are never scaffolded into a consumer repo and
 they never run after init.
 
-| Script                            | Purpose                                                                                       |
-|-----------------------------------|-----------------------------------------------------------------------------------------------|
-| `merge_settings_hooks.py`         | Merge the Cadence hooks block from [`templates/settings.json`](../templates/settings.json) into the consumer's `.claude/settings.json`. Idempotent — re-running replaces Cadence-owned hook entries without disturbing non-Cadence ones. |
-| `merge_settings_permissions.py`   | Merge the Linear MCP allowlist into the consumer's `.claude/settings.local.json` (or `--print-only` for the copy-pasteable block surfaced for `/schedule` cloud routines). |
+| Script                              | Purpose                                                                                       |
+|-------------------------------------|-----------------------------------------------------------------------------------------------|
+| `merge_settings_hooks.py`           | Merge the Cadence hooks block from [`templates/settings.json`](../templates/settings.json) into the consumer's `.claude/settings.json`. Idempotent — re-running replaces Cadence-owned hook entries without disturbing non-Cadence ones. |
+| `merge_settings_permissions.py`     | Merge the Linear MCP allowlist into the consumer's `.claude/settings.local.json` (or `--print-only` for the copy-pasteable block surfaced for `/schedule` cloud routines). |
+| `detect_linear_mcp_namespace.py`    | Scan `claude mcp list` stdout (via stdin) and/or `.mcp.json` to detect the consumer's Linear MCP server namespace. Used by Step 4c to drive `merge_settings_permissions.py`'s `--namespace`. Exit 2 = no Linear server found. |
+| `render_next_steps.py`              | Render the "Cadence initialised." operator handoff block (Step 5) — file list, gate-label hint, permissions block, next-step checklist — with three interpolation points for the settings.local outcome, detection note, and permissions block. |
 
 The runtime helpers that ship to the consumer's `.claude/hooks/` live
 under [`templates/hooks/`](../templates/hooks/). That directory contains
