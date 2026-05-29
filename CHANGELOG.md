@@ -68,6 +68,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   hard-coded `templates/hooks/` count in favour of a pointer to
   `SCAFFOLD_PLAN`, closing the last of the four duplicate file lists.
 
+### Fixed — detect the claude.ai Linear connector's display-name format
+- `scripts/detect_linear_mcp_namespace.py` now recognises the claude.ai
+  workspace connector in `claude mcp list` output. That connector lists by
+  display name (`claude.ai Linear: https://mcp.linear.app/mcp - ✓ Connected`)
+  rather than a bare namespace token, so the line-anchored `_NAME_RE` matched
+  `claude`, hit the `.` before reaching `linear`, and fell through to the
+  "detection failed" placeholder — even though the connector's tools are
+  plainly namespaced `mcp__claude_ai_Linear__*`. A new per-line matcher tries
+  the bare token first (unchanged for `linear` / `linear-server` /
+  `claude_ai_Linear` keys), then maps the `claude.ai <Name>:` display form to
+  its underscore namespace (`claude.ai Linear` → `claude_ai_Linear`). Four new
+  cases in `tests/test_detect_linear_mcp_namespace.py` cover the display-name
+  line alone, among other servers, and the non-Linear claude.ai connector that
+  must *not* match. Surfaced during this PR's manual-test setup (the operator
+  here runs the claude.ai connector); the matching `BACKLOG.md` item is
+  removed in the same commit.
+
 ### Added — Determinism Phase 7: init-time scripts for MCP detection + next-steps render
 - New `scripts/detect_linear_mcp_namespace.py` owns the Linear MCP
   namespace detection that used to live as parsing prose + a regex

@@ -23,8 +23,12 @@ Detection strategy:
      return the first server-name token that contains "linear"
      (case-insensitive). Strips leading bullets/whitespace (`*`, `-`,
      spaces, tabs) and stops at the first whitespace, colon, or comma
-     after the name. Extra matches are reported on stderr (init.md uses
-     this to surface a "you may have picked the wrong one" hint).
+     after the name. The claude.ai workspace connector is a special case:
+     it lists by display name (`claude.ai Linear: ...`) rather than a bare
+     token, so that form is recognised and mapped to its underscore
+     namespace `claude_ai_Linear`. Extra matches are reported on stderr
+     (init.md uses this to surface a "you may have picked the wrong one"
+     hint).
   2. `--mcp-json-path PATH`  — fall back to reading a `.mcp.json` file
      and scanning its top-level `mcpServers` object for a key whose name
      matches the same pattern.
@@ -61,6 +65,35 @@ _NAME_RE = re.compile(r"^([A-Za-z0-9_-]*[Ll]inear[A-Za-z0-9_-]*)")
 # Handles `* name`, `- name`, `  name`, and `*   name`.
 _BULLET_PREFIX_RE = re.compile(r"^[\s\*\-]+")
 
+# The claude.ai workspace connector lists with a human *display name*, not a
+# bare namespace token, e.g.:
+#   claude.ai Linear: https://mcp.linear.app/mcp - ✓ Connected
+# The harness exposes its tools under the underscore namespace
+# `claude_ai_Linear` (see mcp__claude_ai_Linear__* tool names). The bare-token
+# _NAME_RE can't match this — it stops at the `.` after "claude" before
+# reaching "linear". Detect the `claude.ai <Name>` display form and map the
+# text before the first colon to the underscore namespace.
+_CLAUDE_AI_PREFIX_RE = re.compile(r"^claude\.ai\b", re.IGNORECASE)
+_NON_NAMESPACE_RE = re.compile(r"[^A-Za-z0-9]+")
+
+
+def _match_line_namespace(line):
+    """Return the Linear MCP namespace named on `line`, or None.
+
+    Tries the bare server-name token first (the official `linear` /
+    `linear-server` installs and the `claude_ai_Linear` key form), then the
+    claude.ai connector's `claude.ai <Name>:` display form.
+    """
+    m = _NAME_RE.match(line)
+    if m:
+        return m.group(1)
+    if (_CLAUDE_AI_PREFIX_RE.match(line)
+            and "linear" in line.lower() and ":" in line):
+        display = line.split(":", 1)[0]
+        namespace = _NON_NAMESPACE_RE.sub("_", display).strip("_")
+        return namespace or None
+    return None
+
 
 def _scan_mcp_list(text):
     """Walk `claude mcp list` output line-by-line; return (first, extras).
@@ -76,10 +109,9 @@ def _scan_mcp_list(text):
         line = _BULLET_PREFIX_RE.sub("", raw_line)
         if not line:
             continue
-        m = _NAME_RE.match(line)
-        if not m:
+        name = _match_line_namespace(line)
+        if name is None:
             continue
-        name = m.group(1)
         if first is None:
             first = name
         elif name != first:
