@@ -24,7 +24,7 @@ re-templated inline.
 
 CLI:
   python route_fire.py
-    --workflow-config <validatorOutputPath>
+    [--workflow-config <validatorJson> | --workflow-path <workflow.yaml>]
     --linear-state "<current Linear column>"
     --comments <commentsFile>
     --labels <labelsFile|csv>
@@ -51,6 +51,7 @@ import classify_drift
 import classify_gate
 import emit_tracking_comment
 import parse_comments
+import validate_workflow
 
 # The plan can carry Linear column names / comment bodies with non-ASCII
 # characters; force UTF-8 so stdout is stable regardless of the parent
@@ -301,8 +302,11 @@ def route(config, linear_state, comments, present_labels):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--workflow-config", required=True,
-                    help="Path to the validator's JSON output.")
+    ap.add_argument("--workflow-config", default=None,
+                    help="Path to a pre-built validator JSON dict (dry-run/tests).")
+    ap.add_argument("--workflow-path", default=None,
+                    help="Path to workflow.yaml; validated internally "
+                         "(default: .claude/workflow.yaml).")
     ap.add_argument("--linear-state", required=True,
                     help="The issue's current Linear column (after step 7).")
     ap.add_argument("--comments", required=True,
@@ -311,11 +315,7 @@ def main():
                     help="Present label names: JSON file path or CSV string.")
     args = ap.parse_args()
 
-    config = _load_json(args.workflow_config, "--workflow-config")
-    if not isinstance(config, dict):
-        print("Cadence: --workflow-config must be a JSON object.",
-              file=sys.stderr)
-        sys.exit(1)
+    config = validate_workflow.load_config(args.workflow_config, args.workflow_path)
 
     raw_comments = _load_json(args.comments, "--comments")
     comments = parse_comments.coerce_comment_list(raw_comments, [])

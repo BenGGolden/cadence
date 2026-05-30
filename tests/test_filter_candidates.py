@@ -18,6 +18,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "templates" / "hooks" / "filter_candidates.py"
 
@@ -698,6 +700,107 @@ class CliErrorTests(unittest.TestCase):
                       "--candidates", str(cand),
                       "--in-flight", str(infl)], td)
             self.assertEqual(r.returncode, 1)
+
+
+def _workflow_yaml_dict(caps=None):
+    """A `.claude/workflow.yaml` whose validated config matches the dict
+    `_default_validator_output()` builds, so the two run modes compare."""
+    caps = caps or {}
+    states = {
+        "plan": {"type": "agent", "subagent": "planner",
+                 "linear_state": "Planning", "next": "plan_review"},
+        "plan_review": {"type": "gate", "linear_state": "Plan Review",
+                        "on_approve": "implement", "on_rework": "plan"},
+        "implement": {"type": "agent", "subagent": "implementer",
+                      "linear_state": "Implementing", "next": "agent_review"},
+        "agent_review": {"type": "agent", "subagent": "reviewer",
+                         "linear_state": "Reviewing",
+                         "adversarial_context": True, "next": "human_review"},
+        "human_review": {"type": "gate", "linear_state": "In Review",
+                         "on_approve": "done", "on_rework": "implement"},
+        "done": {"type": "terminal", "linear_state": "Done"},
+    }
+    for name, cap in caps.items():
+        states[name]["max_in_flight"] = cap
+    return {
+        "linear": {"team": "ENG", "pickup_state": "Todo"},
+        "label": {
+            "cadence_active": "cadence-active",
+            "cadence_needs_human": "cadence-needs-human",
+            "cadence_approve": "cadence-approve",
+            "cadence_rework": "cadence-rework",
+        },
+        "limits": {"max_attempts_per_issue": 3},
+        "entry": "plan",
+        "states": states,
+    }
+
+
+def _materialise_workflow(td, wf):
+    """Write `.claude/workflow.yaml` + the three agent files under td."""
+    claude = td / ".claude"
+    agents = claude / "agents"
+    agents.mkdir(parents=True, exist_ok=True)
+    for a in ("planner", "implementer", "reviewer"):
+        (agents / f"{a}.md").write_text("# agent\n", encoding="utf-8")
+    wf_path = claude / "workflow.yaml"
+    wf_path.write_text(yaml.safe_dump(wf, sort_keys=False), encoding="utf-8")
+    return wf_path
+
+
+class WorkflowPathModeTests(unittest.TestCase):
+    """--workflow-path mode: validate .claude/workflow.yaml internally."""
+
+    def test_plan_mode_parity(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            cfg = td / "cfg.json"
+            _write_json(cfg, _default_validator_output(
+                caps={"plan_review": 5, "implement": 3}))
+            cfg_out = json.loads(
+                _run(["--plan", "--workflow-config", str(cfg)], td).stdout)
+
+            wf_path = _materialise_workflow(
+                td, _workflow_yaml_dict(caps={"plan_review": 5, "implement": 3}))
+            r = _run(["--plan", "--workflow-path", str(wf_path)], td)
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertEqual(json.loads(r.stdout), cfg_out)
+
+    def test_filter_mode_parity(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            candidates = [
+                _candidate("ENG-1", column="Todo", priority=1),
+                _candidate("ENG-2", column="Todo", priority=2),
+            ]
+            cfg = td / "cfg.json"
+            cand = td / "candidates.json"
+            infl = td / "in_flight.json"
+            _write_json(cfg, _default_validator_output())
+            _write_json(cand, candidates)
+            _write_json(infl, {})
+            cfg_out = json.loads(_run(
+                ["--workflow-config", str(cfg),
+                 "--candidates", str(cand),
+                 "--in-flight", str(infl)], td).stdout)
+
+            wf_path = _materialise_workflow(td, _workflow_yaml_dict())
+            r = _run(["--workflow-path", str(wf_path),
+                      "--candidates", str(cand),
+                      "--in-flight", str(infl)], td)
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertEqual(json.loads(r.stdout), cfg_out)
+
+    def test_invalid_workflow_bails_exit_2(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            wf = _workflow_yaml_dict()
+            wf["states"]["implement"]["next"] = "nonexistent"
+            wf_path = _materialise_workflow(td, wf)
+            r = _run(["--plan", "--workflow-path", str(wf_path)], td)
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("Rule 3 (Targets) FAILED", r.stderr)
+            self.assertEqual(r.stdout, "")
 
 
 if __name__ == "__main__":

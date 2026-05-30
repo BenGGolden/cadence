@@ -16,6 +16,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "templates" / "hooks" / "route_fire.py"
 
@@ -410,6 +412,110 @@ class RouteFireTests(unittest.TestCase):
                 r = _run(td, _validator_output(), "Implementing", comments)
                 outs.add(r.stdout)
             self.assertEqual(len(outs), 1)
+
+
+def _workflow_yaml_dict():
+    """A `.claude/workflow.yaml` whose validated config matches the dict that
+    `_validator_output()` builds, so the two run modes can be compared."""
+    return {
+        "linear": {"team": "ENG", "pickup_state": "Todo"},
+        "label": LABELS,
+        "limits": {"max_attempts_per_issue": 3},
+        "entry": "plan",
+        "states": {
+            "plan": {"type": "agent", "subagent": "planner",
+                     "linear_state": "Planning", "next": "plan_review"},
+            "plan_review": {"type": "gate", "linear_state": "Plan Review",
+                            "on_approve": "implement", "on_rework": "plan"},
+            "implement": {"type": "agent", "subagent": "implementer",
+                          "linear_state": "Implementing", "next": "agent_review"},
+            "agent_review": {"type": "agent", "subagent": "reviewer",
+                             "linear_state": "Reviewing",
+                             "adversarial_context": True,
+                             "next": "human_review"},
+            "human_review": {"type": "gate", "linear_state": "In Review",
+                             "on_approve": "done", "on_rework": "implement"},
+            "done": {"type": "terminal", "linear_state": "Done"},
+        },
+    }
+
+
+def _materialise_workflow(td, wf):
+    """Write `.claude/workflow.yaml` + the three agent files under td."""
+    claude = td / ".claude"
+    agents = claude / "agents"
+    agents.mkdir(parents=True, exist_ok=True)
+    for a in ("planner", "implementer", "reviewer"):
+        (agents / f"{a}.md").write_text("# agent\n", encoding="utf-8")
+    wf_path = claude / "workflow.yaml"
+    wf_path.write_text(yaml.safe_dump(wf, sort_keys=False), encoding="utf-8")
+    return wf_path
+
+
+class RouteFireWorkflowPathTests(unittest.TestCase):
+    """--workflow-path mode: validate .claude/workflow.yaml internally."""
+
+    def test_parity_with_workflow_config(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            comments = [_attempt_marker("implement", 1, "2026-05-01T00:00:00Z")]
+            cfg_plan = json.loads(
+                _run(td, _validator_output(), "Implementing", comments).stdout)
+
+            wf_path = _materialise_workflow(td, _workflow_yaml_dict())
+            com = td / "comments.json"
+            com.write_text(json.dumps(comments), encoding="utf-8")
+            r = subprocess.run(
+                [sys.executable, str(SCRIPT),
+                 "--workflow-path", str(wf_path),
+                 "--linear-state", "Implementing",
+                 "--comments", str(com),
+                 "--labels", ""],
+                cwd=str(td), capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertEqual(json.loads(r.stdout), cfg_plan)
+
+    def test_invalid_workflow_bails_exit_2(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            wf = _workflow_yaml_dict()
+            wf["states"]["implement"]["next"] = "nonexistent"
+            wf_path = _materialise_workflow(td, wf)
+            com = td / "comments.json"
+            com.write_text("[]", encoding="utf-8")
+            r = subprocess.run(
+                [sys.executable, str(SCRIPT),
+                 "--workflow-path", str(wf_path),
+                 "--linear-state", "Implementing",
+                 "--comments", str(com),
+                 "--labels", ""],
+                cwd=str(td), capture_output=True, text=True)
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("Rule 3 (Targets) FAILED", r.stderr)
+            self.assertEqual(r.stdout, "")
+
+    def test_workflow_config_wins_when_both_passed(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            # A broken YAML on disk; --workflow-config should be used instead.
+            wf = _workflow_yaml_dict()
+            wf["states"]["implement"]["next"] = "nonexistent"
+            wf_path = _materialise_workflow(td, wf)
+            cfg = td / "cfg.json"
+            cfg.write_text(json.dumps(_validator_output()), encoding="utf-8")
+            com = td / "comments.json"
+            com.write_text("[]", encoding="utf-8")
+            r = subprocess.run(
+                [sys.executable, str(SCRIPT),
+                 "--workflow-config", str(cfg),
+                 "--workflow-path", str(wf_path),
+                 "--linear-state", "Implementing",
+                 "--comments", str(com),
+                 "--labels", ""],
+                cwd=str(td), capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            plan = json.loads(r.stdout)
+            self.assertEqual(plan["target_state"], "implement")
 
 
 if __name__ == "__main__":

@@ -15,8 +15,9 @@ Failure modes eliminated:
     suffix was prose. The script renders the canonical message.
 
 CLI:
-  python filter_candidates.py --plan --workflow-config <path>
-  python filter_candidates.py --workflow-config <path>
+  python filter_candidates.py --plan
+                              [--workflow-config <validatorJson> | --workflow-path <workflow.yaml>]
+  python filter_candidates.py [--workflow-config <validatorJson> | --workflow-path <workflow.yaml>]
                               --candidates <path>
                               --in-flight <path>
 
@@ -76,6 +77,8 @@ import sys
 from pathlib import Path
 
 from _common import die
+
+import validate_workflow
 
 
 def _load_json(path, label):
@@ -338,8 +341,11 @@ def _filter(config, candidates, in_flight_counts):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--workflow-config", required=True,
-                    help="Path to the validator's JSON output.")
+    ap.add_argument("--workflow-config", default=None,
+                    help="Path to a pre-built validator JSON dict (dry-run/tests).")
+    ap.add_argument("--workflow-path", default=None,
+                    help="Path to workflow.yaml; validated internally "
+                         "(default: .claude/workflow.yaml).")
     ap.add_argument("--plan", action="store_true",
                     help="Emit the query plan (pickup + per-state in-flight) "
                          "and exit.")
@@ -349,9 +355,7 @@ def main():
                     help="Path to JSON object {state_name: int}.")
     args = ap.parse_args()
 
-    config = _load_json(args.workflow_config, "workflow config")
-    if not isinstance(config, dict):
-        die("Cadence: --workflow-config did not parse to a JSON object.", 1)
+    config = validate_workflow.load_config(args.workflow_config, args.workflow_path)
 
     if args.plan:
         out = _build_plan(config)
