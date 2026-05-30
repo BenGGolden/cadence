@@ -41,7 +41,7 @@ Invocation arguments (verbatim, may be empty): `$ARGUMENTS`
     and the field `timestamp` as `started_at`. All other semantics are identical.
 - **Attempt marker**: a `cadence:state` (or legacy `stokowski:state`) tracking
   comment whose JSON has **no** `status` field. Emitted by step 12 at the start
-  of every attempt. Step 11 counts these.
+  of every attempt. The Route step (steps 8–11) counts these.
 - **Failure record**: a `cadence:state` tracking comment whose JSON includes
   `"status": "failed"`. Emitted on subagent exception. **Not** counted as an
   attempt marker.
@@ -51,6 +51,19 @@ server vendor; commonly they look like `mcp__linear__list_issues`, `mcp__linear_
 `mcp__linear__create_comment`, `mcp__linear__update_issue`, `mcp__linear__list_comments`,
 `mcp__linear__add_label`, `mcp__linear__remove_label`. Use whichever names are present
 in your available tool list — the verbs below describe intent, not exact names.
+
+### Scratch files
+
+Every transient JSON file this fire writes with the Write tool (the validator
+output, the comment list, the candidate/in-flight lists, the composed issue
+object) goes under **`.cadence/`** — Cadence's per-repo scratch directory.
+Step 1 (and step 0's `--evidence` call) runs `validate_workflow.py`, which
+creates `.cadence/` and a self-ignoring `.cadence/.gitignore` (`*`) before you
+write anything, so these files never show up in the consumer's `git status`.
+Use the stable names given below (`.cadence/validator-output.json`, etc.);
+reusing a name across fires is fine — each is overwritten and read back within
+the same fire. **Do not** write scratch to the repo root, `tmp/`, or an OS
+temp directory.
 
 ---
 
@@ -67,11 +80,11 @@ case-insensitively (i.e. the user typed `/cadence:tick dry-run`):
    `linear_to_workflow`, `entry_state_name`, `entry_subagent`, `pickup_state`,
    `states`), and the raw `linear` / `label` / `limits` blocks as JSON on stdout.
    Parse that JSON; if the script's stdout is not parseable, print stderr
-   verbatim and exit. Also write the JSON verbatim to a temporary file (call
-   it `validatorOutputPath`) using the Write tool — step 0 step 3 below feeds
-   it to `compose_lifecycle_context.py`.
+   verbatim and exit. Also write the JSON verbatim to `.cadence/validator-output.json`
+   (call it `validatorOutputPath`) using the Write tool — step 0 step 3 below
+   feeds it to `compose_lifecycle_context.py`.
 2. Do **NOT** call any Linear MCP tool. Do **NOT** invoke any subagent. Do **NOT**
-   write to any file other than the temp file from step 1.
+   write to any file other than the scratch file from step 1.
 3. Invoke Bash:
    `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/compose_lifecycle_context.py --workflow-config <validatorOutputPath> --dry-run`
    The script reads the validator's `entry_state_name` and the entry state's
@@ -138,10 +151,10 @@ in P4 and the validator rejects them with a Rule 8 failure).
   directly.** Reading the YAML yourself produces a model-cacheable
   artifact that can go stale across fires in the same conversation;
   re-invoking the script every fire is the only way edits to the config
-  are guaranteed to be picked up. Also write the JSON verbatim to a
-  temporary file (call it `validatorOutputPath`) using the Write tool;
-  step 0 (dry-run) and step 13 invoke deterministic helpers that take it
-  as input.
+  are guaranteed to be picked up. Also write the JSON verbatim to
+  `.cadence/validator-output.json` (call it `validatorOutputPath`) using the
+  Write tool; step 0 (dry-run) and step 13 invoke deterministic helpers that
+  take it as input.
 
 ## Step 2 — (removed in determinism P3)
 
@@ -156,16 +169,17 @@ references to later steps don't shift.*
 file read and the validation in one script call. Numbering is preserved
 so external references to steps 4+ don't shift.*
 
-## Step 4 — Hold the Linear-column reverse map for step 8
+## Step 4 — The validator's derived maps feed downstream scripts
 
 The validator in step 1 emits a `linear_to_workflow` reverse map — each
 Linear column name keyed to an entry of the shape
-`{ "kind": "pickup" | "state" | "gate_waiting", "workflow_state": "<name>" | null, "linear_state_type": "agent" | "gate" | "terminal" | null }`.
-Keep it in memory as `linearToWorkflow`; step 8 uses it.
-
-(The `workflow_linear_states` array the validator also emits is consumed
-by step 5 via `filter_candidates.py --plan`; you don't need to track it
-yourself.)
+`{ "kind": "pickup" | "state" | "gate_waiting", "workflow_state": "<name>" | null, "linear_state_type": "agent" | "gate" | "terminal" | null }`
+— and a `workflow_linear_states` array. You do **not** need to hold either
+in memory: both are read straight from `<validatorOutputPath>` by the
+deterministic helpers that consume them — the reverse map by the Route step's
+`route_fire.py` (matched-state lookup, old step 8) and the states array by
+step 5's `filter_candidates.py --plan`. Re-deriving them in prose would just
+risk drift from the script's view.
 
 ---
 
@@ -224,9 +238,9 @@ MCP queries the script tells it to and feed the results back in.
    empty, `inFlightCounts` is `{}`.
 
 4. **Hand the results back to the script.** Write the pickup-query
-   results to a temp file as a JSON array (call it `candidatesPath`)
-   using the Write tool. Write `inFlightCounts` to a second temp file
-   (call it `inFlightPath`). Invoke Bash:
+   results as a JSON array to `.cadence/candidates.json` (call it
+   `candidatesPath`) using the Write tool. Write `inFlightCounts` to
+   `.cadence/in-flight.json` (call it `inFlightPath`). Invoke Bash:
    `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/filter_candidates.py --workflow-config <validatorOutputPath> --candidates <candidatesPath> --in-flight <inFlightPath>`
    Parse the JSON on stdout.
 
@@ -264,205 +278,91 @@ Throughout the rest of this fire, the locked issue is `issue`.
 
 Read `issue`'s current Linear state. If it equals `linear.pickup_state`, move it
 to the `entry` state's `linear_state` via Linear MCP. (This is the only state
-transition that happens before the workflow-state determination in step 8 —
-new issues enter the workflow here.)
+transition that happens before the workflow-state determination in the Route
+step (steps 8–11) — new issues enter the workflow here.)
 
 Otherwise, leave the Linear state untouched.
 
 ---
 
-## Step 8 — Determine the matched workflow state
+## Steps 8–11 — Route the fire (Gather → Route → Execute)
 
-Re-read `issue`'s Linear state (after the possible move in step 7). Look the
-column name up in `linearToWorkflow` (from step 4) and read its
-`workflow_state`. Call this the **matched workflow state**. By the uniqueness
-rule enforced in step 1 each column appears at most once in the map.
+Steps 8–11 are a single cohesive decision — *"given where this issue sits and
+its history, what should this fire do to it?"* — computed deterministically by
+`route_fire.py`. It subsumes the four decisions the prose used to spell out:
+the matched-state lookup and unmapped-column release (old step 8), the drift
+check (old step 9), the gate verdict routing (old step 10: waiting / approve /
+rework, both-labels→rework, `max_rework` escalation), and the attempt-cap
+check against the **resolved** target (old step 11). The bootstrap gathers the
+inputs, runs the router **once**, and executes the plan it returns. The
+bootstrap remains the sole Linear writer; the router only decides.
 
-A gate now lives in exactly one column (its `linear_state`, the waiting
-queue) — verdicts are signalled by labels, not by moving the card to a
-different column. Step 10 handles the label branch.
+### Gather (MCP reads)
 
-If the column is **not** present in `linearToWorkflow` (the issue moved to a
-column outside the workflow set between step 5 and now — possible if a human
-dragged it), post a plain comment:
+1. Re-read `issue`'s current Linear column (after the possible step-7 move).
+   Call it `<column>`.
+2. Re-read `issue`'s current label list (the step-6 lock re-read covers this
+   if your MCP returned labels). Reduce it to the present label **names**.
+3. Fetch the issue's full comment list via the Linear MCP. Write it verbatim
+   as a JSON array to `.cadence/comments.json` — call it `commentsFile`
+   (Write tool). Each element carries whatever `id` / `body` / `createdAt` /
+   `user` fields the MCP returns; the router tolerates both camelCase and
+   snake_case keys.
 
-> **[Cadence]** Issue moved to unmapped Linear state `<state>` between pickup and
-> dispatch; releasing lock without action.
-
-Remove the `cadence_active` label and exit.
-
----
-
-## Step 9 — Drift check via tracking comments
-
-Fetch the issue's full comment list via the Linear MCP. Write it verbatim as a
-JSON array to a temporary file — call it `commentsFile` (use the Write tool;
-any writable path works, an OS temp directory is fine). Each array element
-should carry whatever `id` / `body` / `createdAt` / `user` fields the MCP
-returns; `parse_comments.py` tolerates both camelCase and snake_case keys.
-Keep `commentsFile` for reuse in steps 10c and 11.
+### Route (one Bash call)
 
 Invoke Bash:
-`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/parse_comments.py --input <commentsFile> --target-state <matched workflow state>`
-— and append `--gate-name <matched workflow state>` if the matched state from
-step 8 is a gate (this makes step 9's output also carry the `rework_count` and
-`rework_context` that step 10c needs, so it does not have to re-run the script).
+`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/route_fire.py --workflow-config <validatorOutputPath> --linear-state "<column>" --comments <commentsFile> --labels "<comma-separated present label names>"`
 
-Parse the JSON on stdout. Also write it verbatim to a temporary file (call it
-`parseCommentsOutputPath`) using the Write tool — step 13 feeds it to
-`compose_lifecycle_context.py` for the `rework_context` and the
-`latest_implementer_summary.pr_url` (both of which are independent of
-`--target-state` and `--gate-name`, so step 11's re-invocation does not
-need to overwrite this file).
+(`--labels` also accepts a path to a JSON file of label names/objects; the CSV
+form is fine for the handful of labels an issue carries. Pass an empty string
+when the issue has no labels.)
 
-Read `latest_tracking_comment` — its `state` field is
-the workflow-state name the *last* Cadence fire was working on. It is `null`
-when there is no prior `cadence:state` / `cadence:gate` / `cadence:reconcile`
-comment, or when the latest such comment is a reconcile (which carries no
-`state`). If `parse_errors` is non-empty, note it in your run output but
-proceed.
+Parse the plan JSON on stdout. If stdout is not parseable, print stderr
+verbatim and exit. The plan carries:
 
-Compare `latest_tracking_comment.state` to the matched workflow state from
-step 8 (the workflow state **name**, not its `linear_state` string). Apply
-these checks in order — the first one that holds wins:
+- `matched_state` — the workflow state `<column>` maps to (or `null`).
+- `target_state` — the resolved state this fire works on (or `null` on exits).
+- `attempt` — the attempt number for `target_state` (or `null` on exits).
+- `rework` — `true` when this fire entered via a gate **rework** route
+  (step 13 passes `--rework` when set).
+- `pre_actions` — ordered actions to apply before invoking the subagent.
+- `invoke_subagent` — `true` to proceed to step 12; `false` to take the exit.
+- `subagent` — the subagent name (when `invoke_subagent` is `true`).
+- `parse_comments_output` — the full `parse_comments.py` result the router
+  computed (the router parsed exactly once). Step 13 needs it; see Execute.
+- `exit_plan` — ordered actions for an early-exit fire (when not invoking).
+- `exit_summary` — the one-line message to print on an early-exit fire.
 
-- **`latest_tracking_comment.state` is `null`**: no drift (brand-new issue,
-  or the latest tracking comment is a reconcile which carries no `state`).
-  Proceed.
+Each action in `pre_actions` / `exit_plan` is one of:
+- `{"type": "post_comment", "body": "<body>"}` — post the body as a Linear
+  comment, **verbatim**. The router already built any tracking-comment JSON
+  (reconcile / gate rework / gate escalation); do not add or alter a prefix.
+- `{"type": "remove_label", "label": "<name>"}` — remove the named label.
+- `{"type": "add_label", "label": "<name>"}` — add the named label.
+- `{"type": "move_state", "linear_state": "<column>"}` — move the issue to
+  that Linear column.
 
-- **Match** (`latest_tracking_comment.state` equals the matched state): no
-  drift. The previous fire didn't advance — either its subagent failed and
-  Linear stayed where it was, or this fire is the next pickup of a gate
-  still sitting in its single waiting column awaiting a verdict label.
-  Proceed.
+The router has already done the matched-state lookup, the unmapped-column
+release decision, drift detection (and its reconcile comment body), the gate
+verdict routing, terminal detection, the `max_rework` escalation, and the
+attempt-cap check against the **resolved** target. **Do not re-derive any of
+it** — the bootstrap's job is to apply the plan.
 
-- **Normal forward progression**: the matched state equals
-  `config.states[latest_tracking_comment.state].next`. This is the
-  expected pattern after a successful agent→agent transition — the prior
-  fire ran the subagent for state X, advanced Linear to X's successor at
-  its step 16, and exited; this fire is now picking up X's successor for
-  the first time. (Step 16 emits a fresh tracking comment only when
-  advancing into a gate, not when advancing into another agent state — so
-  for agent→agent the latest tracking comment legitimately lags one state
-  behind Linear's column.) Proceed without posting a reconcile.
+### Execute (MCP writes)
 
-  This check only applies when `latest_tracking_comment.state` names an
-  agent state with a defined `next` field. Gate states use `on_approve` /
-  `on_rework` instead of `next`, but in practice gate predecessors are
-  always handled by the **Match** rule above (Linear stays in the gate's
-  waiting column until the bootstrap routes the verdict on the next fire,
-  and any successful gate transition emits its own tracking comment that
-  updates `latest` to the new target state).
+- If `invoke_subagent` is **false**: apply every action in `exit_plan` in
+  order via the Linear MCP, print `exit_summary` to the user, and exit. This
+  is the single path for the unmapped-column, gate-waiting, approve→terminal,
+  rework-escalation, and attempt-cap fires. Do **not** invoke a subagent and
+  do **not** advance further.
 
-- **Drift otherwise**: a human (or another tool) reassigned the issue to a
-  column that isn't reachable from where it last was via one workflow
-  edge. Build the reconcile comment by invoking Bash:
-  `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind reconcile --observed-linear-state "<current Linear column>" --expected-state "<latest_tracking_comment.state>" --reason "human reassigned"`
-  Post the script's stdout as a Linear comment verbatim. Then continue
-  using the matched workflow state from step 8.
-
----
-
-## Step 10 — Gate handling
-
-If the matched workflow state from step 8 is **not** a gate (it's `type: agent`),
-the **target state** for the rest of this fire equals the matched workflow state.
-Skip to step 11.
-
-If it **is** a gate, fetch the issue's current label list (re-read from the
-Linear MCP; the lock-acquisition read in step 6 covers it if your MCP returned
-labels on that response). Check for the two verdict labels
-(`label.cadence_approve` and `label.cadence_rework`) and branch:
-
-### 10a — Neither verdict label present (waiting)
-
-The human has not decided yet. Remove the `cadence_active` label and exit.
-Do **not** invoke a subagent. Do **not** post any comment. The issue stays
-in the gate's waiting column until the human adds a verdict label, which
-the next fire will see.
-
-### 10b — `label.cadence_approve` is present
-
-The human approved. Look up `<gate>.on_approve` in the config; call it
-`approveTarget`.
-
-1. Remove the `label.cadence_approve` label from the issue via Linear MCP.
-2. Move the issue to `approveTarget`'s `linear_state` via Linear MCP.
-3. If `approveTarget` is `type: terminal`: remove the `cadence_active` label
-   and exit. No subagent invocation; the Linear state change is the audit
-   record.
-4. Otherwise: set the **target state** for the rest of this fire to
-   `approveTarget` and continue at step 11.
-
-### 10c — `label.cadence_rework` is present
-
-The human is sending the work back. Look up `<gate>.on_rework` in the config;
-call it `reworkTarget`. `<gate>.max_rework` may or may not be defined.
-
-1. Remove the `label.cadence_rework` label from the issue via Linear MCP.
-
-2. From step 9's `parse_comments.py` output (step 9 passed `--gate-name`
-   because the matched state is a gate), read `rework_count` — the number of
-   prior `cadence:gate` / legacy `stokowski:gate` comments with
-   `"status": "rework"` whose `state` equals this gate's name. Call it
-   `reworkCount`.
-
-3. If `<gate>.max_rework` is defined and `reworkCount >= max_rework`, escalate:
-   - Build the escalation comment by invoking Bash:
-     `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind gate --state <gate> --status escalated`
-     Post its stdout as a Linear comment verbatim.
-   - Add the `label.cadence_needs_human` label.
-   - Remove the `cadence_active` label and exit.
-
-4. **Gather rework context.** From the same step 9 `parse_comments.py` output,
-   read the `rework_context` array — comments posted after the most recent
-   tracking comment, excluding tracking comments and obvious bots, oldest-first,
-   each with `body` / `author` / `createdAt`. Keep this as `reworkComments` for
-   step 13.
-
-5. Build the rework gate comment by invoking Bash:
-   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind gate --state <gate> --status rework --rework-to <reworkTarget>`
-   Post its stdout as a Linear comment verbatim.
-
-6. Move the issue to `reworkTarget`'s `linear_state` via Linear MCP.
-
-7. Set the **target state** to `reworkTarget` and continue at step 11.
-
-### Both verdict labels present
-
-Treat as **rework** — it is the safer verdict (routes the issue back for
-another human pass rather than advancing). Remove **both** verdict labels,
-then proceed exactly as 10c from step 2 onward.
-
-A Linear label group on the two verdict labels (recommended in the docs)
-makes this case structurally unreachable from the UI, but the bootstrap
-still guards against it for defence in depth — a future API caller can
-bypass the UI.
-
----
-
-## Step 11 — Attempt cap
-
-Let `targetState` be the target state from step 10 (or step 8 if the matched
-workflow state was `type: agent`).
-
-Determine `attemptCount` by invoking Bash:
-`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/parse_comments.py --input <commentsFile> --target-state <targetState>`
-and reading `attempt_count` from the JSON on stdout. Re-run the script here
-rather than reusing step 9's output: `targetState` may differ from the matched
-workflow state — e.g. after a gate routed this fire to `reworkTarget`. The
-script counts only `cadence:state` / legacy `stokowski:state` attempt markers
-whose JSON `state` equals `targetState` **and** that have **no** `status` field;
-failure records (`"status": "failed"`) do not count.
-
-If `attemptCount >= limits.max_attempts_per_issue`:
-1. Post a plain comment:
-   > **[Cadence]** Max attempts (`<max>`) reached at state **<targetState>**.
-   > Needs human intervention.
-2. Add the `label.cadence_needs_human` label.
-3. Remove the `cadence_active` label and exit.
-
-Otherwise, let `attempt = attemptCount + 1` and continue.
+- If `invoke_subagent` is **true**: apply every action in `pre_actions` in
+  order via the Linear MCP. Then write `parse_comments_output` verbatim as
+  JSON to `.cadence/parse-comments.json` (Write tool) — call it
+  `parseCommentsOutputPath`; step 13 feeds it to
+  `compose_lifecycle_context.py`. Carry `target_state`, `attempt`, and
+  `rework` forward and continue at step 12.
 
 ---
 
@@ -477,20 +377,21 @@ include a reliable current time, invoke Bash to run
 Build the attempt-marker comment by invoking Bash:
 `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --started-at <ISO8601>`
 Post its stdout as a Linear comment verbatim. The script emits no `status`
-field — this comment **is** the attempt marker counted by step 11 on future
-fires.
+field — this comment **is** the attempt marker counted by the Route step
+(steps 8–11) on future fires.
 
 ---
 
 ## Step 13 — Compose the Lifecycle Context block
 
-Write the locked `issue` MCP object verbatim as JSON to a temporary file
+Write the locked `issue` MCP object verbatim as JSON to `.cadence/issue.json`
 (call it `issueJsonPath`) using the Write tool. Then invoke Bash:
 
 `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/compose_lifecycle_context.py --workflow-config <validatorOutputPath> --issue <issueJsonPath> --target-state <targetState> --attempt <attempt> --parse-comments-output <parseCommentsOutputPath>`
 
-If this fire entered via the **rework branch** (step 10c), append `--rework`
-so the script includes the Rework Context section.
+If the router's plan set `rework: true` (this fire entered via a gate
+**rework** route), append `--rework` so the script includes the Rework
+Context section.
 
 The script reads:
 - The validator output (`validatorOutputPath`, from step 1) — `states[<targetState>]`
@@ -500,7 +401,8 @@ The script reads:
 - The issue object (`issueJsonPath`, written immediately above) —
   `identifier` / `title` / `url` / `branchName` / `priority` / `labels` /
   `description`.
-- The parse-comments output (`parseCommentsOutputPath`, from step 9) —
+- The parse-comments output (`parseCommentsOutputPath`, written in the Route
+  step's Execute branch from the router's `parse_comments_output`) —
   `rework_context` (the human comments rendered when `--rework` is
   passed) and `latest_implementer_summary.pr_url` (rendered as the
   **PR:** line in the adversarial-context variant).
@@ -625,14 +527,15 @@ If the Agent invocation in step 14 raises an exception:
 
    This uses the same `attempt` number as the attempt marker from step 12,
    **plus** a `status: "failed"` field. It is a failure **record**, not a new
-   attempt marker; step 11 on the next fire will not count it.
+   attempt marker; the Route step (steps 8–11) on the next fire will not count
+   it.
 3. Remove the `cadence_active` label.
 4. Exit. The next fire will retry — `attempt` will be the same `attemptCount + 1`
    value (the marker from step 12 is what's counted, and it remains).
 
-   On retry, step 11's `attemptCount` is now `attempt` (the failed attempt's
-   marker), so the new fire's `attempt = attempt + 1`. Eventually
-   `attemptCount >= max_attempts_per_issue` and step 11 escalates.
+   On retry, the router's `attempt_count` is now `attempt` (the failed
+   attempt's marker), so the new fire's `attempt = attempt + 1`. Eventually
+   `attempt_count >= max_attempts_per_issue` and the Route step escalates.
 
 ### Concurrency
 

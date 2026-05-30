@@ -40,7 +40,7 @@ import json
 import sys
 from pathlib import Path
 
-from _common import load_workflow
+from _common import ensure_cadence_dir, load_workflow
 
 LEGACY_GATE_KEYS = ("approved_linear_state", "rework_linear_state")
 
@@ -403,6 +403,12 @@ def main():
         "label": label if isinstance(label, dict) else {},
         "limits": limits if isinstance(limits, dict) else {},
     }
+
+    # The dispatch prose writes its transient JSON (validator output, etc.)
+    # under `.cadence/` once it has this stdout. Guarantee the scratch dir
+    # and its self-ignoring `.gitignore` exist before that — on the dry-run
+    # path nothing else creates it (no Linear write fires the audit hook).
+    ensure_cadence_dir()
 
     if args.evidence:
         result["evidence"] = evidence

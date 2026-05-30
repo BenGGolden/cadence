@@ -2,13 +2,14 @@
 """Deterministically parse a Linear issue's comment list for Cadence.
 
 Caller(s):
-  - commands/tick.md step 9  (drift check — latest tracking comment)
-  - commands/tick.md step 10c.1 (rework_count)
-  - commands/tick.md step 10c.3 (rework_context)
-  - commands/tick.md step 11 (attempt_count)
+  - templates/hooks/route_fire.py (imported; `parse_comment_list` runs once
+    per fire — the latest tracking comment for the drift check, attempt_count
+    for the resolved target, and rework_count / rework_context for a gate).
+    This replaces the old per-step CLI calls in tick.md steps 9 / 10c / 11.
   - commands/tick.md step 13 (latest_implementer_summary — PR URL / branch
-    for the adversarial-context Lifecycle Context)
-  - commands/status.md (per-issue attempt count / last state)
+    for the adversarial-context Lifecycle Context) — reads route_fire.py's
+    forwarded `parse_comments_output`, not a fresh CLI invocation.
+  - commands/status.md (per-issue attempt count / last state — CLI)
 
 Failure modes eliminated:
   - "Counting errors": LLM bookkeeping in tick.md steps 10c.1 and 11 ("count
@@ -204,30 +205,32 @@ def _find_implementer_summary(norm):
     return {"pr_url": None, "branch": None}
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--input", required=True,
-                    help="Path to a JSON file holding the issue's comment list.")
-    ap.add_argument("--target-state", required=True,
-                    help="Workflow state name to count attempt markers for.")
-    ap.add_argument("--gate-name", default=None,
-                    help="Gate name for rework_count / rework_context.")
-    args = ap.parse_args()
+def coerce_comment_list(raw, parse_errors):
+    """Reduce a loaded JSON value to a list of comment dicts.
 
-    parse_errors = []
-    comments = []
-    try:
-        with open(args.input, "r", encoding="utf-8") as fh:
-            raw = json.load(fh)
-        if isinstance(raw, dict):
-            # Some MCP shapes wrap the array, e.g. {"comments": [...]} / {"nodes": [...]}.
-            raw = _get(raw, "comments", "nodes", "data", "items", default=raw)
-        if isinstance(raw, list):
-            comments = raw
-        else:
-            parse_errors.append("input did not parse to a JSON array of comments")
-    except (OSError, ValueError) as e:
-        parse_errors.append(f"could not read --input file: {e}")
+    Tolerates the MCP connection-wrap shapes (`{"comments": [...]}` /
+    `{"nodes": [...]}` / `{"data": [...]}` / `{"items": [...]}`). Anything
+    that still isn't a list records a parse error and yields `[]`. Shared by
+    the CLI and by route_fire.py (which loads the comments file itself and
+    calls parse_comment_list directly — no second subprocess)."""
+    if isinstance(raw, dict):
+        raw = _get(raw, "comments", "nodes", "data", "items", default=raw)
+    if isinstance(raw, list):
+        return raw
+    parse_errors.append("input did not parse to a JSON array of comments")
+    return []
+
+
+def parse_comment_list(comments, target_state, gate_name=None,
+                       parse_errors=None):
+    """Pure comment-history parse → the result dict the CLI prints.
+
+    `comments` is the already-loaded list of MCP comment dicts. Pass an
+    existing `parse_errors` list to fold in upstream read errors (the CLI
+    seeds it from the file read); omitted, a fresh list is started. No I/O —
+    importable by route_fire.py so the parse runs exactly once per fire."""
+    if parse_errors is None:
+        parse_errors = []
 
     # Normalise + sort oldest-first by createdAt (ISO-8601 sorts lexically).
     norm = []
@@ -272,10 +275,10 @@ def main():
         }
 
         if kind == "state":
-            if payload.get("state") == args.target_state and "status" not in payload:
+            if payload.get("state") == target_state and "status" not in payload:
                 attempt_count += 1
-        elif kind == "gate" and args.gate_name is not None:
-            if payload.get("state") == args.gate_name and payload.get("status") == "rework":
+        elif kind == "gate" and gate_name is not None:
+            if payload.get("state") == gate_name and payload.get("status") == "rework":
                 rework_count += 1
 
     # rework_context: comments after the most recent tracking comment, that
@@ -303,7 +306,7 @@ def main():
             "raw_json": None,
         }
 
-    result = {
+    return {
         "latest_tracking_comment": latest_tracking,
         "attempt_count": attempt_count,
         "rework_count": rework_count,
@@ -311,6 +314,30 @@ def main():
         "latest_implementer_summary": _find_implementer_summary(norm),
         "parse_errors": parse_errors,
     }
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--input", required=True,
+                    help="Path to a JSON file holding the issue's comment list.")
+    ap.add_argument("--target-state", required=True,
+                    help="Workflow state name to count attempt markers for.")
+    ap.add_argument("--gate-name", default=None,
+                    help="Gate name for rework_count / rework_context.")
+    args = ap.parse_args()
+
+    parse_errors = []
+    comments = []
+    try:
+        with open(args.input, "r", encoding="utf-8") as fh:
+            raw = json.load(fh)
+        comments = coerce_comment_list(raw, parse_errors)
+    except (OSError, ValueError) as e:
+        parse_errors.append(f"could not read --input file: {e}")
+
+    result = parse_comment_list(comments, args.target_state,
+                                gate_name=args.gate_name,
+                                parse_errors=parse_errors)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     sys.exit(0)
 
