@@ -19,7 +19,7 @@ Failure modes eliminated:
 
 CLI:
   python compose_lifecycle_context.py
-    --workflow-config <validatorOutputPath>
+    [--workflow-config <validatorJson> | --workflow-path <workflow.yaml>]
     --issue <issueJsonPath>
     --target-state <name>
     --attempt <int>
@@ -45,6 +45,8 @@ import sys
 from pathlib import Path
 
 from _common import die
+
+import validate_workflow
 
 # The Lifecycle Context block contains non-ASCII characters (→, —) that
 # crash on Windows when stdout's default encoding is cp1252. Force UTF-8
@@ -283,8 +285,11 @@ def _read_global_prompt(path):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--workflow-config", required=True,
-                    help="Path to the validator's JSON output.")
+    ap.add_argument("--workflow-config", default=None,
+                    help="Path to a pre-built validator JSON dict (dry-run/tests).")
+    ap.add_argument("--workflow-path", default=None,
+                    help="Path to workflow.yaml; validated internally "
+                         "(default: .claude/workflow.yaml).")
     ap.add_argument("--issue",
                     help="Path to a JSON file with the MCP issue object.")
     ap.add_argument("--target-state",
@@ -309,7 +314,7 @@ def main():
                          "--attempt.")
     args = ap.parse_args()
 
-    config = _load_json(args.workflow_config, "--workflow-config")
+    config = validate_workflow.load_config(args.workflow_config, args.workflow_path)
     states = config.get("states") or {}
 
     if args.dry_run:

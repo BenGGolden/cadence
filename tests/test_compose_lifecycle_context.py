@@ -20,6 +20,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "templates" / "hooks" / "compose_lifecycle_context.py"
 FIXTURES = REPO_ROOT / "tests" / "fixtures" / "lifecycle_context"
@@ -483,6 +485,90 @@ class ComposeLifecycleContextTests(unittest.TestCase):
             r = run_compose(td, config=cfg, dry_run=True)
             self.assertEqual(r.returncode, 1)
             self.assertIn("entry state", r.stderr)
+
+
+def _workflow_yaml_dict():
+    """A `.claude/workflow.yaml` whose validated config matches the dict
+    `_default_config()` builds, so the two run modes compare."""
+    return {
+        "linear": {"team": "ENG", "pickup_state": "Todo"},
+        "label": {
+            "cadence_active": "cadence-active",
+            "cadence_needs_human": "cadence-needs-human",
+            "cadence_approve": "cadence-approve",
+            "cadence_rework": "cadence-rework",
+        },
+        "limits": {"max_attempts_per_issue": 3},
+        "entry": "plan",
+        "states": _default_states(),
+    }
+
+
+def _materialise_workflow(td, wf):
+    """Write `.claude/workflow.yaml` + the three agent files under td."""
+    claude = td / ".claude"
+    agents = claude / "agents"
+    agents.mkdir(parents=True, exist_ok=True)
+    for a in ("planner", "implementer", "reviewer"):
+        (agents / f"{a}.md").write_text("# agent\n", encoding="utf-8")
+    wf_path = claude / "workflow.yaml"
+    wf_path.write_text(yaml.safe_dump(wf, sort_keys=False), encoding="utf-8")
+    return wf_path
+
+
+class WorkflowPathModeTests(unittest.TestCase):
+    """--workflow-path mode: validate .claude/workflow.yaml internally."""
+
+    def test_live_render_parity(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            cfg_out = run_compose(
+                td, config=_default_config(), issue=_default_issue(),
+                target_state="implement", attempt=1,
+                parse_output=_parse_output()).stdout
+
+            wf_path = _materialise_workflow(td, _workflow_yaml_dict())
+            issue_path = td / "issue.json"
+            _write(issue_path, _default_issue())
+            parse_path = td / "parse.json"
+            _write(parse_path, _parse_output())
+            r = subprocess.run(
+                [sys.executable, str(SCRIPT),
+                 "--workflow-path", str(wf_path),
+                 "--issue", str(issue_path),
+                 "--target-state", "implement", "--attempt", "1",
+                 "--parse-comments-output", str(parse_path)],
+                cwd=str(td), capture_output=True, text=True, encoding="utf-8")
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertEqual(r.stdout, cfg_out)
+
+    def test_dry_run_parity(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            cfg_out = run_compose(td, config=_default_config(),
+                                  dry_run=True).stdout
+
+            wf_path = _materialise_workflow(td, _workflow_yaml_dict())
+            r = subprocess.run(
+                [sys.executable, str(SCRIPT),
+                 "--workflow-path", str(wf_path), "--dry-run"],
+                cwd=str(td), capture_output=True, text=True, encoding="utf-8")
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertEqual(r.stdout, cfg_out)
+
+    def test_invalid_workflow_bails_exit_2(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            wf = _workflow_yaml_dict()
+            wf["states"]["implement"]["next"] = "nonexistent"
+            wf_path = _materialise_workflow(td, wf)
+            r = subprocess.run(
+                [sys.executable, str(SCRIPT),
+                 "--workflow-path", str(wf_path), "--dry-run"],
+                cwd=str(td), capture_output=True, text=True, encoding="utf-8")
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("Rule 3 (Targets) FAILED", r.stderr)
+            self.assertEqual(r.stdout, "")
 
 
 if __name__ == "__main__":

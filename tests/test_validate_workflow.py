@@ -597,5 +597,46 @@ class ScratchDirTests(unittest.TestCase):
                 "custom\n")
 
 
+class ValidateEntrypointTests(unittest.TestCase):
+    """Direct-import smoke tests for the reusable `validate()` entrypoint the
+    three deterministic consumers call via `load_config(--workflow-path)`."""
+
+    def _validate(self, td, wf):
+        """Run `validate(path)` in a subprocess with cwd=td (Rule 4 resolves
+        agent files relative to cwd) and return the parsed (valid, fail_rules).
+        """
+        agent_dir = td / ".claude" / "agents"
+        agent_dir.mkdir(parents=True, exist_ok=True)
+        for a in ("planner", "implementer"):
+            (agent_dir / f"{a}.md").write_text("# agent\n", encoding="utf-8")
+        wf_path = td / "workflow.yaml"
+        wf_path.write_text(yaml.safe_dump(wf, sort_keys=False), encoding="utf-8")
+        code = (
+            "import json, sys; sys.path.insert(0, %r); import validate_workflow;"
+            "r, ev = validate_workflow.validate(%r);"
+            "print(json.dumps({'valid': r['valid'],"
+            " 'fails': [e['rule'] for e in ev if e['result'] == 'FAIL']}))"
+            % (str(SCRIPT.parent), str(wf_path))
+        )
+        r = subprocess.run([sys.executable, "-c", code], cwd=str(td),
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+        return json.loads(r.stdout)
+
+    def test_validate_returns_valid_for_good_config(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = self._validate(Path(td), _valid_workflow())
+            self.assertTrue(out["valid"])
+            self.assertEqual(out["fails"], [])
+
+    def test_validate_returns_failing_rule_for_bad_config(self):
+        wf = _valid_workflow()
+        wf["states"]["plan"]["next"] = "nonexistent"
+        with tempfile.TemporaryDirectory() as td:
+            out = self._validate(Path(td), wf)
+            self.assertFalse(out["valid"])
+            self.assertIn(3, out["fails"])
+
+
 if __name__ == "__main__":
     unittest.main()

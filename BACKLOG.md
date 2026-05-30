@@ -30,36 +30,6 @@ tick.md edit rather than as a standalone PR.
 
 ---
 
-## Fold the validator-output scratch hop into the consumers
-
-**Idea**: stop having the bootstrap write `validate_workflow.py`'s JSON to
-`.cadence/validator-output.json` and thread it to four downstream scripts.
-Instead let `route_fire.py`, `filter_candidates.py`, and
-`compose_lifecycle_context.py` accept `--workflow-path` and run the
-validator internally (importing `validate_workflow`), so the model never
-materialises or couriers that artifact.
-
-**Why**: of the ~6 scratch files a live fire writes, this one (and
-`parse-comments.json`) are pure *script→script* handoffs — the model is a
-needless middleman threading a deterministic artifact between scripts. The
-other four (`candidates` / `in-flight` / `comments` / `issue`) are MCP-sourced
-and irreducible: only the model can call the Linear MCP, so it must hand that
-data to the scripts. Removing the validator hop is the cleanest "prose that
-should be code" reduction left in the tick path, and re-running the cheap
-validator per consumer is *more* correct than reusing a model-held copy (no
-cacheable-staleness risk — the same reason tick.md already forbids the model
-reading `workflow.yaml` directly).
-
-**Cost / care**: validation runs ~3–4× per fire instead of once (cheap — one
-YAML read + pure rule checks). Each consumer grows a `--workflow-path` mode
-that internally calls `validate_workflow` and bails on a non-zero result the
-same way the bootstrap does today; keep `--workflow-config <path>` working too
-so the dry-run / test fixtures that feed a pre-built validator dict don't have
-to change. `parse-comments.json` could be folded similarly only if `route_fire`
-and `compose_lifecycle_context` merge — lower priority, leave for now.
-
----
-
 ## Linear OAuth app (Cadence as a first-class integration)
 
 **Idea**: register Cadence as a Linear OAuth app so the workspace sees
