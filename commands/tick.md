@@ -54,16 +54,15 @@ in your available tool list — the verbs below describe intent, not exact names
 
 ### Scratch files
 
-Every transient JSON file this fire writes with the Write tool (the validator
-output, the comment list, the candidate/in-flight lists, the composed issue
-object) goes under **`.cadence/`** — Cadence's per-repo scratch directory.
-Step 1 (and step 0's `--evidence` call) runs `validate_workflow.py`, which
-creates `.cadence/` and a self-ignoring `.cadence/.gitignore` (`*`) before you
-write anything, so these files never show up in the consumer's `git status`.
-Use the stable names given below (`.cadence/validator-output.json`, etc.);
-reusing a name across fires is fine — each is overwritten and read back within
-the same fire. **Do not** write scratch to the repo root, `tmp/`, or an OS
-temp directory.
+Every transient JSON file this fire writes with the Write tool (the comment
+list, the candidate/in-flight lists, the composed issue object) goes under
+**`.cadence/`** — Cadence's per-repo scratch directory. Step 1 (and step 0's
+`--evidence` call) runs `validate_workflow.py`, which creates `.cadence/` and a
+self-ignoring `.cadence/.gitignore` (`*`) before you write anything, so these
+files never show up in the consumer's `git status`. Use the stable names given
+below (`.cadence/comments.json`, etc.); reusing a name across fires is fine —
+each is overwritten and read back within the same fire. **Do not** write
+scratch to the repo root, `tmp/`, or an OS temp directory.
 
 ---
 
@@ -80,16 +79,14 @@ case-insensitively (i.e. the user typed `/cadence:tick dry-run`):
    `linear_to_workflow`, `entry_state_name`, `entry_subagent`, `pickup_state`,
    `states`), and the raw `linear` / `label` / `limits` blocks as JSON on stdout.
    Parse that JSON; if the script's stdout is not parseable, print stderr
-   verbatim and exit. Also write the JSON verbatim to `.cadence/validator-output.json`
-   (call it `validatorOutputPath`) using the Write tool — step 0 step 3 below
-   feeds it to `compose_lifecycle_context.py`.
+   verbatim and exit.
 2. Do **NOT** call any Linear MCP tool. Do **NOT** invoke any subagent. Do **NOT**
-   write to any file other than the scratch file from step 1.
+   write to any file.
 3. Invoke Bash:
-   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/compose_lifecycle_context.py --workflow-config <validatorOutputPath> --dry-run`
-   The script reads the validator's `entry_state_name` and the entry state's
-   `linear_state` / `next` / `adversarial_context` from `<validatorOutputPath>`,
-   synthesises a hypothetical `EXAMPLE-1` issue internally, and renders the
+   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/compose_lifecycle_context.py --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml" --dry-run`
+   The script validates `.claude/workflow.yaml` internally to derive the
+   `entry_state_name` and the entry state's `linear_state` / `next` /
+   `adversarial_context`, synthesises a hypothetical `EXAMPLE-1` issue internally, and renders the
    Lifecycle Context block plus the appended `.claude/prompts/global.md`
    content (when that file exists) on stdout. Hold the stdout as
    `dryRunComposed` for step 4.
@@ -151,10 +148,12 @@ in P4 and the validator rejects them with a Rule 8 failure).
   directly.** Reading the YAML yourself produces a model-cacheable
   artifact that can go stale across fires in the same conversation;
   re-invoking the script every fire is the only way edits to the config
-  are guaranteed to be picked up. Also write the JSON verbatim to
-  `.cadence/validator-output.json` (call it `validatorOutputPath`) using the
-  Write tool; step 0 (dry-run) and step 13 invoke deterministic helpers that
-  take it as input.
+  are guaranteed to be picked up. The deterministic helpers
+  (`route_fire.py`, `filter_candidates.py`, `compose_lifecycle_context.py`)
+  re-validate `.claude/workflow.yaml` themselves via `--workflow-path` rather
+  than being threaded this JSON, so the validator runs once here for the
+  bootstrap's own lookups and again inside each helper — cheap, and it avoids
+  any stale shared copy.
 
 ## Step 2 — (removed in determinism P3)
 
@@ -175,11 +174,11 @@ The validator in step 1 emits a `linear_to_workflow` reverse map — each
 Linear column name keyed to an entry of the shape
 `{ "kind": "pickup" | "state" | "gate_waiting", "workflow_state": "<name>" | null, "linear_state_type": "agent" | "gate" | "terminal" | null }`
 — and a `workflow_linear_states` array. You do **not** need to hold either
-in memory: both are read straight from `<validatorOutputPath>` by the
-deterministic helpers that consume them — the reverse map by the Route step's
-`route_fire.py` (matched-state lookup, old step 8) and the states array by
-step 5's `filter_candidates.py --plan`. Re-deriving them in prose would just
-risk drift from the script's view.
+in memory: the deterministic helpers that consume them re-derive both by
+re-validating `.claude/workflow.yaml` internally (passed `--workflow-path`) —
+the reverse map by the Route step's `route_fire.py` (matched-state lookup, old
+step 8) and the states array by step 5's `filter_candidates.py --plan`.
+Re-deriving them in prose would just risk drift from the script's view.
 
 ---
 
@@ -190,7 +189,7 @@ live in `filter_candidates.py`. The bootstrap's job here is to run the
 MCP queries the script tells it to and feed the results back in.
 
 1. **Get the query plan.** Invoke Bash:
-   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/filter_candidates.py --plan --workflow-config <validatorOutputPath>`
+   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/filter_candidates.py --plan --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml"`
    Parse the JSON on stdout. It has two fields: `pickup_query`
    (with `team`, `project_slug`, `workflow_linear_states`) and
    `in_flight_queries` (zero or more `{state_name, linear_state}`
@@ -241,7 +240,7 @@ MCP queries the script tells it to and feed the results back in.
    results as a JSON array to `.cadence/candidates.json` (call it
    `candidatesPath`) using the Write tool. Write `inFlightCounts` to
    `.cadence/in-flight.json` (call it `inFlightPath`). Invoke Bash:
-   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/filter_candidates.py --workflow-config <validatorOutputPath> --candidates <candidatesPath> --in-flight <inFlightPath>`
+   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/filter_candidates.py --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml" --candidates <candidatesPath> --in-flight <inFlightPath>`
    Parse the JSON on stdout.
 
 5. **Act on the script's output.** If `diagnostic_message` is non-null,
@@ -312,7 +311,7 @@ bootstrap remains the sole Linear writer; the router only decides.
 ### Route (one Bash call)
 
 Invoke Bash:
-`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/route_fire.py --workflow-config <validatorOutputPath> --linear-state "<column>" --comments <commentsFile> --labels "<comma-separated present label names>"`
+`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/route_fire.py --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml" --linear-state "<column>" --comments <commentsFile> --labels "<comma-separated present label names>"`
 
 (`--labels` also accepts a path to a JSON file of label names/objects; the CSV
 form is fine for the handful of labels an issue carries. Pass an empty string
@@ -387,17 +386,17 @@ field — this comment **is** the attempt marker counted by the Route step
 Write the locked `issue` MCP object verbatim as JSON to `.cadence/issue.json`
 (call it `issueJsonPath`) using the Write tool. Then invoke Bash:
 
-`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/compose_lifecycle_context.py --workflow-config <validatorOutputPath> --issue <issueJsonPath> --target-state <targetState> --attempt <attempt> --parse-comments-output <parseCommentsOutputPath>`
+`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/compose_lifecycle_context.py --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml" --issue <issueJsonPath> --target-state <targetState> --attempt <attempt> --parse-comments-output <parseCommentsOutputPath>`
 
 If the router's plan set `rework: true` (this fire entered via a gate
 **rework** route), append `--rework` so the script includes the Rework
 Context section.
 
 The script reads:
-- The validator output (`validatorOutputPath`, from step 1) — `states[<targetState>]`
-  for `adversarial_context` / `linear_state` / `next`, the resolved next
-  state for its `type` / `linear_state`, and `linear.team` for branch
-  derivation.
+- The config, by re-validating `.claude/workflow.yaml` internally
+  (`--workflow-path`) — `states[<targetState>]` for `adversarial_context` /
+  `linear_state` / `next`, the resolved next state for its `type` /
+  `linear_state`, and `linear.team` for branch derivation.
 - The issue object (`issueJsonPath`, written immediately above) —
   `identifier` / `title` / `url` / `branchName` / `priority` / `labels` /
   `description`.
