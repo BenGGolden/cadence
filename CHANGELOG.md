@@ -6,6 +6,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — fold the validator-output scratch hop into the consumers
+- The bootstrap no longer writes `validate_workflow.py`'s JSON to
+  `.cadence/validator-output.json` and threads it (`--workflow-config
+  <validatorOutputPath>`) into the downstream deterministic helpers.
+  `route_fire.py`, `filter_candidates.py`, and `compose_lifecycle_context.py`
+  each gain a `--workflow-path` mode that runs the validator internally (by
+  importing `validate_workflow`), so the model never materialises or couriers
+  that artifact. Of the scratch files a live fire writes,
+  `validator-output.json` was the only pure *script→script* handoff — the
+  others (`comments` / `candidates` / `in-flight` / `issue`) are MCP-sourced
+  and irreducible.
+- `validate_workflow.py` exposes three reusable entrypoints —
+  `validate(workflow_path) -> (result, evidence)`,
+  `print_failures(evidence)`, and
+  `load_config(workflow_config=None, workflow_path=None)` — and `main()`
+  delegates to them (stdout / stderr / exit-code behaviour unchanged). The
+  three consumers resolve their config through `load_config`, which bails
+  exactly as the bootstrap does (rule failures to stderr, exit 2) on an
+  invalid workflow. `--workflow-config <path>` is retained for the dry-run /
+  test fixtures and wins when both flags are passed.
+- Re-running the cheap validator per consumer (~3–4× per fire: one YAML read +
+  pure rule checks) is *more* correct than reusing a model-held copy — it
+  eliminates the cacheable-staleness risk that is the same reason `tick.md`
+  already forbids the model reading `workflow.yaml` directly.
+- `commands/tick.md`: the five consumer invocations (step 0 dry-run compose,
+  step 5 `--plan` + filter, the Route step's `route_fire`, step 13 compose)
+  now pass `--workflow-path`; step 1 still runs the validator once and keeps
+  the parsed JSON in memory as the config source for its own lookups. The
+  `validatorOutputPath` variable and the `.cadence/validator-output.json`
+  scratch file are fully removed.
+
 ### Added — Determinism Phase 8: extract tick.md routing into route_fire.py
 - New `templates/hooks/route_fire.py` collapses `commands/tick.md` steps 8–11
   — the matched-state lookup + unmapped-column release (8), drift
@@ -42,10 +73,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `exit_plan` + `exit_summary`; the bootstrap re-derives no verdict.
 - `SCAFFOLD_PLAN` gains the three plugin-owned rows; `CLAUDE.md` repo-map
   lists the new helpers.
-- The dispatch prose's transient JSON (validator output, comment lists,
-  candidate / in-flight lists, the composed issue object) now lands under
-  `.cadence/` with stable names instead of an unspecified "temporary file" the
-  model was placing at the repo root (e.g. `tmp/validator-output.json`).
+- The dispatch prose's transient JSON (comment lists, candidate / in-flight
+  lists, the composed issue object) now lands under `.cadence/` with stable
+  names instead of an unspecified "temporary file" the model was placing at
+  the repo root.
   `validate_workflow.py` — the first Bash call in every `/cadence:*` fire,
   dry-run included — now creates `.cadence/` and a self-ignoring
   `.cadence/.gitignore` (`*`) via a new `_common.ensure_cadence_dir()`, so
