@@ -40,7 +40,7 @@ import json
 import sys
 from pathlib import Path
 
-from _common import ensure_cadence_dir, load_workflow
+from _common import die, ensure_cadence_dir, load_workflow
 
 LEGACY_GATE_KEYS = ("approved_linear_state", "rework_linear_state")
 
@@ -354,15 +354,18 @@ def _build_linear_to_workflow(states, pickup):
     return mapping
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--workflow-path", default=None,
-                    help="Path to workflow.yaml (default: .claude/workflow.yaml)")
-    ap.add_argument("--evidence", action="store_true",
-                    help="Also emit structured per-rule evidence for the dry-run report.")
-    args = ap.parse_args()
+def validate(workflow_path=None):
+    """Run every rule against `workflow_path` and return `(result, evidence)`.
 
-    wf = load_workflow(args.workflow_path)  # exits 1 on unreadable/unparseable YAML
+    Pure (no scratch writes): `load_workflow` still exits 1 on unreadable /
+    unparseable YAML, and a non-mapping `states:` still exits 2 — but on a
+    readable, structurally-sound file this only computes. The consumers
+    (`route_fire` / `filter_candidates` / `compose_lifecycle_context`) call
+    this via `load_config` to validate `.claude/workflow.yaml` internally
+    instead of receiving a threaded validator-output file. `main()` wraps it
+    to add `ensure_cadence_dir()` + the stdout/exit-code contract.
+    """
+    wf = load_workflow(workflow_path)  # exits 1 on unreadable/unparseable YAML
 
     states = wf.get("states") or {}
     linear = wf.get("linear") or {}
@@ -387,8 +390,7 @@ def main():
         _rule8_legacy_gate_keys(states),
     ]
 
-    failures = [ev for ev in evidence if ev["result"] == "FAIL"]
-    valid = not failures
+    valid = not any(ev["result"] == "FAIL" for ev in evidence)
 
     entry_body = states.get(entry) if isinstance(entry, str) else None
     result = {
@@ -403,27 +405,72 @@ def main():
         "label": label if isinstance(label, dict) else {},
         "limits": limits if isinstance(limits, dict) else {},
     }
+    return result, evidence
 
-    # The dispatch prose writes its transient JSON (validator output, etc.)
-    # under `.cadence/` once it has this stdout. Guarantee the scratch dir
-    # and its self-ignoring `.gitignore` exist before that — on the dry-run
-    # path nothing else creates it (no Linear write fires the audit hook).
+
+def print_failures(evidence, file=sys.stderr):
+    """Print one `Rule N (<title>) FAILED:` block per failing rule."""
+    for ev in evidence:
+        if ev["result"] == "FAIL":
+            print(f"Rule {ev['rule']} ({ev['title']}) FAILED:\n  {ev['failure']}",
+                  file=file)
+
+
+def load_config(workflow_config=None, workflow_path=None):
+    """Resolve a validator-config dict for the deterministic consumers.
+
+    When `workflow_config` is set, read that pre-built JSON dict (the
+    dry-run / test surface) and return it. Otherwise validate
+    `workflow_path` (default `.claude/workflow.yaml`) internally and bail
+    exactly as the bootstrap does — rule failures to stderr, exit 2. This is
+    the entry point that lets the consumers run the validator themselves
+    instead of being threaded a `.cadence/validator-output.json` file.
+    """
+    if workflow_config:
+        try:
+            with open(workflow_config, "r", encoding="utf-8") as fh:
+                cfg = json.load(fh)
+        except (OSError, ValueError) as e:
+            die(f"Cadence: could not read --workflow-config from "
+                f"{workflow_config}: {e}", 1)
+        if not isinstance(cfg, dict):
+            die("Cadence: --workflow-config must be a JSON object.", 1)
+        return cfg
+    result, evidence = validate(workflow_path)  # exits 1 on unreadable YAML
+    if not result.get("valid"):
+        print_failures(evidence)
+        sys.exit(2)
+    return result
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--workflow-path", default=None,
+                    help="Path to workflow.yaml (default: .claude/workflow.yaml)")
+    ap.add_argument("--evidence", action="store_true",
+                    help="Also emit structured per-rule evidence for the dry-run report.")
+    args = ap.parse_args()
+
+    result, evidence = validate(args.workflow_path)
+    valid = result["valid"]
+
+    # The dispatch prose writes its transient JSON (comment list, candidate
+    # lists, the composed issue object) under `.cadence/` later in the fire.
+    # Guarantee the scratch dir and its self-ignoring `.gitignore` exist now —
+    # on the dry-run path nothing else creates it (no Linear write fires the
+    # audit hook).
     ensure_cadence_dir()
 
     if args.evidence:
         result["evidence"] = evidence
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if not valid:
-            for ev in failures:
-                print(f"Rule {ev['rule']} ({ev['title']}) FAILED:\n  {ev['failure']}",
-                      file=sys.stderr)
+            print_failures(evidence)
             sys.exit(2)
         sys.exit(0)
 
     if not valid:
-        for ev in failures:
-            print(f"Rule {ev['rule']} ({ev['title']}) FAILED:\n  {ev['failure']}",
-                  file=sys.stderr)
+        print_failures(evidence)
         sys.exit(2)
 
     print(json.dumps(result, ensure_ascii=False, indent=2))
