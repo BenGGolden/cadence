@@ -28,7 +28,8 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
   the rest are deterministic helpers the dispatch
   prose invokes via Bash (`validate_workflow.py`, `_common.py`,
   `parse_comments.py`, `emit_tracking_comment.py`, `classify_drift.py`,
-  `classify_gate.py`, `route_fire.py`, `compose_lifecycle_context.py`,
+  `classify_gate.py`, `classify_merge.py`, `route_fire.py`,
+  `compose_lifecycle_context.py`,
   `filter_candidates.py`, `render_status_report.py`,
   `render_sweep_report.py`, `promote_acceptance_criteria.py`).
   `route_fire.py` is the tick.md routing
