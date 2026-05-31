@@ -159,25 +159,33 @@ for the discipline.
 
 ### Ticket quality
 
-Cadence treats every Linear issue as a contract. The planner subagent
-refuses to plan a ticket whose description does not contain an
-`## Acceptance Criteria` H2 with at least one
-`- [ ] **AC-N** — <specific outcome>` checkbox item — those refusals
-count toward `max_attempts_per_issue` and eventually escalate with the
-`cadence-needs-human` label.
+Cadence treats every Linear issue as a contract — the
+`## Acceptance Criteria` block is what the implementer builds against and
+the reviewer checks. But a ticket no longer *needs* that block before it
+can be planned. When the description lacks valid
+`- [ ] **AC-N** — <specific outcome>` checkbox items, the planner subagent
+**authors** the acceptance criteria as part of its plan, emitting them in a
+`## Proposed Acceptance Criteria` section of its summary comment. If the
+operator already wrote some AC, the planner augments — it proposes only the
+gap items and never rewrites existing AC.
 
-To draft well-formed tickets, run `/cadence:create-ticket` in your local
-Claude Code session. It walks you through the template at
+Those proposed criteria are the human's call at the `plan_review` gate. On
+**approve**, the Cadence bootstrap promotes the planner's latest proposed AC
+into the issue description's `## Acceptance Criteria` block (a deterministic,
+idempotent merge — `templates/hooks/promote_acceptance_criteria.py`), *then*
+the same fire proceeds to `implement`, so the implementer reads the
+now-populated AC from the description. On **rework**, the description is
+left untouched and the re-running planner re-proposes per the feedback.
+
+To draft well-formed tickets faster *locally*, run `/cadence:create-ticket`
+in your Claude Code session. It walks you through the template at
 `.claude/ticket-template.md`, validates each AC against a vagueness
 heuristic, and emits a paste-ready Markdown blob you drop into Linear's
 "New Issue" form. The command does not touch Linear directly — keeping
 local sessions free of any Linear MCP requirement — and does not invoke
-any subagent.
-
-For tickets created outside this flow (in Linear's UI, or imported from
-another tracker), paste the contents of `.claude/ticket-template.md` into
-the description and fill in the sections; the planner's quality bar is
-the same either way.
+any subagent. It's now an optional shortcut, not a precondition: a ticket
+created from Linear's UI or imported from another tracker still gets
+planned, with the planner supplying any missing AC for you to approve.
 
 ### Mode B — Local (`/loop`)
 
