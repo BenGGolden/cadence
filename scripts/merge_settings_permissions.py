@@ -52,9 +52,9 @@ from pathlib import Path
 # for verbs that do not exist on the server are harmless — the permission
 # system tolerates them.
 CADENCE_VERBS = (
-    "list_issues",     # read: candidate query (tick step 5, sweep step 3, status step 3)
-    "get_issue",       # read: lock recheck, issue refetch, label re-read in tick step 10
-    "list_comments",   # read: tracking-comment parsing (tick step 9, status step 4)
+    "list_issues",     # read: candidate query (tick step 3, sweep step 3, status step 3)
+    "get_issue",       # read: lock recheck, issue refetch, label re-read in tick step 6
+    "list_comments",   # read: tracking-comment parsing (tick step 6, status step 4)
     "create_comment",  # write: post tracking comments and subagent summaries
     "save_comment",    # write: same intent, alternate name on some namespaces
     "update_issue",    # write: state changes and label mutations on some namespaces

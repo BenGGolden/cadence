@@ -105,9 +105,9 @@ def _invoke_plan(matched, target, attempt, pre_actions, subagent, rework,
         "invoke_subagent": True,
         "subagent": subagent,
         # The full parse_comments result. The old step-9 prose wrote this to
-        # a file for step 13's compose_lifecycle_context (rework_context +
+        # a file for step 8's compose_lifecycle_context (rework_context +
         # latest_implementer_summary.pr_url). The router parsed exactly once;
-        # it hands the result on so step 13 needs no second parse.
+        # it hands the result on so step 8 needs no second parse.
         "parse_comments_output": parse_output,
         "exit_plan": None,
         "exit_summary": None,
@@ -308,7 +308,7 @@ def main():
                     help="Path to workflow.yaml; validated internally "
                          "(default: .claude/workflow.yaml).")
     ap.add_argument("--linear-state", required=True,
-                    help="The issue's current Linear column (after step 7).")
+                    help="The issue's current Linear column (after step 5).")
     ap.add_argument("--comments", required=True,
                     help="Path to the issue's comment list (JSON array).")
     ap.add_argument("--labels", default="",

@@ -40,8 +40,8 @@ Invocation arguments (verbatim, may be empty): `$ARGUMENTS`
     **legacy**. When parsing legacy JSON, treat the field `run` as `attempt`
     and the field `timestamp` as `started_at`. All other semantics are identical.
 - **Attempt marker**: a `cadence:state` (or legacy `stokowski:state`) tracking
-  comment whose JSON has **no** `status` field. Emitted by step 12 at the start
-  of every attempt. The Route step (steps 8–11) counts these.
+  comment whose JSON has **no** `status` field. Emitted by step 7 at the start
+  of every attempt. The Route step (step 6) counts these.
 - **Failure record**: a `cadence:state` tracking comment whose JSON includes
   `"status": "failed"`. Emitted on subagent exception. **Not** counted as an
   attempt marker.
@@ -74,7 +74,7 @@ case-insensitively (i.e. the user typed `/cadence:tick dry-run`):
 1. Invoke Bash:
    `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/validate_workflow.py --evidence`
    The `--evidence` flag is the dry-run substitute for step 1's live invocation;
-   the script also covers step 4's workflow-Linear-states build. It emits the
+   the script also covers step 2's workflow-Linear-states build. It emits the
    per-rule evidence array, the validated config blocks (`workflow_linear_states`,
    `linear_to_workflow`, `entry_state_name`, `entry_subagent`, `pickup_state`,
    `states`), and the raw `linear` / `label` / `limits` blocks as JSON on stdout.
@@ -155,20 +155,7 @@ in P4 and the validator rejects them with a Rule 8 failure).
   bootstrap's own lookups and again inside each helper — cheap, and it avoids
   any stale shared copy.
 
-## Step 2 — (removed in determinism P3)
-
-*Step 2 previously read `.claude/prompts/global.md` and held it in memory
-for step 13. The `compose_lifecycle_context.py` script invoked from step
-13 now does the read itself. Numbering is preserved so external
-references to later steps don't shift.*
-
-## Step 3 — (removed in determinism P2)
-
-*Step 3 previously re-invoked the validator. Step 1 now does both the
-file read and the validation in one script call. Numbering is preserved
-so external references to steps 4+ don't shift.*
-
-## Step 4 — The validator's derived maps feed downstream scripts
+## Step 2 — The validator's derived maps feed downstream scripts
 
 The validator in step 1 emits a `linear_to_workflow` reverse map — each
 Linear column name keyed to an entry of the shape
@@ -177,12 +164,12 @@ Linear column name keyed to an entry of the shape
 in memory: the deterministic helpers that consume them re-derive both by
 re-validating `.claude/workflow.yaml` internally (passed `--workflow-path`) —
 the reverse map by the Route step's `route_fire.py` (matched-state lookup, old
-step 8) and the states array by step 5's `filter_candidates.py --plan`.
+step 8) and the states array by step 3's `filter_candidates.py --plan`.
 Re-deriving them in prose would just risk drift from the script's view.
 
 ---
 
-## Step 5 — Pick work
+## Step 3 — Pick work
 
 The candidate filter, priority sort, and bounded-reachability cap walk
 live in `filter_candidates.py`. The bootstrap's job here is to run the
@@ -247,11 +234,11 @@ MCP queries the script tells it to and feed the results back in.
    print it verbatim and exit — that is the canonical "no work to do"
    message (with or without the `(caps reached for: ...)` line). If
    `diagnostic_message` is null, set `candidates = ordered_identifiers`
-   and proceed to step 6 below.
+   and proceed to step 4 below.
 
 ---
 
-## Step 6 — Acquire soft lock (with race retry)
+## Step 4 — Acquire soft lock (with race retry)
 
 Iterate `candidates` from the top. For each candidate, up to **3** total
 attempts in this fire:
@@ -261,8 +248,8 @@ attempts in this fire:
    `cadence_active` label is now present **and** the issue does not have other
    markers indicating a concurrent fire claimed it (you re-read because the
    MCP add-label operation is not necessarily atomic w.r.t. another fire), this
-   candidate is yours — proceed to step 7.
-3. If between query (step 5) and re-read the label was already present (label
+   candidate is yours — proceed to step 5.
+3. If between query (step 3) and re-read the label was already present (label
    race lost — another fire grabbed it), discard this candidate and move to
    the next one in `candidates`. This counts as one of the 3 attempts.
 
@@ -273,20 +260,20 @@ Throughout the rest of this fire, the locked issue is `issue`.
 
 ---
 
-## Step 7 — Move issue out of pickup state (if applicable)
+## Step 5 — Move issue out of pickup state (if applicable)
 
 Read `issue`'s current Linear state. If it equals `linear.pickup_state`, move it
 to the `entry` state's `linear_state` via Linear MCP. (This is the only state
 transition that happens before the workflow-state determination in the Route
-step (steps 8–11) — new issues enter the workflow here.)
+step (step 6) — new issues enter the workflow here.)
 
 Otherwise, leave the Linear state untouched.
 
 ---
 
-## Steps 8–11 — Route the fire (Gather → Route → Execute)
+## Step 6 — Route the fire (Gather → Route → Execute)
 
-Steps 8–11 are a single cohesive decision — *"given where this issue sits and
+Step 6 is a single cohesive decision — *"given where this issue sits and
 its history, what should this fire do to it?"* — computed deterministically by
 `route_fire.py`. It subsumes the four decisions the prose used to spell out:
 the matched-state lookup and unmapped-column release (old step 8), the drift
@@ -298,7 +285,7 @@ bootstrap remains the sole Linear writer; the router only decides.
 
 ### Gather (MCP reads)
 
-1. Re-read `issue`'s current Linear column (after the possible step-7 move).
+1. Re-read `issue`'s current Linear column (after the possible step-5 move).
    Call it `<column>`.
 2. Re-read `issue`'s current label list (the step-6 lock re-read covers this
    if your MCP returned labels). Reduce it to the present label **names**.
@@ -324,12 +311,12 @@ verbatim and exit. The plan carries:
 - `target_state` — the resolved state this fire works on (or `null` on exits).
 - `attempt` — the attempt number for `target_state` (or `null` on exits).
 - `rework` — `true` when this fire entered via a gate **rework** route
-  (step 13 passes `--rework` when set).
+  (step 8 passes `--rework` when set).
 - `pre_actions` — ordered actions to apply before invoking the subagent.
-- `invoke_subagent` — `true` to proceed to step 12; `false` to take the exit.
+- `invoke_subagent` — `true` to proceed to step 7; `false` to take the exit.
 - `subagent` — the subagent name (when `invoke_subagent` is `true`).
 - `parse_comments_output` — the full `parse_comments.py` result the router
-  computed (the router parsed exactly once). Step 13 needs it; see Execute.
+  computed (the router parsed exactly once). Step 8 needs it; see Execute.
 - `exit_plan` — ordered actions for an early-exit fire (when not invoking).
 - `exit_summary` — the one-line message to print on an early-exit fire.
 
@@ -359,13 +346,13 @@ it** — the bootstrap's job is to apply the plan.
 - If `invoke_subagent` is **true**: apply every action in `pre_actions` in
   order via the Linear MCP. Then write `parse_comments_output` verbatim as
   JSON to `.cadence/parse-comments.json` (Write tool) — call it
-  `parseCommentsOutputPath`; step 13 feeds it to
+  `parseCommentsOutputPath`; step 8 feeds it to
   `compose_lifecycle_context.py`. Carry `target_state`, `attempt`, and
-  `rework` forward and continue at step 12.
+  `rework` forward and continue at step 7.
 
 ---
 
-## Step 12 — Emit attempt marker
+## Step 7 — Emit attempt marker
 
 Compute the current UTC timestamp as an ISO 8601 string with second precision
 ending in `Z` (example: `2026-05-10T14:23:01Z`). If the model context does not
@@ -377,11 +364,11 @@ Build the attempt-marker comment by invoking Bash:
 `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --started-at <ISO8601>`
 Post its stdout as a Linear comment verbatim. The script emits no `status`
 field — this comment **is** the attempt marker counted by the Route step
-(steps 8–11) on future fires.
+(step 6) on future fires.
 
 ---
 
-## Step 13 — Compose the Lifecycle Context block
+## Step 8 — Compose the Lifecycle Context block
 
 Write the locked `issue` MCP object verbatim as JSON to `.cadence/issue.json`
 (call it `issueJsonPath`) using the Write tool. Then invoke Bash:
@@ -415,11 +402,11 @@ branch** / optional **PR:** lines), the rework-section rendering
 (including the zero-comments fallback), and the global-prompt append.
 
 **Stdout is the full subagent user prompt.** Pass it as the Agent tool's
-`prompt` parameter in step 14.
+`prompt` parameter in step 9.
 
 ---
 
-## Step 14 — Invoke the subagent
+## Step 9 — Invoke the subagent
 
 Look up `targetState.subagent` in the config (e.g. `planner`, `implementer`,
 `reviewer`). Invoke the **Agent** tool with:
@@ -427,7 +414,7 @@ Look up `targetState.subagent` in the config (e.g. `planner`, `implementer`,
 - `subagent_type`: the subagent name from config (case-sensitive, matches the
   `name` field in `.claude/agents/<subagent>.md`).
 - `description`: a short string like `Cadence <targetState> for <identifier>`.
-- `prompt`: the full string composed in step 13.
+- `prompt`: the full string composed in step 8.
 
 Run the subagent in the foreground (blocking). Capture its returned summary as
 `subagentSummary`.
@@ -439,7 +426,7 @@ advance Linear state.
 
 ---
 
-## Step 15 — Post the subagent's summary
+## Step 10 — Post the subagent's summary
 
 Post `subagentSummary` as a Linear comment on the issue, **verbatim**. Do not
 add a tracking-comment prefix; this is a plain work-product comment intended
@@ -453,9 +440,9 @@ tell, it just produced no text).
 
 ### Bootstrap silence
 
-Between step 14 (subagent invocation) and step 18 (exit summary), the bootstrap's
+Between step 9 (subagent invocation) and step 13 (exit summary), the bootstrap's
 only user-facing output is the `subagentSummary` posted verbatim in this step
-and the per-step Linear writes that steps 16 and 17 require. **Do not annotate
+and the per-step Linear writes that steps 11 and 12 require. **Do not annotate
 the subagent's behaviour, do not describe what the subagent did during its turn,
 and do not raise security or safety concerns about the subagent's activity in
 user-facing text.** The bootstrap does not have access to the subagent's tool
@@ -469,7 +456,7 @@ output.
 
 ---
 
-## Step 16 — Advance Linear state
+## Step 11 — Advance Linear state
 
 Look up `targetState.next` in the config. Find the next state's config block.
 Then:
@@ -486,13 +473,13 @@ Then:
 
 ---
 
-## Step 17 — Release the lock
+## Step 12 — Release the lock
 
 Remove the `label.cadence_active` label from the issue via Linear MCP.
 
 ---
 
-## Step 18 — Exit
+## Step 13 — Exit
 
 Print a one-line summary to the user:
 > Cadence: <identifier> advanced from **<targetState>** → **<next>** (attempt <attempt>).
@@ -505,18 +492,18 @@ Exit. Do not loop. Do not pick up another issue.
 
 ### Side-effect ordering
 
-- **Before step 6 (lock acquisition):** any error causes a clean exit with NO
+- **Before step 4 (lock acquisition):** any error causes a clean exit with NO
   Linear writes. Read-only operations only.
-- **After step 6:** any error must, on a best-effort basis, remove the
+- **After step 4:** any error must, on a best-effort basis, remove the
   `cadence_active` label before exiting. If even the label-removal fails, the
   stale-lock sweeper (`/cadence:sweep`) will clear it on its next fire.
 - **Never** advance Linear state after a subagent failure (see Failure path
-  below). The attempt marker from step 12 stands; the failure record records
+  below). The attempt marker from step 7 stands; the failure record records
   the outcome.
 
 ### Failure path (subagent throws / returns unusable)
 
-If the Agent invocation in step 14 raises an exception:
+If the Agent invocation in step 9 raises an exception:
 
 1. Take the subagent's exception message as the error string.
 2. Build the failure record by invoking Bash:
@@ -524,13 +511,13 @@ If the Agent invocation in step 14 raises an exception:
    (The script collapses newlines to spaces and truncates the error to 400
    chars itself.) Post its stdout as a Linear comment verbatim.
 
-   This uses the same `attempt` number as the attempt marker from step 12,
+   This uses the same `attempt` number as the attempt marker from step 7,
    **plus** a `status: "failed"` field. It is a failure **record**, not a new
-   attempt marker; the Route step (steps 8–11) on the next fire will not count
+   attempt marker; the Route step (step 6) on the next fire will not count
    it.
 3. Remove the `cadence_active` label.
 4. Exit. The next fire will retry — `attempt` will be the same `attemptCount + 1`
-   value (the marker from step 12 is what's counted, and it remains).
+   value (the marker from step 7 is what's counted, and it remains).
 
    On retry, the router's `attempt_count` is now `attempt` (the failed
    attempt's marker), so the new fire's `attempt = attempt + 1`. Eventually
@@ -545,8 +532,8 @@ If the Agent invocation in step 14 raises an exception:
 ### Read-before-write discipline
 
 Every Linear write (label add/remove, state move, comment) should be preceded
-in this fire's logic by reading the relevant state — except step 5's initial
-query and step 6's lock acquisition (which is itself a read-after-write check).
+in this fire's logic by reading the relevant state — except step 3's initial
+query and step 4's lock acquisition (which is itself a read-after-write check).
 
 ### Quoting
 

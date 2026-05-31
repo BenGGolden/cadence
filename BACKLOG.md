@@ -9,27 +9,6 @@ served live in [GUIDEPOSTS.md](./GUIDEPOSTS.md).
 
 ---
 
-## tick.md contiguous step renumber (follow-up to route_fire extraction)
-
-**Idea**: renumber `commands/tick.md` steps to a contiguous `1..N`
-sequence. The route_fire extraction collapsed old steps 8–11 into one
-ranged "Steps 8–11 — Route the fire" section and the file still carries
-the pre-existing "Step 2 / Step 3 — (removed)" stubs, so the numbering
-has gaps. A clean renumber would drop the stubs and the range.
-
-**Why**: removes the last numbering discontinuities; the determinism pass
-that added `route_fire.py` deliberately deferred this to keep that PR's
-diff focused on behaviour.
-
-**Cost / care**: external references to tick.md step numbers must move in
-lockstep — `parse_comments.py` / `emit_tracking_comment.py` /
-`compose_lifecycle_context.py` / `validate_workflow.py` docstrings, and
-`status.md` / `sweep.md` prose. Grep the repo for `step <n>` before and
-after. Low value, moderate churn — bundle it with the next substantive
-tick.md edit rather than as a standalone PR.
-
----
-
 ## Linear OAuth app (Cadence as a first-class integration)
 
 **Idea**: register Cadence as a Linear OAuth app so the workspace sees
@@ -75,7 +54,7 @@ state — if the human approved without merging, the Linear card lands in
 Done while the PR sits open.
 
 **Why**: closes the "approved but PR not merged" gap that
-[tick.md step 10b](./commands/tick.md) currently leaves to convention.
+[tick.md's Route step](./commands/tick.md) currently leaves to convention.
 Linear and GitHub move together, end of story.
 
 **The setting is the state itself.** Cadence's workflow YAML already
@@ -135,7 +114,7 @@ merged first?" surfaced the gap.
 
 **Idea**: when a `/schedule` routine fails before producing any
 Linear-visible side effect — hook block, container-setup error,
-unhandled exception during `/cadence:tick` step 1-5 — give the
+unhandled exception during `/cadence:tick` step 1-3 — give the
 operator a signal somewhere they actually look. Today these failures
 end the routine quietly.
 
@@ -243,8 +222,8 @@ gap.
 
 - Keep the existing per-write hook — it's useful in `/loop` and as a
   per-fire stream operators tail.
-- Add a step 17.5 in [commands/tick.md](./commands/tick.md) (or a
-  small helper script invoked from step 18) that reads the fire's
+- Add a step 12.5 in [commands/tick.md](./commands/tick.md) (or a
+  small helper script invoked from step 13) that reads the fire's
   `.cadence/audit.log` and posts a single `<!-- cadence:audit ... -->`
   tracking comment summarising the writes.
 - Mark the comment with its own prefix so
@@ -473,8 +452,8 @@ that silently changes dispatch behaviour gets caught before it lands.
 **Why**: the current verification model is operator-run smoke tests
 against a real Linear project, one fire at a time. That worked for
 shipping the hardening phases but doesn't scale to "did the model
-upgrade subtly change how step 10 dispatches?" or "did the prose edit
-in step 5 break the cap walk for a candidate-state shape we don't
+upgrade subtly change how the Route step dispatches?" or "did the prose edit
+in step 3 break the cap walk for a candidate-state shape we don't
 hit in normal traffic?" A fake MCP that records what the bootstrap
 would have written to Linear, plus a stored expected-output file per
 scenario, would close that gap.

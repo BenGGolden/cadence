@@ -2,10 +2,10 @@
 """Plan and filter Linear pickup candidates for Cadence /cadence:tick.
 
 Caller(s):
-  - commands/tick.md step 5 (pickup query plan + post-query candidate filter)
+  - commands/tick.md step 3 (pickup query plan + post-query candidate filter)
 
 Failure modes eliminated:
-  - Per-state scanning in prose: step 5 used to iterate the validator's
+  - Per-state scanning in prose: step 3 used to iterate the validator's
     `states` map looking for `max_in_flight` keys to decide which per-state
     queries to fire. Plan mode emits the list once.
   - Bounded reachability walk drift: P8.2 shipped a correctness fix
@@ -112,7 +112,7 @@ def _priority_rank(p):
     """Sort key piece: lower is higher priority.
 
     Linear priority numbers: 1=Urgent, 2=High, 3=Medium, 4=Low,
-    0=No priority. Per tick.md step 5, null and "No priority" sort last.
+    0=No priority. Per tick.md step 3, null and "No priority" sort last.
     """
     if isinstance(p, bool) or p is None:
         return float("inf")
@@ -271,7 +271,7 @@ def _filter(config, candidates, in_flight_counts):
         # Terminal-column issues have no useful work for any subagent.
         # The bootstrap's job there is to leave them alone; the workflow
         # is already complete for that issue. Without this drop, a Done
-        # issue would surface as a candidate, step 14 would look up the
+        # issue would surface as a candidate, step 9 would look up the
         # (absent) terminal subagent, and the fire would die in the
         # failure path — burning an attempt count for nothing.
         col_body = states_by_linear_body.get(col)

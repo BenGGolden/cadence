@@ -276,7 +276,7 @@ class ComposeLifecycleContextTests(unittest.TestCase):
                           "sent back", r.stdout)
 
     def test_no_rework_flag_omits_section_even_with_context(self):
-        # Even if parse output has rework_context (e.g. step 9 ran with
+        # Even if parse output has rework_context (e.g. step 6 ran with
         # --gate-name), the section is gated on the explicit --rework flag.
         rework = [{"body": "x", "author": "A", "createdAt": "2026-05-27"}]
         with tempfile.TemporaryDirectory() as td:

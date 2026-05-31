@@ -158,7 +158,7 @@ class RouteFireTests(unittest.TestCase):
             self.assertEqual(plan["attempt"], 1)
             self.assertEqual(plan["pre_actions"], [])
             self.assertFalse(plan["rework"])
-            # The router parsed once; step 13 reuses this without re-parsing.
+            # The router parsed once; step 8 reuses this without re-parsing.
             self.assertIsInstance(plan["parse_comments_output"], dict)
             self.assertIn("rework_context", plan["parse_comments_output"])
 

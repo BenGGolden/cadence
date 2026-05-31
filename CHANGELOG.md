@@ -6,6 +6,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — renumber tick.md steps to a contiguous sequence
+- `commands/tick.md` now numbers its sections `Step 0` (dry-run) followed by a
+  contiguous `Step 1`–`Step 13`. The two `Step N — (removed in determinism …)`
+  placeholder stubs are deleted and the ranged `Steps 8–11 — Route the fire`
+  heading becomes a single `Step 6`. Mapping (old → new, 0/1 unchanged):
+  `4→2, 5→3, 6→4, 7→5, (8–11)→6, 12→7, 13→8, 14→9, 15→10, 16→11, 17→12, 18→13`.
+- **No behavioural change.** tick.md is dispatch prose, not parsed by any code;
+  routing logic and the Gather→Route→Execute structure are untouched. Every
+  *live* cross-reference to a tick.md step number moved in lockstep — docstrings
+  in `validate_workflow.py`, `compose_lifecycle_context.py`,
+  `filter_candidates.py`, `emit_tracking_comment.py`, `classify_drift.py`,
+  `route_fire.py`, plus `status.md` prose, `merge_settings_permissions.py`
+  comments, and test comments. A stale `validate_workflow.py` reference to
+  "step 3 (live validation)" (two refactors out of date) was corrected to step 1.
+- The `route_fire.py` / `test_route_fire.py` `Step 8/9/10/11` decision taxonomy
+  and all "old step N" historical references are deliberately left as-is — they
+  name the pre-extraction routing decisions, not current tick.md headings.
+- Clears the "tick.md contiguous step renumber" item from `BACKLOG.md` (the
+  determinism pass that added `route_fire.py` deferred it to keep that diff
+  focused on behaviour).
+
 ### Changed — fold the validator-output scratch hop into the consumers
 - The bootstrap no longer writes `validate_workflow.py`'s JSON to
   `.cadence/validator-output.json` and threads it (`--workflow-config
