@@ -17,7 +17,7 @@ SCRIPT = REPO_ROOT / "templates" / "hooks" / "emit_tracking_comment.py"
 
 # Body shape: "<!-- cadence:<prefix> {json} -->\n<visible markdown>"
 BODY_RE = re.compile(
-    r"^<!--\s+cadence:(?P<prefix>state|gate|reconcile|sweep)\s+"
+    r"^<!--\s+cadence:(?P<prefix>state|gate|reconcile|sweep|merge)\s+"
     r"(?P<json>\{.*?\})\s+-->\n(?P<visible>.*)$",
     re.DOTALL,
 )
@@ -123,6 +123,84 @@ class EmitTrackingCommentTests(unittest.TestCase):
             "state": "human_review", "status": "escalated",
         })
         self.assertIn("human_review", visible)
+
+    # ---------- merge ----------
+
+    def test_merge_merged(self):
+        r = run_emit("--kind", "merge", "--state", "human_review",
+                     "--status", "merged",
+                     "--pr-url", "https://github.com/o/r/pull/7")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+        prefix, payload, visible = parse_body(r.stdout)
+        self.assertEqual(prefix, "merge")
+        self.assertEqual(payload, {
+            "state": "human_review", "status": "merged",
+            "pr_url": "https://github.com/o/r/pull/7",
+        })
+        self.assertIn("Merged PR", visible)
+        self.assertIn("https://github.com/o/r/pull/7", visible)
+
+    def test_merge_already_merged(self):
+        r = run_emit("--kind", "merge", "--state", "human_review",
+                     "--status", "already_merged",
+                     "--pr-url", "https://github.com/o/r/pull/7")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+        prefix, payload, visible = parse_body(r.stdout)
+        self.assertEqual(prefix, "merge")
+        self.assertEqual(payload["status"], "already_merged")
+        self.assertEqual(payload["pr_url"], "https://github.com/o/r/pull/7")
+        self.assertIn("already merged", visible)
+
+    def test_merge_failed_cleans_error(self):
+        r = run_emit("--kind", "merge", "--state", "human_review",
+                     "--status", "failed",
+                     "--error", "required check\nstill\r\nrunning")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+        prefix, payload, visible = parse_body(r.stdout)
+        self.assertEqual(prefix, "merge")
+        self.assertEqual(payload["status"], "failed")
+        self.assertEqual(payload["error"], "required check still running")
+        self.assertIn("Needs human intervention", visible)
+
+    def test_merge_failed_truncates_error_at_400_chars(self):
+        r = run_emit("--kind", "merge", "--state", "human_review",
+                     "--status", "failed", "--error", "x" * 500)
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+        _, payload, _ = parse_body(r.stdout)
+        self.assertEqual(len(payload["error"]), 400)
+
+    def test_merge_no_pr(self):
+        r = run_emit("--kind", "merge", "--state", "human_review",
+                     "--status", "no_pr")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+        prefix, payload, visible = parse_body(r.stdout)
+        self.assertEqual(prefix, "merge")
+        self.assertEqual(payload, {"state": "human_review", "status": "no_pr"})
+        self.assertIn("no PR", visible)
+        self.assertIn("human_review", visible)
+
+    def test_merge_missing_state_exits_1(self):
+        r = run_emit("--kind", "merge", "--status", "no_pr")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("--state", r.stderr)
+
+    def test_merge_missing_status_exits_1(self):
+        r = run_emit("--kind", "merge", "--state", "human_review")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("--status", r.stderr)
+
+    def test_merge_merged_missing_pr_url_exits_1(self):
+        r = run_emit("--kind", "merge", "--state", "human_review",
+                     "--status", "merged")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("--pr-url", r.stderr)
+
+    def test_merge_rejects_gate_status(self):
+        # `waiting` is a valid --status choice but illegal for --kind merge.
+        r = run_emit("--kind", "merge", "--state", "human_review",
+                     "--status", "waiting")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("merge", r.stderr)
 
     # ---------- reconcile ----------
 
@@ -306,6 +384,17 @@ class EmitTrackingCommentTests(unittest.TestCase):
                        "--last-activity", "2026-05-26T11:00:00Z",
                        "--stale-minutes", "60",
                        "--threshold-minutes", "30")),
+            ("merge merged", ("--kind", "merge", "--state", "human_review",
+                              "--status", "merged",
+                              "--pr-url", "https://github.com/o/r/pull/7")),
+            ("merge already_merged", ("--kind", "merge", "--state",
+                                      "human_review", "--status",
+                                      "already_merged", "--pr-url",
+                                      "https://github.com/o/r/pull/7")),
+            ("merge failed", ("--kind", "merge", "--state", "human_review",
+                              "--status", "failed", "--error", "boom")),
+            ("merge no_pr", ("--kind", "merge", "--state", "human_review",
+                             "--status", "no_pr")),
         ]
         for name, args in cases:
             with self.subTest(case=name):
