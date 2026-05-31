@@ -142,6 +142,8 @@ class RouteFireTests(unittest.TestCase):
             self.assertIn("unmapped Linear state `Backlog`",
                           plan["exit_plan"][0]["body"])
             self.assertEqual(plan["exit_plan"][1]["label"], "cadence-active")
+            # Exit plans always carry promote_ac false.
+            self.assertFalse(plan["promote_ac"])
 
     # ---------- agent state happy path ----------
 
@@ -158,6 +160,8 @@ class RouteFireTests(unittest.TestCase):
             self.assertEqual(plan["attempt"], 1)
             self.assertEqual(plan["pre_actions"], [])
             self.assertFalse(plan["rework"])
+            # Normal agent fire — not a gate approve, so no AC promotion.
+            self.assertFalse(plan["promote_ac"])
             # The router parsed once; step 8 reuses this without re-parsing.
             self.assertIsInstance(plan["parse_comments_output"], dict)
             self.assertIn("rework_context", plan["parse_comments_output"])
@@ -260,6 +264,8 @@ class RouteFireTests(unittest.TestCase):
             self.assertEqual(plan["pre_actions"][0]["label"], "cadence-approve")
             self.assertEqual(plan["pre_actions"][1]["linear_state"],
                              "Implementing")
+            # Gate approve into a non-terminal agent state → promote AC.
+            self.assertTrue(plan["promote_ac"])
 
     def test_gate_approve_to_terminal(self):
         with tempfile.TemporaryDirectory() as td:
@@ -273,6 +279,8 @@ class RouteFireTests(unittest.TestCase):
                              ["remove_label", "move_state", "remove_label"])
             self.assertEqual(plan["exit_plan"][1]["linear_state"], "Done")
             self.assertEqual(plan["exit_plan"][2]["label"], "cadence-active")
+            # Terminal approve is an exit plan — never promotes AC.
+            self.assertFalse(plan["promote_ac"])
 
     def test_gate_rework_under_cap(self):
         with tempfile.TemporaryDirectory() as td:
@@ -289,6 +297,8 @@ class RouteFireTests(unittest.TestCase):
             self.assertIn("cadence:gate", plan["pre_actions"][1]["body"])
             self.assertEqual(plan["pre_actions"][2]["linear_state"], "Planning")
             self.assertTrue(plan["rework"])
+            # A rework fire is not an approve — no AC promotion.
+            self.assertFalse(plan["promote_ac"])
 
     def test_gate_rework_at_cap_escalates(self):
         with tempfile.TemporaryDirectory() as td:

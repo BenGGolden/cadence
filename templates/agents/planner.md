@@ -48,37 +48,31 @@ returned summary verbatim as a comment.
    prerequisite, contradiction), say so explicitly in your summary so the
    bootstrap records the failure and a human can intervene.
 
-## Ticket-quality gate
+## Acceptance-criteria handling
 
-Before producing a plan, verify the ticket meets Cadence's quality bar:
+Cadence's quality bar still applies — but it now governs what you
+*author*, not whether you refuse. An acceptance criterion is good only if
+it is independently verifiable from the diff and the test suite. Vague
+items ("works well", "is fast", "handles errors gracefully" with no
+specifics) don't count; write specific, checkable outcomes instead.
 
-1. The Lifecycle Context block's **Description** must contain a literal
-   `## Acceptance Criteria` H2.
-2. Under that heading, there must be at least one Markdown checkbox item
-   starting with `- [ ]` or `- [x]` and containing a bold `**AC-N**` ID
-   somewhere in the line.
-3. Each AC item must be independently verifiable from the diff and the
-   test suite. If an item is vague ("works well", "is fast", "handles
-   errors gracefully" with no specifics), treat it as failing.
+Look at the Lifecycle Context block's **Description**:
 
-If any check fails, **do not produce a plan**. Instead, return this
-summary verbatim (substituting the missing/failing items):
+- **If its `## Acceptance Criteria` block already has one or more valid
+  `- [ ] **AC-N**` items:** plan against them as today. If you spot a
+  genuine *gap* — an outcome the implementer must satisfy that no existing
+  AC covers — add a `## Proposed Acceptance Criteria` section to your
+  summary containing **only the additional** items. Do **not** restate or
+  rewrite the operator's existing AC.
+- **If the description has no valid AC:** produce the plan as normal **and**
+  a `## Proposed Acceptance Criteria` section enumerating the full set of
+  `- [ ] **AC-N** — <specific outcome>` items the plan implies.
 
-    ## Cannot plan — ticket missing acceptance criteria
-
-    This ticket cannot be planned because:
-
-    - <bullet per failing rule>
-
-    A Cadence-compatible ticket needs an `## Acceptance Criteria`
-    section with at least one `- [ ] **AC-N** — <specific outcome>`
-    item. See `.claude/ticket-template.md` for the expected shape, or
-    run `/cadence:create-ticket` locally to draft a fresh one.
-
-The Cadence bootstrap will post that summary as a Linear comment, mark
-this attempt as failed, and (per `max_attempts_per_issue`) eventually
-escalate with the `cadence-needs-human` label so a human rewrites the
-ticket.
+You do **not** write to Linear. The Cadence bootstrap promotes your
+proposed AC into the issue description **after a human approves the plan at
+`plan_review`** — not now. So if this is a rework round, the description is
+still AC-free; simply re-emit your `## Proposed Acceptance Criteria` per the
+feedback and the bootstrap will promote the latest set on the next approval.
 
 ## What to return
 
@@ -110,7 +104,16 @@ new tests to add, commands to run, smoke checks).
 
 ### Risks / open questions
 Anything the implementer or reviewer should be alert to.
+
+## Proposed Acceptance Criteria
+- [ ] **AC-1** — <specific, verifiable outcome>
+- [ ] **AC-2** — ...
 ```
+
+Include the trailing `## Proposed Acceptance Criteria` section **only** when
+you are proposing AC (the description has no valid AC, or you found a gap to
+augment — see "Acceptance-criteria handling" above). When the description's
+AC are already complete, omit the section entirely.
 
 If this is a **rework run** (the Lifecycle Context will say so), open the
 summary with a short paragraph naming what changed in the plan versus the

@@ -30,7 +30,8 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
   `parse_comments.py`, `emit_tracking_comment.py`, `classify_drift.py`,
   `classify_gate.py`, `route_fire.py`, `compose_lifecycle_context.py`,
   `filter_candidates.py`, `render_status_report.py`,
-  `render_sweep_report.py`). `route_fire.py` is the tick.md routing
+  `render_sweep_report.py`, `promote_acceptance_criteria.py`).
+  `route_fire.py` is the tick.md routing
   orchestrator (the old steps 8–11 decision core) — it imports
   `parse_comments`, `classify_drift`, `classify_gate`, and
   `emit_tracking_comment`'s formatters to emit one routing plan; the

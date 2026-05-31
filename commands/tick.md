@@ -312,6 +312,10 @@ verbatim and exit. The plan carries:
 - `attempt` — the attempt number for `target_state` (or `null` on exits).
 - `rework` — `true` when this fire entered via a gate **rework** route
   (step 8 passes `--rework` when set).
+- `promote_ac` — `true` when this fire entered via a gate **approve** and
+  should attempt to promote planner-proposed acceptance criteria into the
+  issue description (see Execute below). `false` for normal agent fires,
+  rework fires, and all exits.
 - `pre_actions` — ordered actions to apply before invoking the subagent.
 - `invoke_subagent` — `true` to proceed to step 7; `false` to take the exit.
 - `subagent` — the subagent name (when `invoke_subagent` is `true`).
@@ -347,8 +351,39 @@ it** — the bootstrap's job is to apply the plan.
   order via the Linear MCP. Then write `parse_comments_output` verbatim as
   JSON to `.cadence/parse-comments.json` (Write tool) — call it
   `parseCommentsOutputPath`; step 8 feeds it to
-  `compose_lifecycle_context.py`. Carry `target_state`, `attempt`, and
-  `rework` forward and continue at step 7.
+  `compose_lifecycle_context.py`. Then run the **Promote proposed acceptance
+  criteria** sub-phase below. Carry `target_state`, `attempt`, and `rework`
+  forward and continue at step 7.
+
+  **Promote proposed acceptance criteria (gate-approve only).** If
+  `plan.promote_ac` is `true`:
+
+  1. Write the locked `issue`'s current `description` to
+     `.cadence/description-current.md` (Write tool).
+  2. Invoke Bash:
+     `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/promote_acceptance_criteria.py --comments <commentsFile> --description-file .cadence/description-current.md`
+     Parse the JSON on stdout. (`<commentsFile>` is the `.cadence/comments.json`
+     written in this step's Gather.) The helper finds the planner's latest
+     `## Proposed Acceptance Criteria` comment, merges (augments) its items
+     into the description's `## Acceptance Criteria` block, and emits
+     `{promote, new_description, added_count, reason}`. It performs **no**
+     Linear write — it only computes the new body.
+  3. If `promote` is `true`: update the Linear issue's **description** to
+     `new_description` via the Linear MCP (the `update_issue` / `save_issue`
+     write tool the connected server exposes, with the description field).
+     This is a **new bootstrap Linear-write surface** (issue-description
+     update) — still performed by the bootstrap as the sole Linear writer.
+     Then **re-read the issue via `get_issue`** and use that refreshed object
+     as the locked `issue` from here on, so step 8 composes the implementer's
+     context against the promoted AC. (This is a read-after-write refresh of
+     one object — the in-memory `issue` still holds the pre-write
+     description, so do **not** trust an in-memory edit. It is **not** a
+     restart: nothing re-routes, re-locks, or re-picks work; the fire
+     proceeds straight to step 7.)
+  4. If `promote` is `false`: take no Linear write and proceed (no re-read
+     needed — the in-hand `issue` is already current).
+
+  When `plan.promote_ac` is `false`, skip this sub-phase entirely.
 
 ---
 

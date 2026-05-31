@@ -6,6 +6,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — planner authors acceptance criteria instead of refusing
+- The planner subagent no longer refuses tickets that lack an
+  `## Acceptance Criteria` block. Instead it produces the plan as normal and
+  emits a `## Proposed Acceptance Criteria` section in its summary. When the
+  operator already wrote some AC, it augments — proposing only the gap items,
+  never rewriting existing AC. The old "Cannot plan — ticket missing
+  acceptance criteria" refusal (which burned the whole attempt budget per
+  malformed ticket) is gone. `templates/agents/planner.md`.
+- **New deterministic helper** `templates/hooks/promote_acceptance_criteria.py`
+  merges the planner's latest proposed AC into the description's
+  `## Acceptance Criteria` block, idempotently (dedupes already-present items;
+  appends a fresh block when none exists; first `## Acceptance Criteria` H2
+  wins). It performs no Linear write — it only computes the new body.
+- **Promote-on-approval timing.** The bootstrap promotes proposed AC into the
+  issue description **only when the plan is approved at `plan_review`**, not at
+  plan time. `route_fire.py` now emits a `promote_ac` flag (true exactly for a
+  gate **approve** into a non-terminal agent state); `commands/tick.md` Step 6
+  Execute runs the helper on that flag, writes the merged description back via
+  the Linear MCP, and **re-reads the issue** so the implementer is composed
+  against the promoted AC. A rework round leaves the description AC-free and the
+  re-running planner re-proposes — no marker or distinguishing state needed.
+- **New bootstrap Linear-write surface:** issue-description update (previously
+  the bootstrap only created comments and moved state / labels). Logged by
+  `templates/hooks/audit_linear_writes.py` (`description: …` summary line).
+- `/cadence:create-ticket` is now an *optional* faster local AC-drafting path,
+  not a precondition. README "Ticket quality" section rewritten accordingly.
+
 ### Changed — renumber tick.md steps to a contiguous sequence
 - `commands/tick.md` now numbers its sections `Step 0` (dry-run) followed by a
   contiguous `Step 1`–`Step 13`. The two `Step N — (removed in determinism …)`

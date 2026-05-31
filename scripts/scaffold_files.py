@@ -79,6 +79,7 @@ SCAFFOLD_PLAN = (
     ("templates/hooks/validate_workflow.py",           ".claude/hooks/validate_workflow.py",           "plugin-owned"),
     ("templates/hooks/_common.py",                     ".claude/hooks/_common.py",                     "plugin-owned"),
     ("templates/hooks/parse_comments.py",              ".claude/hooks/parse_comments.py",              "plugin-owned"),
+    ("templates/hooks/promote_acceptance_criteria.py", ".claude/hooks/promote_acceptance_criteria.py", "plugin-owned"),
     ("templates/hooks/emit_tracking_comment.py",       ".claude/hooks/emit_tracking_comment.py",       "plugin-owned"),
     ("templates/hooks/classify_drift.py",              ".claude/hooks/classify_drift.py",              "plugin-owned"),
     ("templates/hooks/classify_gate.py",               ".claude/hooks/classify_gate.py",               "plugin-owned"),

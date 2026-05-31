@@ -95,12 +95,13 @@ def _reconcile_body(observed, expected, reason):
 # ----- plan constructors ---------------------------------------------------
 
 def _invoke_plan(matched, target, attempt, pre_actions, subagent, rework,
-                 parse_output):
+                 parse_output, promote_ac=False):
     return {
         "matched_state": matched,
         "target_state": target,
         "attempt": attempt,
         "rework": rework,
+        "promote_ac": promote_ac,
         "pre_actions": pre_actions,
         "invoke_subagent": True,
         "subagent": subagent,
@@ -120,6 +121,7 @@ def _exit_plan(matched, target, exit_actions, summary):
         "target_state": target,
         "attempt": None,
         "rework": False,
+        "promote_ac": False,
         "pre_actions": [],
         "invoke_subagent": False,
         "subagent": None,
@@ -223,6 +225,7 @@ def route(config, linear_state, comments, present_labels):
 
     actions = []
     is_rework = False
+    is_gate_approve = False
 
     # --- Step 9: drift check ----------------------------------------------
     drift = classify_drift.classify_drift(
@@ -277,6 +280,10 @@ def route(config, linear_state, comments, present_labels):
                     f"Approved at gate **{matched_state}** → terminal "
                     f"**{target_state}**; released lock.",
                 )
+            # Non-terminal approve falls through to invoke the next agent
+            # state in this same fire — signal the bootstrap to attempt AC
+            # promotion before composing that agent's context.
+            is_gate_approve = True
     else:
         target_state = matched_state
 
@@ -297,7 +304,8 @@ def route(config, linear_state, comments, present_labels):
     attempt = attempt_count + 1
     subagent = (states.get(target_state) or {}).get("subagent")
     return _invoke_plan(matched_state, target_state, attempt, actions,
-                        subagent, is_rework, parsed)
+                        subagent, is_rework, parsed,
+                        promote_ac=is_gate_approve)
 
 
 def main():
