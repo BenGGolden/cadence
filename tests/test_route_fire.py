@@ -363,9 +363,10 @@ class RouteFireTests(unittest.TestCase):
         # the merge exit_plan (it's an unconditional write).
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
-            # latest tracking is `implement`; matched is human_review (gate) —
-            # not implement.next (agent_review), so drift fires.
-            comments = [_attempt_marker("implement", 1, "2026-05-01T00:00:00Z")]
+            # latest tracking is `done` (terminal); the card was dragged back
+            # to "In Review". human_review is not forward-reachable from done,
+            # so drift fires and a reconcile comment is queued before routing.
+            comments = [_attempt_marker("done", 1, "2026-05-01T00:00:00Z")]
             r = _run(td, _validator_output(merge_on_approve=True), "In Review",
                      comments, labels_csv="cadence-approve")
             plan = json.loads(r.stdout)
