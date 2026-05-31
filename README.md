@@ -299,25 +299,17 @@ prose, adjust accordingly.
 
 ### Hooks (scaffolded into `.claude/hooks/` by `/cadence:init`)
 
-`/cadence:init` writes three Claude Code hook scripts under `.claude/hooks/`
+`/cadence:init` writes two Claude Code hook scripts under `.claude/hooks/`
 and merges the matching entries into `.claude/settings.json`:
 
 | Hook                              | Event              | Why                                                                                                                       |
 |-----------------------------------|--------------------|---------------------------------------------------------------------------------------------------------------------------|
 | `validate_tracking_json.py`       | `PreToolUse`       | Blocks any Linear comment-create whose `<!-- cadence:* -->` tracking-comment JSON does not parse, before it reaches Linear. |
 | `validate_workflow_on_prompt.py`  | `UserPromptSubmit` | Runs `validate_workflow.py` when a `/cadence:tick` prompt is submitted, blocking the run on a broken `.claude/workflow.yaml`. |
-| `audit_linear_writes.py`          | `PostToolUse`      | Appends one JSON-per-line entry to `.cadence/audit.log` for every Linear write the fire made.                              |
 
 The hooks are scoped: each script no-ops immediately if
 `.claude/workflow.yaml` is absent, so leaving them installed in a repo that
 no longer uses Cadence does no harm.
-
-The audit log lives at `.cadence/audit.log`. In `/loop` mode it accumulates
-across fires; in `/schedule` mode it is fresh per fire (the routine works
-on a clone that is discarded when the session ends) and is most useful for
-debugging the current session via claude.ai/code/sessions. The hook creates
-`.cadence/.gitignore` containing `*` on first write, so the audit log is
-never accidentally committed.
 
 ### Subagents (shipped template defaults — edit per repo)
 
@@ -582,10 +574,9 @@ See [GUIDEPOSTS.md](./GUIDEPOSTS.md) for why the system is shaped this way.
     │   ├── tick.md
     │   ├── sweep.md
     │   └── status.md
-    ├── hooks/                    # JSON validator, prompt validator, audit log — copied from the plugin
+    ├── hooks/                    # JSON validator, prompt validator — copied from the plugin
     │   ├── validate_tracking_json.py
     │   ├── validate_workflow_on_prompt.py
-    │   ├── audit_linear_writes.py
     │   ├── validate_workflow.py
     │   ├── parse_comments.py
     │   ├── emit_tracking_comment.py

@@ -110,149 +110,6 @@ merged first?" surfaced the gap.
 
 ---
 
-## Surface routine failures to the operator
-
-**Idea**: when a `/schedule` routine fails before producing any
-Linear-visible side effect — hook block, container-setup error,
-unhandled exception during `/cadence:tick` step 1-3 — give the
-operator a signal somewhere they actually look. Today these failures
-end the routine quietly.
-
-**Why**: discovered during Phase 4 Smoke L. The
-`validate_workflow_on_prompt.py` hook correctly blocked a legacy-schema
-`/cadence:tick` prompt with a Rule 8 message on stderr. Locally this
-renders in the terminal and is obvious. In a cloud `/schedule` routine
-it goes nowhere:
-
-- claude.ai/code/sessions does NOT show routine sessions.
-- Routines do NOT have an exposed stderr view.
-- The routine just ends; the operator sees "nothing happened" and has
-  no way to find out why short of digging into internal logs.
-
-This generalises beyond the hook case. Anything that aborts before the
-bootstrap reaches its first Linear write — failed `claude mcp list`,
-unreachable Linear MCP, broken `.claude/settings.json`, container setup
-failure — has the same shape: invisible to the operator.
-
-**Constraints**:
-
-- Cadence runs inside someone else's compute (the routine platform).
-  It cannot directly write to the platform's UI; whatever signal it
-  produces has to ride out through a channel the platform exposes
-  (exit code, stdout, an explicit notification API if one exists) or
-  through an external channel the operator configures.
-- Cloud containers are ephemeral. A local status file won't survive.
-
-**Rejected alternatives** (settled in conversation, do not revisit):
-
-- **Post a tracking comment on a recently-touched Linear issue.** The
-  operator would have to hunt through Linear to find a maybe-comment
-  on a maybe-issue. The signal has to live in a known location, not
-  scattered across the workflow.
-
-**Candidate paths** (not yet chosen):
-
-1. **Routine-UI signal via exit code / stdout shape.** Investigate what
-   the routine platform actually surfaces when a routine exits
-   non-zero, or when it prints a recognisable pattern. If there's
-   anything operator-visible, route hook-block and bootstrap-error
-   output through it. This is the lowest-friction path *if* the
-   platform cooperates.
-2. **Configurable notification webhook.** Add an optional
-   `notifications.webhook_url` (or `.email`) to `workflow.yaml`. On
-   any fire-aborting failure, POST a small JSON payload (or send a
-   minimal email). Operator points it at Slack / PagerDuty / a forwarder
-   of their choice. Adds an external dependency but gives the operator
-   full control over the channel.
-3. **Claude Code in-session alert.** If the routine platform supports a
-   "session notification" primitive (TBD whether it does), use it.
-   Likely overlaps with path 1.
-4. **Self-monitoring routine.** A separate, less-frequent `/cadence:health`
-   that asserts the main tick routine has made forward progress
-   recently and surfaces failure through paths 1-3 if not. Useful as a
-   higher-level liveness check regardless of which of the others lands.
-
-**Open questions**:
-
-- What signals does the routine platform actually surface to operators
-  today? (`/schedule` routine logs are findable somewhere, just not
-  obviously — confirm before designing around them.)
-- Should the hook block path differ from the
-  bootstrap-error-during-`tick` path? Both have the same "no Linear
-  side effect happened" shape from the operator's POV; arguably they
-  should converge on one notification channel.
-- Failure modes during a fire that *did* produce some Linear side
-  effect (subagent crashed, attempt cap hit) are already comment- and
-  label-visible on the issue. Out of scope for this item — it covers
-  only the "fire produced nothing at all" class.
-
-**Why not now**: the hook block is the only failure class with a known
-trigger we hit during smoke testing. The wider gap exists but isn't
-acute. Pick this up when a second operator gets bitten, or when
-deciding the notification channel becomes part of the standard
-`/cadence:init` flow.
-
-**Discussed in**: conversation on 2026-05-18 — Phase 4 Smoke L: the
-hook correctly rejected a legacy schema but the operator saw a silent
-end on the cloud routine.
-
----
-
-## Durable audit log in `/schedule` mode
-
-**Idea**: mirror the per-fire audit-log entries from
-[templates/hooks/audit_linear_writes.py](./templates/hooks/audit_linear_writes.py)
-into a Linear comment at the end of each fire, so the forensic trail
-survives session teardown in `/schedule` mode.
-
-**Why**: today the hook writes JSONL to `.cadence/audit.log` in the
-working tree. In `/schedule` mode the working tree is a fresh clone
-per fire and is discarded when the cloud session ends, so the log
-evaporates with the session.
-[GUIDEPOSTS Principle 7](./GUIDEPOSTS.md) names "audit log of every
-tracker write" as load-bearing for forensic debugging, and `/schedule`
-is the [design-target mode](./README.md) — so the principle-7 gap
-binds where it matters most. The hardening track flagged this
-explicitly when it shipped the audit hook ("if durable audit history
-matters, the right home is a Linear comment") and deferred. With all
-nine phases shipped, this is now the largest remaining principle-7
-gap.
-
-**Shape sketch**:
-
-- Keep the existing per-write hook — it's useful in `/loop` and as a
-  per-fire stream operators tail.
-- Add a step 12.5 in [commands/tick.md](./commands/tick.md) (or a
-  small helper script invoked from step 13) that reads the fire's
-  `.cadence/audit.log` and posts a single `<!-- cadence:audit ... -->`
-  tracking comment summarising the writes.
-- Mark the comment with its own prefix so
-  [parse_comments.py](./templates/hooks/parse_comments.py) ignores it on
-  future fires (audit comments are write-only — never read back by
-  the bootstrap).
-
-**Open questions**:
-
-- One audit comment per fire, or one rolling comment per issue with
-  appends? Per-fire matches the rest of the tracking-comment shape;
-  per-issue is more compact but adds an edit-vs-append branch.
-- Failure-path coverage: a fire that aborts before the audit-post
-  step leaves no audit comment. Acceptable (the failure record plus
-  the absence of an audit summary is itself a signal), or does the
-  failure path need its own truncated audit emit?
-- Rendering: a busy fire writes ~5–15 audit lines. Fenced JSONL block
-  or pretty-rendered table?
-
-**Why not now**: no operator has hit the missing-audit-trail case yet
-— the design-target mode hasn't run at high volume. When the first
-incident requires reconstructing what a `/schedule` fire did, this
-becomes load-bearing.
-
-**Discussed in**: post-P9 review conversation on 2026-05-25 about
-which GUIDEPOSTS principles still have material gaps.
-
----
-
 ## Configurable PR-creation tool (beyond `gh`)
 
 **Idea**: today [templates/agents/implementer.md](./templates/agents/implementer.md)
@@ -397,8 +254,8 @@ here on 2026-05-25 when HARDENING-PLAN.md was retired.
 **Idea**: a `--report-cost` flag (or always-on instrumentation) on
 `/cadence:tick` that estimates token spend per fire, broken down by
 subagent. The model returns approximate token counts via the Agent
-tool result; a small script aggregates per-fire totals into the audit
-log or a Linear comment.
+tool result; a small script aggregates per-fire totals into a Linear
+comment.
 
 **Why**: useful if cost becomes a complaint or a signal that a
 subagent is running away (the kind of "29 tool calls on a no-op
@@ -406,10 +263,7 @@ ticket" scenario that surfaced during P8 Smoke V would be visible in
 this telemetry).
 
 **Why not now**: cost has not been a complaint. Not pre-emptively
-necessary; instrument when an operator wants the visibility or when
-the audit log gains durability (the
-[durable audit log backlog item](#durable-audit-log-in-schedule-mode)
-above) and cost lines fit naturally alongside the write log.
+necessary; instrument when an operator wants the visibility.
 
 **Discussed in**: hardening-plan "Out of scope / future work" — moved
 here on 2026-05-25.

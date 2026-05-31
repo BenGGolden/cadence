@@ -20,17 +20,6 @@
           }
         ]
       }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "mcp__[A-Za-z0-9_-]*[Ll]inear[A-Za-z0-9_-]*__(create_comment|save_comment|save_issue|update_issue|add_label|remove_label)|save_comment|save_issue|update_issue|add_label|remove_label|create_comment",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/audit_linear_writes.py"
-          }
-        ]
-      }
     ]
   }
 }

@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed — redundant audit-log hook
+- Removed the `audit_linear_writes.py` `PostToolUse` hook and `.cadence/audit.log`.
+  Linear's native activity history (comment threads + issue activity feed)
+  already is the durable, out-of-band forensic trail; the local log was a
+  redundant, per-fire-ephemeral copy of data Linear stores permanently. Dropped
+  the `PostToolUse` settings block, the scaffold row, and the merge-list entry.
+  Also removed two BACKLOG items (durable audit log in `/schedule` mode; surface
+  routine failures to the operator).
+
 ### Changed — planner authors acceptance criteria instead of refusing
 - The planner subagent no longer refuses tickets that lack an
   `## Acceptance Criteria` block. Instead it produces the plan as normal and

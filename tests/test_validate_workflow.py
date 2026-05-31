@@ -569,7 +569,7 @@ class ScratchDirTests(unittest.TestCase):
     """The validator creates `.cadence/` + a self-ignoring `.gitignore` so the
     dispatch prose's scratch JSON (validator output, comment lists, etc.) never
     shows up in the consumer's `git status` — even on the dry-run path, which
-    fires no Linear write and so never triggers the audit hook."""
+    performs no Linear write."""
 
     def test_valid_run_creates_self_ignoring_cadence_dir(self):
         with tempfile.TemporaryDirectory() as td:
