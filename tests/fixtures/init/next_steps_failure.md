@@ -16,6 +16,7 @@ Files written:
   .claude/hooks/emit_tracking_comment.py
   .claude/hooks/classify_drift.py
   .claude/hooks/classify_gate.py
+  .claude/hooks/classify_merge.py
   .claude/hooks/route_fire.py
   .claude/hooks/compose_lifecycle_context.py
   .claude/hooks/filter_candidates.py

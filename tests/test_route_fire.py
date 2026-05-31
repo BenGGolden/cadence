@@ -322,9 +322,15 @@ class RouteFireTests(unittest.TestCase):
         # removal.
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
+            # The gate-waiting marker is the latest tracking comment, so the
+            # matched state (human_review) equals the latest tracked state and
+            # no drift reconcile is queued — the exit_plan is the clean
+            # approve-label removal. The implementer summary still pairs with
+            # the implement attempt marker for pr_url extraction.
             comments = [
                 _attempt_marker("implement", 1, "2026-05-01T00:00:00Z"),
                 _implementer_summary("2026-05-01T00:01:00Z"),
+                _gate_waiting("human_review", "2026-05-01T00:02:00Z"),
             ]
             r = _run(td, _validator_output(merge_on_approve=True), "In Review",
                      comments, labels_csv="cadence-approve")
