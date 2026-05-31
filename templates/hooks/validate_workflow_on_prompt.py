@@ -7,7 +7,7 @@ in `.claude/hooks/`). A failure exits 2, which blocks the prompt and prints the
 underlying error to stderr so the operator sees it before any Linear call.
 
 Why this exists:
-  `tick.md` step 3 already runs `validate_workflow.py` in-tick; this hook is a
+  `tick.md` step 1 already runs `validate_workflow.py` in-tick; this hook is a
   belt-and-braces second invocation at the prompt boundary. It catches bad
   configs half a second earlier with a clearer message, which matters most in
   /loop mode where the tick prose otherwise runs on the broken state for a

@@ -21,7 +21,7 @@ any time, from anywhere, with no side effects.
   verdicts are signalled by the `cadence_approve` / `cadence_rework`
   labels (P4), not by additional columns.
 - **Workflow Linear states**: the set of every `linear_state` plus
-  `linear.pickup_state`. The same set `/cadence:tick` step 4 builds.
+  `linear.pickup_state`. The same set `/cadence:tick` step 2 builds.
   Issues sitting in any of these columns are "in the workflow" for
   status purposes.
 - **Verdict labels**: `label.cadence_approve` and `label.cadence_rework`.
@@ -33,7 +33,7 @@ any time, from anywhere, with no side effects.
   the legacy `<!-- stokowski:state` / `<!-- stokowski:gate` prefixes.
 - **Attempt marker**: a `cadence:state` (or legacy `stokowski:state`)
   comment whose JSON has **no** `status` field. This is what
-  `/cadence:tick`'s Route step (steps 8–11) counts.
+  `/cadence:tick`'s Route step (step 6) counts.
 - **Failure record**: a `cadence:state` comment whose JSON includes
   `"status": "failed"`. Emitted on a subagent exception. **Not** an attempt
   marker — `/cadence:tick`'s Route step does not count it.

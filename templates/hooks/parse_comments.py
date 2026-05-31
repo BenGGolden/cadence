@@ -6,7 +6,7 @@ Caller(s):
     per fire — the latest tracking comment for the drift check, attempt_count
     for the resolved target, and rework_count / rework_context for a gate).
     This replaces the old per-step CLI calls in tick.md steps 9 / 10c / 11.
-  - commands/tick.md step 13 (latest_implementer_summary — PR URL / branch
+  - commands/tick.md step 8 (latest_implementer_summary — PR URL / branch
     for the adversarial-context Lifecycle Context) — reads route_fire.py's
     forwarded `parse_comments_output`, not a fresh CLI invocation.
   - commands/status.md (per-issue attempt count / last state — CLI)
@@ -177,8 +177,8 @@ def _find_implementer_summary(norm):
     An implementer summary is a non-tracking comment that (a) contains a
     GitHub PR URL and (b) immediately follows a `cadence:state` /
     `stokowski:state` attempt marker for the `implement` state posted by
-    the same author (the bootstrap posts the attempt marker in step 12 and
-    the implementer's returned summary in step 15, back to back). Scanned
+    the same author (the bootstrap posts the attempt marker in step 7 and
+    the implementer's returned summary in step 10, back to back). Scanned
     newest-first; the first match wins.
     """
     for idx in range(len(norm) - 1, 0, -1):

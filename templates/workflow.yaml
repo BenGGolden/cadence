@@ -148,7 +148,7 @@ states:
     subagent: reviewer               # → .claude/agents/reviewer.md
     linear_state: "Reviewing"        # NEW Linear column — add it to your board
     # Strip the implementer's narrative from the Lifecycle Context so the
-    # reviewer reads the diff cold (tick.md Step 13 adversarial-context
+    # reviewer reads the diff cold (tick.md Step 8 adversarial-context
     # variant). Boolean; only valid on type: agent states.
     adversarial_context: true
     next: human_review

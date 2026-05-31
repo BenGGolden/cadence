@@ -386,7 +386,7 @@ class ValidateWorkflowTests(unittest.TestCase):
                              "FAIL")
 
     # ---------- linear_to_workflow reverse map (P2 determinism) ----------
-    # AC-1/2/3: tick.md step 8 and status.md step 2 both consume this map.
+    # AC-1/2/3: tick.md step 6 and status.md step 2 both consume this map.
 
     def test_linear_to_workflow_default_workflow_shape(self):
         with tempfile.TemporaryDirectory() as td:

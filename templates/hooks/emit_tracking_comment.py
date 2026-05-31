@@ -2,8 +2,8 @@
 """Produce canonical Cadence tracking-comment bodies.
 
 Caller(s):
-  - commands/tick.md step 12 (attempt marker)
-  - commands/tick.md step 16 (waiting gate comment)
+  - commands/tick.md step 7 (attempt marker)
+  - commands/tick.md step 11 (waiting gate comment)
   - commands/tick.md Failure path (failure record)
   - templates/hooks/route_fire.py (imported; build_gate / build_reconcile
     produce the gate rework / gate escalation / reconcile comment bodies the

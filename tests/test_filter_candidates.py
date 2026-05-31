@@ -271,7 +271,7 @@ class FilterModeBasicsTests(unittest.TestCase):
     def test_terminal_column_drops_candidate(self):
         """Issues sitting in a terminal-type state's Linear column ("Done"
         in the default workflow) are not picked up. The workflow is
-        complete for them; step 14 would have no subagent to invoke."""
+        complete for them; step 9 would have no subagent to invoke."""
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
             cands = [_candidate("ENG-DONE", column="Done")]

@@ -2,7 +2,7 @@
 """Validate .claude/workflow.yaml against Cadence's config rules.
 
 Caller(s):
-  - commands/tick.md step 3 (live validation) — a non-zero exit blocks the
+  - commands/tick.md step 1 (live validation) — a non-zero exit blocks the
     fire before any Linear write happens.
   - commands/tick.md step 0 (dry-run) — invoked with --evidence so the
     dry-run report can show per-rule work without the LLM composing it.
@@ -10,7 +10,7 @@ Caller(s):
     before either command touches Linear.
 
 Failure mode eliminated:
-  "Validation skim" — the rules in tick.md step 3 were LLM prose an agent
+  "Validation skim" — the rules in tick.md step 1 were LLM prose an agent
   could gloss as "passed" without showing its work. This script makes the
   checks deterministic and emits structured per-rule evidence.
 
@@ -187,7 +187,7 @@ def _rule6_max_in_flight(states):
     Terminals are excluded (they have no pickup to throttle).
 
     Agent caps throttle parallel subagent runs at the state itself. Gate
-    caps throttle the *waiting queue*: tick.md Step 5 walks each
+    caps throttle the *waiting queue*: tick.md Step 3 walks each
     candidate's happy-path downstream and drops it if any state on that
     path (agent or gate) is over-cap. Verdict-bearing gate candidates
     are exempt from their own gate's cap because acting on a verdict
@@ -230,7 +230,7 @@ def _rule7_adversarial_context(states):
     """`adversarial_context`, where present, must be a boolean and may only
     appear on `type: agent` states. The flag controls how the bootstrap
     composes the Lifecycle Context for a subagent invocation (tick.md
-    Step 13); gates and terminals invoke no subagent (P5.4a)."""
+    Step 8); gates and terminals invoke no subagent (P5.4a)."""
     lines = []
     failures = []
     for name, body in states.items():
@@ -295,7 +295,7 @@ def _rule8_legacy_gate_keys(states):
 
 def _build_linear_states_set(states, pickup):
     """Ordered set: pickup, then each state's linear_state. Mirrors
-    tick.md step 4. Per-gate approved/rework columns are gone (P4)."""
+    tick.md step 2. Per-gate approved/rework columns are gone (P4)."""
     ordered = []
     seen = set()
 
@@ -314,7 +314,7 @@ def _build_linear_states_set(states, pickup):
 def _build_linear_to_workflow(states, pickup):
     """Reverse lookup: Linear column name -> workflow role.
 
-    Used by tick.md step 8 (Linear column -> matched workflow state) and
+    Used by tick.md step 6 (Linear column -> matched workflow state) and
     status.md step 2 (workflow-state column rendering). Duplicates are
     first-wins; Rule 1 already fails the validation when duplicates
     exist, so the map's behaviour on duplicates only matters for

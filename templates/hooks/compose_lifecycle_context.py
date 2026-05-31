@@ -2,7 +2,7 @@
 """Compose the full subagent user prompt for a Cadence /cadence:tick fire.
 
 Caller(s):
-  - commands/tick.md step 13 (Lifecycle Context block + globalPrompt append)
+  - commands/tick.md step 8 (Lifecycle Context block + globalPrompt append)
   - commands/tick.md step 0 (dry-run rendering, via --dry-run)
 
 Failure modes eliminated:
@@ -14,7 +14,7 @@ Failure modes eliminated:
     rework branches. The script picks one based on the target state's
     `adversarial_context` config field.
   - globalPrompt read: the prose had a separate step ("Read
-    .claude/prompts/global.md") whose only consumer was step 13. The
+    .claude/prompts/global.md") whose only consumer was step 8. The
     script does the read.
 
 CLI:

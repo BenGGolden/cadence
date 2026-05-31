@@ -15,7 +15,7 @@ step-9 prose specified, first match wins:
      waiting column awaiting a verdict).
   3. **Forward progression**: matched state == config.states[latest].next →
      no drift (the prior fire advanced Linear into latest's successor and
-     this fire is the first pickup of it; step 16 emits no fresh tracking
+     this fire is the first pickup of it; step 11 emits no fresh tracking
      comment for agent→agent, so latest legitimately lags one state). Only
      applies when latest names an agent state with a defined `next`.
   4. **Drift otherwise**: a human (or other tool) reassigned the issue to a
