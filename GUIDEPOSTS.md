@@ -89,7 +89,12 @@ guardrails into the harness:
   tests — regardless of whether the agent thought to.
 - **Bootstrap is the sole tracker-writer** (Cadence's pattern). Subagents
   return summaries; the bootstrap posts them. No hallucinated comments,
-  consistent shape, single audit point.
+  consistent shape, single audit point. A state transition may also carry an
+  external side-effect beyond the tracker write — e.g. merging the change the
+  ticket produced. Keep that side-effect in the orchestrator too: executed
+  once, read-before-write, with a defined escalation path on failure — not
+  delegated to an agent. The orchestrator owns transitions; a mechanical
+  one-shot action coupled to a transition is not agent work.
 - **Permission scoping per actual tool used**, not "the whole read-only
   category." Cadence's README is exemplary; treat it as the floor.
 - **Acceptance criteria the agent must explicitly mark verified** before
