@@ -23,9 +23,9 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
   `agents/*.md`, `hooks/*.py`, `settings.json` (the last is merged into
   `.claude/settings.json` rather than copied verbatim).
 - `templates/hooks/` — Python files copied to the consumer's
-  `.claude/hooks/`. Some are PreToolUse / UserPromptSubmit / PostToolUse
-  hooks (`validate_tracking_json.py`, `validate_workflow_on_prompt.py`,
-  `audit_linear_writes.py`); the rest are deterministic helpers the dispatch
+  `.claude/hooks/`. Some are PreToolUse / UserPromptSubmit
+  hooks (`validate_tracking_json.py`, `validate_workflow_on_prompt.py`);
+  the rest are deterministic helpers the dispatch
   prose invokes via Bash (`validate_workflow.py`, `_common.py`,
   `parse_comments.py`, `emit_tracking_comment.py`, `classify_drift.py`,
   `classify_gate.py`, `route_fire.py`, `compose_lifecycle_context.py`,

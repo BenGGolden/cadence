@@ -6,6 +6,12 @@ are design principles for any system that orchestrates coding agents off a
 tracker — they framed Cadence's hardening track (see [CHANGELOG.md](./CHANGELOG.md))
 and should frame any future implementation of the concept.
 
+They are goals to strive toward, not a compliance checklist — a deliberately
+lightweight implementation may satisfy some only partially, and that's a
+trade-off, not a defect. Where a principle names how Cadence or Stokowski does
+it, that's an illustration of the goal, not part of the goal; another
+implementation may reach it a different way.
+
 Across the spec and the two implementations, the things that actually move
 output quality (as opposed to operational completeness) cluster into a small
 number of principles.
@@ -121,10 +127,10 @@ LLM at all when a 20-line script will do.
 Things will break in ways the operator wasn't watching. The system has to be
 reconstructable after the fact.
 
-- **Audit log of every tracker write.** Cadence ships a `PostToolUse`
-  hook (`audit_linear_writes.py`) that appends one JSONL line per Linear
-  write to `.cadence/audit.log` — durable in `/loop` mode, per-fire in
-  `/schedule` mode (the durability gap is tracked in BACKLOG).
+- **Audit log of every tracker write.** Every comment, label change, and
+  state transition should be reconstructable after the fact. A tracker that
+  keeps a native, durable activity history already provides this; where it
+  doesn't, a write-time hook that appends an out-of-band log closes the gap.
 - **Dry-run mode** that validates config and renders the prompt without side
   effects. Cadence's `/cadence:tick dry-run` with the "show your work"
   validation evidence is the right grain.

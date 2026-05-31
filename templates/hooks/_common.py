@@ -1,11 +1,10 @@
 """Shared helpers for the Cadence dispatch-prose helpers.
 
 Imported by validate_workflow.py and emit_tracking_comment.py (siblings in
-templates/hooks/). The three event-hook scripts in this same directory
-(validate_tracking_json.py, validate_workflow_on_prompt.py,
-audit_linear_writes.py) deliberately do NOT import this module — they stay
-self-contained so the consumer's hook loader never has to resolve a relative
-path.
+templates/hooks/). The two event-hook scripts in this same directory
+(validate_tracking_json.py, validate_workflow_on_prompt.py) deliberately do
+NOT import this module — they stay self-contained so the consumer's hook
+loader never has to resolve a relative path.
 
 Exit-code convention (shared across all scripts):
   0  success
@@ -19,10 +18,9 @@ from pathlib import Path
 
 DEFAULT_WORKFLOW_PATH = Path(".claude/workflow.yaml")
 
-# Cadence's per-repo scratch / state directory. Holds the audit log
-# (audit_linear_writes.py) and the dispatch prose's transient JSON
-# (validator output, comment lists, candidate lists, composed issue
-# objects). Self-ignoring via a `.gitignore` of `*` so consumers never
+# Cadence's per-repo scratch / state directory. Holds the dispatch prose's
+# transient JSON (validator output, comment lists, candidate lists, composed
+# issue objects). Self-ignoring via a `.gitignore` of `*` so consumers never
 # commit scratch — see ensure_cadence_dir().
 CADENCE_DIR = Path(".cadence")
 _CADENCE_GITIGNORE = CADENCE_DIR / ".gitignore"
@@ -37,10 +35,9 @@ def die(msg, code=1):
 def ensure_cadence_dir():
     """Create `.cadence/` and its self-ignoring `.gitignore` if absent.
 
-    Idempotent. Mirrors audit_linear_writes.py's first-write behaviour so the
-    scratch directory is git-ignored even on read-only paths (e.g. a
-    `/cadence:tick dry-run`, which performs no Linear write and so never fires
-    the audit hook). Returns the directory path. Best-effort: filesystem
+    Idempotent. Ensures the scratch directory is git-ignored even on
+    read-only paths (e.g. a `/cadence:tick dry-run`, which writes only
+    transient JSON). Returns the directory path. Best-effort: filesystem
     errors are swallowed — scratch placement must never break a fire."""
     try:
         CADENCE_DIR.mkdir(parents=True, exist_ok=True)

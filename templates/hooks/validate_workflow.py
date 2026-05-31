@@ -457,8 +457,7 @@ def main():
     # The dispatch prose writes its transient JSON (comment list, candidate
     # lists, the composed issue object) under `.cadence/` later in the fire.
     # Guarantee the scratch dir and its self-ignoring `.gitignore` exist now —
-    # on the dry-run path nothing else creates it (no Linear write fires the
-    # audit hook).
+    # on the dry-run path nothing else creates it.
     ensure_cadence_dir()
 
     if args.evidence:

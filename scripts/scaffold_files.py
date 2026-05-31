@@ -75,7 +75,6 @@ SCAFFOLD_PLAN = (
     ("templates/agents/reviewer.md",    ".claude/agents/reviewer.md",    "user-config"),
     ("templates/hooks/validate_tracking_json.py",      ".claude/hooks/validate_tracking_json.py",      "plugin-owned"),
     ("templates/hooks/validate_workflow_on_prompt.py", ".claude/hooks/validate_workflow_on_prompt.py", "plugin-owned"),
-    ("templates/hooks/audit_linear_writes.py",         ".claude/hooks/audit_linear_writes.py",         "plugin-owned"),
     ("templates/hooks/validate_workflow.py",           ".claude/hooks/validate_workflow.py",           "plugin-owned"),
     ("templates/hooks/_common.py",                     ".claude/hooks/_common.py",                     "plugin-owned"),
     ("templates/hooks/parse_comments.py",              ".claude/hooks/parse_comments.py",              "plugin-owned"),

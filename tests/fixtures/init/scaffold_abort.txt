@@ -9,7 +9,6 @@ Re-run with --force to overwrite. This will replace:
   - .claude/agents/reviewer.md
   - .claude/hooks/validate_tracking_json.py
   - .claude/hooks/validate_workflow_on_prompt.py
-  - .claude/hooks/audit_linear_writes.py
   - .claude/hooks/validate_workflow.py
   - .claude/hooks/_common.py
   - .claude/hooks/parse_comments.py

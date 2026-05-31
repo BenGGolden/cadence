@@ -7,7 +7,7 @@ to the consumer; it lives in `scripts/` (init-time only) and is called by
 
 Idempotent. If the consumer's settings.json already has Cadence hook entries
 (identified by referencing `/.claude/hooks/{validate_tracking_json,
-validate_workflow_on_prompt,audit_linear_writes}.py`), they are replaced rather
+validate_workflow_on_prompt}.py`), they are replaced rather
 than duplicated. Non-Cadence hook entries are left untouched.
 
 CLI:
@@ -27,7 +27,6 @@ from pathlib import Path
 CADENCE_HOOK_SCRIPTS = (
     "validate_tracking_json.py",
     "validate_workflow_on_prompt.py",
-    "audit_linear_writes.py",
 )
 
 EVENTS = ("PreToolUse", "UserPromptSubmit", "PostToolUse")
