@@ -119,10 +119,12 @@ Next steps:
          `claude /loop 1m /cadence:tick` (after `gh auth login`).
   5. Smoke test with /cadence:tick dry-run before going live.
 
-To create well-formed tickets, run `/cadence:create-ticket` in your
-local Claude Code session and paste the output into Linear's New
-Issue form. The planner subagent will refuse tickets that lack an
-`## Acceptance Criteria` block.
+To draft well-formed tickets quickly, run `/cadence:create-ticket` in
+your local Claude Code session and paste the output into Linear's New
+Issue form. It's optional — when a ticket lacks an
+`## Acceptance Criteria` block the planner authors one as part of its
+plan, which the bootstrap promotes into the description once you approve
+at plan review.
 
 See the plugin README for the full Consumer Setup walkthrough.
 """

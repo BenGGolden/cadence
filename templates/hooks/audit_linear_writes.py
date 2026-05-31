@@ -106,6 +106,9 @@ def _summarize(tool_name, tool_input):
     body = tool_input.get("body")
     if isinstance(body, str) and body:
         return body[:80].replace("\n", " ")
+    description = tool_input.get("description")
+    if isinstance(description, str) and description:
+        return "description: " + description[:60].replace("\n", " ")
     state_name = tool_input.get("stateName") or tool_input.get("state")
     if isinstance(state_name, str) and state_name:
         return f"state -> {state_name}"
