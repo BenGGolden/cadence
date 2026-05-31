@@ -93,7 +93,7 @@ class ValidateWorkflowTests(unittest.TestCase):
 
     # ---------- evidence shape ----------
 
-    def test_evidence_emits_all_eight_rules(self):
+    def test_evidence_emits_all_rules(self):
         with tempfile.TemporaryDirectory() as td:
             r = run_validator(td, _valid_workflow(), evidence=True)
             self.assertEqual(r.returncode, 0, msg=r.stderr)
@@ -101,7 +101,7 @@ class ValidateWorkflowTests(unittest.TestCase):
             self.assertIn("evidence", payload)
             self.assertEqual(
                 sorted(e["rule"] for e in payload["evidence"]),
-                [1, 2, 3, 4, 5, 6, 7, 8],
+                [1, 2, 3, 4, 5, 6, 7, 8, 9],
             )
             for e in payload["evidence"]:
                 self.assertIn("title", e)
@@ -563,6 +563,92 @@ class ValidateWorkflowTests(unittest.TestCase):
             self.assertEqual(r.returncode, 2)
             self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 8)["result"],
                              "FAIL")
+
+
+    # ---------- rule 9: merge_on_approve ----------
+
+    def test_rule9_pass_when_absent(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, _valid_workflow(), evidence=True)
+            ev = _rule(json.loads(r.stdout)["evidence"], 9)
+            self.assertEqual(ev["result"], "PASS")
+            self.assertEqual(ev["title"], "merge_on_approve type and scope")
+            self.assertIn("(no states declare merge_on_approve)", ev["lines"])
+
+    def test_rule9_pass_on_terminal_targeted_gate(self):
+        wf = _valid_workflow()
+        wf["states"]["plan_review"]["on_approve"] = "done"
+        wf["states"]["plan_review"]["merge_on_approve"] = True
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 9)["result"],
+                             "PASS")
+
+    def test_rule9_pass_with_merge_args_string(self):
+        wf = _valid_workflow()
+        wf["states"]["plan_review"]["on_approve"] = "done"
+        wf["states"]["plan_review"]["merge_on_approve"] = True
+        wf["states"]["plan_review"]["merge_args"] = "--merge"
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 9)["result"],
+                             "PASS")
+
+    def test_rule9_fail_non_boolean(self):
+        wf = _valid_workflow()
+        wf["states"]["plan_review"]["on_approve"] = "done"
+        wf["states"]["plan_review"]["merge_on_approve"] = "yes"
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            ev = _rule(json.loads(r.stdout)["evidence"], 9)
+            self.assertEqual(ev["result"], "FAIL")
+            self.assertIn("boolean", ev["failure"])
+
+    def test_rule9_fail_on_agent_state(self):
+        wf = _valid_workflow()
+        wf["states"]["implement"]["merge_on_approve"] = True
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            ev = _rule(json.loads(r.stdout)["evidence"], 9)
+            self.assertEqual(ev["result"], "FAIL")
+            self.assertIn("type: gate", ev["failure"])
+
+    def test_rule9_fail_non_terminal_on_approve(self):
+        wf = _valid_workflow()
+        # plan_review.on_approve defaults to `implement` (an agent state).
+        wf["states"]["plan_review"]["merge_on_approve"] = True
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            ev = _rule(json.loads(r.stdout)["evidence"], 9)
+            self.assertEqual(ev["result"], "FAIL")
+            self.assertIn("terminal", ev["failure"])
+
+    def test_rule9_fail_non_string_merge_args(self):
+        wf = _valid_workflow()
+        wf["states"]["plan_review"]["on_approve"] = "done"
+        wf["states"]["plan_review"]["merge_on_approve"] = True
+        wf["states"]["plan_review"]["merge_args"] = 123
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            ev = _rule(json.loads(r.stdout)["evidence"], 9)
+            self.assertEqual(ev["result"], "FAIL")
+            self.assertIn("merge_args", ev["failure"])
+
+    def test_rule9_fail_merge_args_without_merge_on_approve(self):
+        wf = _valid_workflow()
+        wf["states"]["plan_review"]["merge_args"] = "--squash"
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            ev = _rule(json.loads(r.stdout)["evidence"], 9)
+            self.assertEqual(ev["result"], "FAIL")
+            self.assertIn("merge_args", ev["failure"])
 
 
 class ScratchDirTests(unittest.TestCase):
