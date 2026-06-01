@@ -16,7 +16,6 @@ Files written:
   .claude/hooks/emit_tracking_comment.py
   .claude/hooks/classify_drift.py
   .claude/hooks/classify_gate.py
-  .claude/hooks/classify_merge.py
   .claude/hooks/route_fire.py
   .claude/hooks/compose_lifecycle_context.py
   .claude/hooks/filter_candidates.py
@@ -65,11 +64,15 @@ Next steps:
      and system prompt.
   4. Pick an invocation mode:
        • Remote: create a /schedule routine running /cadence:tick
-         every minute, with Linear MCP and GH_TOKEN configured on it. Add
-         a second routine for /cadence:sweep every 15 minutes. Paste the
-         permissions block above into the routine's permissions panel.
+         every minute. Add the Linear connector and bind a GitHub
+         repository (the repo picker) — connector tools, including PR
+         writes, are auto-allowed on the routine; no GH_TOKEN or setup
+         script is needed. Add a second routine for /cadence:sweep every
+         15 minutes. Paste the permissions block above into the routine's
+         permissions panel.
        • Local: from an interactive Claude Code session in this repo, run
-         `claude /loop 1m /cadence:tick` (after `gh auth login`).
+         `claude /loop 1m /cadence:tick` (with the Linear and GitHub MCP
+         connectors configured in your local Claude Code).
   5. Smoke test with /cadence:tick dry-run before going live.
 
 To draft well-formed tickets quickly, run `/cadence:create-ticket` in

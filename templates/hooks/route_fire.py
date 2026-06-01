@@ -100,7 +100,7 @@ def _reconcile_body(observed, expected, reason):
 _MERGE_DEFAULTS = {
     "merge_on_approve": False,
     "pr_url": None,
-    "merge_args": None,
+    "merge_method": None,
     "merge_target_linear_state": None,
 }
 
@@ -128,7 +128,7 @@ def _invoke_plan(matched, target, attempt, pre_actions, subagent, rework,
 
 
 def _exit_plan(matched, target, exit_actions, summary,
-               merge_on_approve=False, pr_url=None, merge_args=None,
+               merge_on_approve=False, pr_url=None, merge_method=None,
                merge_target_linear_state=None):
     return {
         "matched_state": matched,
@@ -144,7 +144,7 @@ def _exit_plan(matched, target, exit_actions, summary,
         "exit_summary": summary,
         "merge_on_approve": merge_on_approve,
         "pr_url": pr_url,
-        "merge_args": merge_args,
+        "merge_method": merge_method,
         "merge_target_linear_state": merge_target_linear_state,
     }
 
@@ -306,7 +306,7 @@ def route(config, linear_state, comments, present_labels):
                         f"merge before **{target_state}**.",
                         merge_on_approve=True,
                         pr_url=summary.get("pr_url"),
-                        merge_args=matched_body.get("merge_args") or "--squash",
+                        merge_method=matched_body.get("merge_method") or "squash",
                         merge_target_linear_state=target_body.get("linear_state"),
                     )
                 actions.append(_move_state(target_body.get("linear_state")))

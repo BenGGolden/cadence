@@ -82,7 +82,6 @@ SCAFFOLD_PLAN = (
     ("templates/hooks/emit_tracking_comment.py",       ".claude/hooks/emit_tracking_comment.py",       "plugin-owned"),
     ("templates/hooks/classify_drift.py",              ".claude/hooks/classify_drift.py",              "plugin-owned"),
     ("templates/hooks/classify_gate.py",               ".claude/hooks/classify_gate.py",               "plugin-owned"),
-    ("templates/hooks/classify_merge.py",              ".claude/hooks/classify_merge.py",              "plugin-owned"),
     ("templates/hooks/route_fire.py",                  ".claude/hooks/route_fire.py",                  "plugin-owned"),
     ("templates/hooks/compose_lifecycle_context.py",   ".claude/hooks/compose_lifecycle_context.py",   "plugin-owned"),
     ("templates/hooks/filter_candidates.py",           ".claude/hooks/filter_candidates.py",           "plugin-owned"),
