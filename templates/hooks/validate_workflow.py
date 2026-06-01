@@ -14,7 +14,7 @@ Failure mode eliminated:
   could gloss as "passed" without showing its work. This script makes the
   checks deterministic and emits structured per-rule evidence.
 
-Rules implemented in this script: 1, 2, 3, 4, 5, 6, 7, 8. Rule numbers
+Rules implemented in this script: 1, 2, 3, 4, 5, 6, 7, 8, 9. Rule numbers
 are not ship-order — they reflect the hardening-plan phase that added
 each rule.
 
@@ -293,6 +293,75 @@ def _rule8_legacy_gate_keys(states):
     }
 
 
+def _rule9_merge_on_approve(states):
+    """`merge_on_approve`, where present, must be a boolean and may only appear
+    on `type: gate` states. When `true`, the gate's `on_approve` target must
+    resolve to a `type: terminal` state — Cadence merges the PR then advances
+    straight to the terminal; a merge-then-continue-to-another-agent shape is a
+    deliberate non-goal (the merge logic lives only in the router's terminal
+    branch). `merge_args`, where present, must be a string and only on a gate
+    that sets `merge_on_approve: true`."""
+    lines = []
+    failures = []
+    for name, body in states.items():
+        if not isinstance(body, dict):
+            continue
+        has_moa = "merge_on_approve" in body
+        has_args = "merge_args" in body
+        if not has_moa and not has_args:
+            continue
+        stype = body.get("type")
+        moa = body.get("merge_on_approve")
+        if has_moa:
+            lines.append(
+                f"states.{name}.merge_on_approve -> {moa!r} "
+                f"(state type: {stype})"
+            )
+            if not isinstance(moa, bool):
+                failures.append(
+                    f"states.{name}.merge_on_approve must be a boolean "
+                    f"(true/false), got {type(moa).__name__}"
+                )
+            elif stype != "gate":
+                failures.append(
+                    f"states.{name}.merge_on_approve is only valid on "
+                    f"`type: gate` states; `{name}` is `type: {stype}`"
+                )
+            elif moa is True:
+                target = body.get("on_approve")
+                target_body = states.get(target) if isinstance(target, str) else None
+                target_type = target_body.get("type") if isinstance(target_body, dict) else None
+                if target_type != "terminal":
+                    failures.append(
+                        f"states.{name}.merge_on_approve is `true` but its "
+                        f"on_approve target `{target}` is `type: {target_type}`, "
+                        f"not `terminal` (merge_on_approve requires a terminal "
+                        f"on_approve target)"
+                    )
+        if has_args:
+            margs = body.get("merge_args")
+            lines.append(f"states.{name}.merge_args -> {margs!r}")
+            if not isinstance(margs, str):
+                failures.append(
+                    f"states.{name}.merge_args must be a string, got "
+                    f"{type(margs).__name__}"
+                )
+            if moa is not True:
+                failures.append(
+                    f"states.{name}.merge_args is only valid on a gate that "
+                    f"sets `merge_on_approve: true`; `{name}` does not"
+                )
+    if not lines:
+        lines.append("(no states declare merge_on_approve)")
+    return {
+        "rule": 9,
+        "title": "merge_on_approve type and scope",
+        "lines": lines,
+        "result": "PASS" if not failures else "FAIL",
+        "failure": None if not failures else "; ".join(failures),
+    }
+
+
 def _build_linear_states_set(states, pickup):
     """Ordered set: pickup, then each state's linear_state. Mirrors
     tick.md step 2. Per-gate approved/rework columns are gone (P4)."""
@@ -388,6 +457,7 @@ def validate(workflow_path=None):
         _rule6_max_in_flight(states),
         _rule7_adversarial_context(states),
         _rule8_legacy_gate_keys(states),
+        _rule9_merge_on_approve(states),
     ]
 
     valid = not any(ev["result"] == "FAIL" for ev in evidence)

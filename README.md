@@ -293,7 +293,7 @@ prose, adjust accordingly.
 | Tool        | Why                                                          |
 |-------------|--------------------------------------------------------------|
 | `Read`      | Read `.claude/workflow.yaml`, `.claude/prompts/global.md`, subagent files. |
-| `Bash`      | Generate the current UTC timestamp for tracking-comment JSON (`date -u …` or `Get-Date …`), and run the Python helper scripts under the plugin's `scripts/` directory (config validation, comment parsing, tracking-comment emission). |
+| `Bash`      | Generate the current UTC timestamp for tracking-comment JSON (`date -u …` or `Get-Date …`), and run the Python helper scripts under the plugin's `scripts/` directory (config validation, comment parsing, tracking-comment emission). With an opt-in `merge_on_approve` gate it also runs `gh pr view` / `gh pr merge`. |
 | `Agent`     | Invoke planner / implementer / reviewer subagents.           |
 | `TodoWrite` | Optional — only if you want progress visibility on long fires. |
 

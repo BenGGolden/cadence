@@ -94,6 +94,17 @@ def _reconcile_body(observed, expected, reason):
 
 # ----- plan constructors ---------------------------------------------------
 
+# Default merge-plan fields. Every plan carries these four keys so the
+# bootstrap reads a fixed key set; only a terminal gate-approve with
+# `merge_on_approve: true` sets them to non-defaults (see route()).
+_MERGE_DEFAULTS = {
+    "merge_on_approve": False,
+    "pr_url": None,
+    "merge_args": None,
+    "merge_target_linear_state": None,
+}
+
+
 def _invoke_plan(matched, target, attempt, pre_actions, subagent, rework,
                  parse_output, promote_ac=False):
     return {
@@ -112,10 +123,13 @@ def _invoke_plan(matched, target, attempt, pre_actions, subagent, rework,
         "parse_comments_output": parse_output,
         "exit_plan": None,
         "exit_summary": None,
+        **_MERGE_DEFAULTS,
     }
 
 
-def _exit_plan(matched, target, exit_actions, summary):
+def _exit_plan(matched, target, exit_actions, summary,
+               merge_on_approve=False, pr_url=None, merge_args=None,
+               merge_target_linear_state=None):
     return {
         "matched_state": matched,
         "target_state": target,
@@ -128,6 +142,10 @@ def _exit_plan(matched, target, exit_actions, summary):
         "parse_comments_output": None,
         "exit_plan": exit_actions,
         "exit_summary": summary,
+        "merge_on_approve": merge_on_approve,
+        "pr_url": pr_url,
+        "merge_args": merge_args,
+        "merge_target_linear_state": merge_target_linear_state,
     }
 
 
@@ -272,8 +290,26 @@ def route(config, linear_state, comments, present_labels):
             is_rework = True
         else:  # approve
             target_body = states.get(target_state) or {}
-            actions.append(_move_state(target_body.get("linear_state")))
             if target_body.get("type") == "terminal":
+                if bool(matched_body.get("merge_on_approve")):
+                    # Opt-in merge-on-approve. The terminal move + lock release
+                    # are conditional on the PR merge outcome, so they leave the
+                    # action list and become the bootstrap's merge sub-phase
+                    # (mirrors how AC promotion is a sub-phase, not an action).
+                    # exit_plan carries only the unconditional writes already
+                    # accumulated (any drift reconcile + the approve-label
+                    # removal).
+                    summary = parsed.get("latest_implementer_summary") or {}
+                    return _exit_plan(
+                        matched_state, target_state, actions,
+                        f"Approved at gate **{matched_state}** → attempting PR "
+                        f"merge before **{target_state}**.",
+                        merge_on_approve=True,
+                        pr_url=summary.get("pr_url"),
+                        merge_args=matched_body.get("merge_args") or "--squash",
+                        merge_target_linear_state=target_body.get("linear_state"),
+                    )
+                actions.append(_move_state(target_body.get("linear_state")))
                 actions.append(_remove_label(active_label))
                 return _exit_plan(
                     matched_state, target_state, actions,
@@ -283,6 +319,7 @@ def route(config, linear_state, comments, present_labels):
             # Non-terminal approve falls through to invoke the next agent
             # state in this same fire — signal the bootstrap to attempt AC
             # promotion before composing that agent's context.
+            actions.append(_move_state(target_body.get("linear_state")))
             is_gate_approve = True
     else:
         target_state = matched_state

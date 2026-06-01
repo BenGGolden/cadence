@@ -323,6 +323,18 @@ verbatim and exit. The plan carries:
   computed (the router parsed exactly once). Step 8 needs it; see Execute.
 - `exit_plan` — ordered actions for an early-exit fire (when not invoking).
 - `exit_summary` — the one-line message to print on an early-exit fire.
+- `merge_on_approve` — `true` only on a terminal gate-approve fire whose gate
+  declared `merge_on_approve: true`. Signals the Execute exit branch to run the
+  **Merge on approve** sub-phase (below) before exiting. `false` on every other
+  fire.
+- `pr_url` — the PR URL extracted from the latest implementer summary (or
+  `null` when none was found). Only meaningful when `merge_on_approve` is `true`.
+- `merge_args` — the flags to append to `gh pr merge <url>` (defaults to
+  `--squash` when the gate did not configure `merge_args`). Only meaningful when
+  `merge_on_approve` is `true`.
+- `merge_target_linear_state` — the terminal's Linear column to move the issue
+  to **after** a successful (or already-merged) merge. Only meaningful when
+  `merge_on_approve` is `true`.
 
 Each action in `pre_actions` / `exit_plan` is one of:
 - `{"type": "post_comment", "body": "<body>"}` — post the body as a Linear
@@ -342,10 +354,63 @@ it** — the bootstrap's job is to apply the plan.
 ### Execute (MCP writes)
 
 - If `invoke_subagent` is **false**: apply every action in `exit_plan` in
-  order via the Linear MCP, print `exit_summary` to the user, and exit. This
-  is the single path for the unmapped-column, gate-waiting, approve→terminal,
-  rework-escalation, and attempt-cap fires. Do **not** invoke a subagent and
-  do **not** advance further.
+  order via the Linear MCP. **Then**, if `plan.merge_on_approve` is `true`, run
+  the **Merge on approve** sub-phase below (it owns the conditional move to the
+  terminal and the lock release for this fire). Otherwise print `exit_summary`
+  to the user and exit. This is the single path for the unmapped-column,
+  gate-waiting, approve→terminal, rework-escalation, and attempt-cap fires. Do
+  **not** invoke a subagent and do **not** advance further.
+
+  **Merge on approve (gate-approve → terminal, opt-in).** Runs only when
+  `plan.merge_on_approve` is `true`. The `exit_plan` actions above have already
+  removed the `cadence_approve` label (and posted any drift-reconcile comment);
+  this sub-phase performs the conditional terminal move and lock release. All
+  Linear writes remain the bootstrap's; the `gh` calls are the bootstrap's too,
+  covered by its existing `Bash` grant. Read-before-write per Cadence
+  discipline — read PR state first, then act. In every branch below, the gate
+  name passed to `--state` is `plan.matched_state`.
+
+  1. **No PR URL.** If `plan.pr_url` is null: build the audit comment via Bash
+     `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind merge --status no_pr --state <plan.matched_state>`
+     and post its stdout as a Linear comment verbatim; add the
+     `label.cadence_needs_human` label; remove the `label.cadence_active`
+     label; print `exit_summary` (noting the no-PR escalation); **exit**. The
+     card stays in the gate's waiting column — it is **not** advanced to the
+     terminal.
+  2. **Read PR state.** Otherwise, run Bash
+     `gh pr view <plan.pr_url> --json state,url` and write its stdout to
+     `.cadence/pr-state.json` (Write tool). If `gh` is missing or the command
+     errors, skip classification and go straight to the **escalate** branch
+     (step 6) using the `gh` error text as `--error`.
+  3. **Classify.** Run Bash
+     `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/classify_merge.py --input .cadence/pr-state.json`
+     and parse the `{action, reason}` JSON on stdout.
+  4. **`action` is `advance` (already merged).** Build the audit comment via
+     `emit_tracking_comment.py --kind merge --status already_merged --pr-url <plan.pr_url> --state <plan.matched_state>`
+     and post it verbatim; move the issue to `plan.merge_target_linear_state`
+     via the Linear MCP; remove the `label.cadence_active` label; print a
+     summary; **exit**.
+  5. **`action` is `merge` (PR open).** Run Bash
+     `gh pr merge <plan.pr_url> <plan.merge_args>` (pass `plan.merge_args` as
+     its own argument token(s); do not splice it into a single interpolated
+     string).
+     - **Success:** post
+       `emit_tracking_comment.py --kind merge --status merged --pr-url <plan.pr_url> --state <plan.matched_state>`
+       verbatim; move the issue to `plan.merge_target_linear_state`; remove the
+       `label.cadence_active` label; print a summary; **exit**.
+     - **Failure** (CI red, conflicts, branch protection — `gh` exits
+       non-zero): post
+       `emit_tracking_comment.py --kind merge --status failed --error "<gh stderr>" --state <plan.matched_state>`
+       verbatim; add the `label.cadence_needs_human` label; remove the
+       `label.cadence_active` label; **do not** move the issue to the terminal;
+       print a summary noting the escalation; **exit**. The card stays in the
+       gate's waiting column.
+  6. **`action` is `escalate`** (PR closed-unmerged / indeterminate, or the
+     `gh pr view` in step 2 failed): post
+     `emit_tracking_comment.py --kind merge --status failed --error "<reason or gh error>" --state <plan.matched_state>`
+     verbatim; add the `label.cadence_needs_human` label; remove the
+     `label.cadence_active` label; leave the issue in the gate's waiting
+     column; print a summary noting the escalation; **exit**.
 
 - If `invoke_subagent` is **true**: apply every action in `pre_actions` in
   order via the Linear MCP. Then write `parse_comments_output` verbatim as
@@ -492,6 +557,11 @@ output.
 ---
 
 ## Step 11 — Advance Linear state
+
+> Step 11 runs only on the `invoke_subagent: true` path. The terminal advance
+> for an opt-in `merge_on_approve` gate-approve happens earlier, in Step 6's
+> **Merge on approve** sub-phase (that fire is `invoke_subagent: false` and
+> never reaches Step 11) — so there is no conflict between the two.
 
 Look up `targetState.next` in the config. Find the next state's config block.
 Then:

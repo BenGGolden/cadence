@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — opt-in `merge_on_approve` gate field
+- A gate whose `on_approve` is a terminal may now set `merge_on_approve: true`
+  (with optional `merge_args`, default `--squash`) to merge the issue's PR when
+  a human approves, before the card advances to the terminal — closing the
+  "approved but the PR is still open" gap. No new workflow state, subagent, or
+  Linear column: the merge is a transition-coupled side-effect the bootstrap
+  owns, mirroring AC promotion. The bootstrap reads PR state first
+  (`gh pr view`) and is idempotent — an already-merged PR (e.g. merged
+  manually) advances cleanly. A merge failure (CI red, conflicts, branch
+  protection) or a closed-unmerged PR adds `cadence-needs-human`, posts a
+  failure comment, and leaves the card in the gate's waiting column (no
+  terminal move).
+- New deterministic helper `templates/hooks/classify_merge.py` classifies the
+  `gh pr view` PR state into advance / merge / escalate. New `merge`
+  tracking-comment kind in `emit_tracking_comment.py` records the outcome.
+  Validator Rule 9 constrains the new fields. Off by default — no shipped
+  `workflow.yaml` sets `merge_on_approve`, so existing consumers see zero
+  behavior change.
+
 ### Removed — redundant audit-log hook
 - Removed the `audit_linear_writes.py` `PostToolUse` hook and `.cadence/audit.log`.
   Linear's native activity history (comment threads + issue activity feed)

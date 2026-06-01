@@ -20,6 +20,9 @@
 #     on terminals). Agent caps throttle parallel subagent runs at the
 #     state itself; gate caps throttle the gate's *waiting queue* by
 #     dropping pickups whose happy-path downstream feeds the gate.
+#   - `merge_on_approve`, where set, must be a boolean on a gate whose
+#     `on_approve` is a terminal state; `merge_args`, where set, must be a
+#     string on such a gate (Rule 9).
 
 linear:
   # Required. Your Linear team key (e.g. "ENG", "PROD"). Used by the
@@ -184,6 +187,15 @@ states:
     # stops at plan_review). Verdict-bearing issues already in the
     # queue drain regardless of cap.
     # max_in_flight: 5
+    #
+    # Optional. After a human approves at this gate, merge the issue's PR
+    # (gh pr merge) before advancing to the on_approve terminal. The
+    # bootstrap reads PR state first: an already-merged PR advances cleanly;
+    # an open PR is merged; a merge failure (CI red, conflicts, branch
+    # protection) escalates with cadence-needs-human and the card stays
+    # here. Only valid on a gate whose on_approve is a terminal state.
+    # merge_on_approve: true
+    # merge_args: "--squash"   # flags appended to `gh pr merge <url>`; default --squash
 
   # ----------- terminal -----------
   done:

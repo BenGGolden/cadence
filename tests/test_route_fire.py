@@ -29,7 +29,8 @@ LABELS = {
 }
 
 
-def _validator_output(*, on_rework=None, max_rework=None, max_attempts=3):
+def _validator_output(*, on_rework=None, max_rework=None, max_attempts=3,
+                      merge_on_approve=False, merge_args=None):
     on_rework_default = {"plan_review": "plan", "human_review": "implement"}
     on_rework_default.update(on_rework or {})
     states = {
@@ -51,6 +52,10 @@ def _validator_output(*, on_rework=None, max_rework=None, max_attempts=3):
     if max_rework is not None:
         states["plan_review"]["max_rework"] = max_rework
         states["human_review"]["max_rework"] = max_rework
+    if merge_on_approve:
+        states["human_review"]["merge_on_approve"] = True
+    if merge_args is not None:
+        states["human_review"]["merge_args"] = merge_args
     linear_to_workflow = {
         "Todo": {"kind": "pickup", "workflow_state": None,
                  "linear_state_type": None},
@@ -95,6 +100,16 @@ def _gate_rework(state, t, rework_to="implement", user="Alice"):
                           "rework_to": rework_to})
     body = (f"<!-- cadence:gate {payload} -->\n"
             f"**[Cadence]** Rework requested; routing to **{rework_to}**.")
+    return {"id": f"c-{t}", "body": body, "createdAt": t,
+            "user": {"displayName": user}}
+
+
+def _implementer_summary(t, pr_url="https://github.com/o/r/pull/7",
+                         user="Alice"):
+    """A non-tracking implementer work-product comment carrying a PR URL.
+    parse_comments pairs it with the immediately-preceding implement attempt
+    marker by the same author to surface latest_implementer_summary.pr_url."""
+    body = f"Implemented the change.\n\nPR: {pr_url}"
     return {"id": f"c-{t}", "body": body, "createdAt": t,
             "user": {"displayName": user}}
 
@@ -281,6 +296,90 @@ class RouteFireTests(unittest.TestCase):
             self.assertEqual(plan["exit_plan"][2]["label"], "cadence-active")
             # Terminal approve is an exit plan — never promotes AC.
             self.assertFalse(plan["promote_ac"])
+
+    # ---------- gate approve → merge on approve (opt-in) ----------
+
+    def test_terminal_approve_unset_merge_unchanged(self):
+        # AC-3 regression: with merge_on_approve unset, the terminal-approve
+        # exit plan is the historical move+release shape, and the merge fields
+        # are all defaults.
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            r = _run(td, _validator_output(), "In Review", [],
+                     labels_csv="cadence-approve")
+            plan = json.loads(r.stdout)
+            self.assertFalse(plan["invoke_subagent"])
+            self.assertFalse(plan["merge_on_approve"])
+            self.assertIsNone(plan["pr_url"])
+            self.assertIsNone(plan["merge_args"])
+            self.assertIsNone(plan["merge_target_linear_state"])
+            self.assertEqual(_types(plan["exit_plan"]),
+                             ["remove_label", "move_state", "remove_label"])
+
+    def test_merge_on_approve_plan_shape(self):
+        # AC-4: terminal gate with merge_on_approve true → defer move + lock
+        # release to the bootstrap; exit_plan carries only the approve-label
+        # removal.
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            # The gate-waiting marker is the latest tracking comment, so the
+            # matched state (human_review) equals the latest tracked state and
+            # no drift reconcile is queued — the exit_plan is the clean
+            # approve-label removal. The implementer summary still pairs with
+            # the implement attempt marker for pr_url extraction.
+            comments = [
+                _attempt_marker("implement", 1, "2026-05-01T00:00:00Z"),
+                _implementer_summary("2026-05-01T00:01:00Z"),
+                _gate_waiting("human_review", "2026-05-01T00:02:00Z"),
+            ]
+            r = _run(td, _validator_output(merge_on_approve=True), "In Review",
+                     comments, labels_csv="cadence-approve")
+            plan = json.loads(r.stdout)
+            self.assertFalse(plan["invoke_subagent"])
+            self.assertTrue(plan["merge_on_approve"])
+            self.assertEqual(plan["pr_url"], "https://github.com/o/r/pull/7")
+            self.assertEqual(plan["merge_args"], "--squash")
+            self.assertEqual(plan["merge_target_linear_state"], "Done")
+            self.assertEqual(plan["matched_state"], "human_review")
+            self.assertEqual(plan["target_state"], "done")
+            # Only the approve-label removal — no move_state, no active removal.
+            self.assertEqual(_types(plan["exit_plan"]), ["remove_label"])
+            self.assertEqual(plan["exit_plan"][0]["label"], "cadence-approve")
+
+    def test_merge_on_approve_pr_url_null_when_absent(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            r = _run(td, _validator_output(merge_on_approve=True), "In Review",
+                     [], labels_csv="cadence-approve")
+            plan = json.loads(r.stdout)
+            self.assertTrue(plan["merge_on_approve"])
+            self.assertIsNone(plan["pr_url"])
+            self.assertEqual(plan["merge_args"], "--squash")
+
+    def test_merge_on_approve_merge_args_override(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            wf = _validator_output(merge_on_approve=True, merge_args="--merge")
+            r = _run(td, wf, "In Review", [], labels_csv="cadence-approve")
+            plan = json.loads(r.stdout)
+            self.assertEqual(plan["merge_args"], "--merge")
+
+    def test_merge_on_approve_drift_reconcile_preserved_in_exit_plan(self):
+        # A reconcile pre-action accumulated before gate routing must remain in
+        # the merge exit_plan (it's an unconditional write).
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            # latest tracking is `done` (terminal); the card was dragged back
+            # to "In Review". human_review is not forward-reachable from done,
+            # so drift fires and a reconcile comment is queued before routing.
+            comments = [_attempt_marker("done", 1, "2026-05-01T00:00:00Z")]
+            r = _run(td, _validator_output(merge_on_approve=True), "In Review",
+                     comments, labels_csv="cadence-approve")
+            plan = json.loads(r.stdout)
+            self.assertTrue(plan["merge_on_approve"])
+            self.assertEqual(_types(plan["exit_plan"]),
+                             ["post_comment", "remove_label"])
+            self.assertIn("cadence:reconcile", plan["exit_plan"][0]["body"])
 
     def test_gate_rework_under_cap(self):
         with tempfile.TemporaryDirectory() as td:

@@ -44,69 +44,18 @@ one is the longer-horizon companion.
 
 ---
 
-## Optional `merge` state between `review` and `done`
+## Optional `merge` state between `review` and `done` — RESOLVED
 
-**Idea**: an opt-in workflow state that runs `gh pr merge` after the
-human approves at the `review` gate, before the issue lands in `done`.
-Today the bootstrap removes the `cadence-approve` label and moves the
-Linear card to the gate's `on_approve` target with no awareness of PR
-state — if the human approved without merging, the Linear card lands in
-Done while the PR sits open.
-
-**Why**: closes the "approved but PR not merged" gap that
-[tick.md's Route step](./commands/tick.md) currently leaves to convention.
-Linear and GitHub move together, end of story.
-
-**The setting is the state itself.** Cadence's workflow YAML already
-lets consumers add intermediate states. No new schema needed — a
-consumer who wants the auto-merge behaviour adds a `merge` state and a
-corresponding Linear column:
-
-```yaml
-review:
-  type: gate
-  linear_state: "In Review"
-  on_approve: merge        # was: done
-  on_rework: implement
-
-merge:
-  type: agent
-  subagent: merger         # new subagent template; runs `gh pr merge`
-  linear_state: "Merging"
-  next: done
-```
-
-Consumers who prefer the status-only signal omit the state and leave the
-gate pointed straight at `done` (today's behaviour). A status warning
-(`approved but PR still open`) could be a separate, smaller change that
-helps either camp without forcing the auto-merge path.
-
-**Open questions**:
-
-- Where does the `merger` subagent live — shipped as a template, or
-  documented in README as a recipe consumers paste in? Shipping it
-  makes the opt-in one YAML edit; recipe-only keeps the template set
-  smaller.
-- `gh pr merge` flag defaults: `--squash`? `--auto`? Configurable per
-  consumer via the subagent's body, probably — same pattern as the
-  rest of the agent templates.
-- Failure handling: if `gh pr merge` fails (CI red, conflicts, branch
-  protection), does the issue land in `cadence-needs-human` like any
-  other agent failure, or is there a dedicated failure path? Reuse the
-  `max_attempts_per_issue` escalation; it already covers this shape.
-- Status reporter: should it cross-reference PR state on the gate row
-  regardless of whether `merge` is in the workflow? A read-only "PR is
-  still open" signal is useful in both camps.
-
-**Why not now**: not blocking the current Phase 4 work; the
-convention-based approach ("approve after you merge") works for teams
-with a small reviewer set and tight feedback loops. Worth picking up
-when the manual coordination starts producing "approved cards with
-stale PRs" reports.
-
-**Discussed in**: conversation on 2026-05-18 about Phase 4 smoke
-testing — the question "does the approve flow expect the PR to be
-merged first?" surfaced the gap.
+Shipped (Unreleased) as the opt-in **`merge_on_approve`** gate field rather
+than a new `merge` workflow state + `merger` subagent. A `gh pr merge` reads no
+code and makes no judgment, so it is not agentic work; instead the bootstrap
+runs it as a transition-coupled side-effect (read PR state, merge if open,
+advance to the terminal — escalate to `cadence-needs-human` on failure or a
+closed-unmerged PR), mirroring the AC-promotion precedent. No new state,
+subagent, or Linear column. The companion "PR still open" status warning was
+explicitly dropped (unreliable — the human may have merged manually). See
+[CHANGELOG.md](./CHANGELOG.md) and the `merge_on_approve` section in
+[README.md](./README.md).
 
 ---
 
@@ -247,68 +196,3 @@ non-trivial and the bug rate doesn't currently justify it.
 **Discussed in**: hardening-plan "Out of scope / future work" — moved
 here on 2026-05-25 when HARDENING-PLAN.md was retired.
 
----
-
-## Cost telemetry / token-budget reporting
-
-**Idea**: a `--report-cost` flag (or always-on instrumentation) on
-`/cadence:tick` that estimates token spend per fire, broken down by
-subagent. The model returns approximate token counts via the Agent
-tool result; a small script aggregates per-fire totals into a Linear
-comment.
-
-**Why**: useful if cost becomes a complaint or a signal that a
-subagent is running away (the kind of "29 tool calls on a no-op
-ticket" scenario that surfaced during P8 Smoke V would be visible in
-this telemetry).
-
-**Why not now**: cost has not been a complaint. Not pre-emptively
-necessary; instrument when an operator wants the visibility.
-
-**Discussed in**: hardening-plan "Out of scope / future work" — moved
-here on 2026-05-25.
-
----
-
-## Multi-runner support (non-Claude subagents)
-
-**Idea**: a `runner:` field on a workflow state that lets the state
-invoke Codex (or another provider) instead of a Claude subagent.
-Useful primarily for the
-[adversarial reviewer leg of GUIDEPOSTS Principle 3](./GUIDEPOSTS.md)
-— "ideally a different model or provider" — which Cadence currently
-satisfies by model class (opus reviewing sonnet-class implementation)
-but not by provider.
-
-**Why not now**: a distinct architectural shift. The Claude Code
-plugin model assumes Claude. Wiring a second provider's CLI / SDK
-into the harness, mapping its return shape to the Markdown summary
-Cadence expects, and reconciling permission scopes across providers
-is substantial. Out of scope until the model-class adversarial leg
-proves insufficient in practice.
-
-**Discussed in**: hardening-plan "Out of scope / future work" — moved
-here on 2026-05-25.
-
----
-
-## Workflow visualization (`/cadence:graph`)
-
-**Idea**: a `/cadence:graph` command that reads `.claude/workflow.yaml`
-and emits a Mermaid flowchart of the configured workflow — agent
-states as rounded rectangles, gates as diamonds, terminals as
-stadiums, with edges labelled `next` / `on_approve` / `on_rework`.
-
-**Why**: the default workflow's diagram is in
-[README.md](./README.md), but a consumer who has customised their
-workflow has no rendered view of their own state machine.
-`/cadence:status` shows column counts, not topology.
-
-**Why not now**: sugar. The workflow YAML fits on one screen by
-design (per [GUIDEPOSTS.md](./GUIDEPOSTS.md) anti-goals), so a
-contributor can read it directly in 30 seconds. Pick this up when
-the workflow visibly grows past one screen or when an operator
-specifically asks for it.
-
-**Discussed in**: hardening-plan "Out of scope / future work" — moved
-here on 2026-05-25.

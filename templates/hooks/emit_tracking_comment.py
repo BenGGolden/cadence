@@ -17,7 +17,7 @@ Failure mode eliminated:
   guaranteed well-formed and canonically spaced.
 
 CLI:
-  python emit_tracking_comment.py --kind {state|gate|reconcile|sweep} [...]
+  python emit_tracking_comment.py --kind {state|gate|reconcile|sweep|merge} [...]
 
 Required args by kind:
   state      --state, plus --status OR (--attempt and --started-at)
@@ -25,6 +25,8 @@ Required args by kind:
   reconcile  --observed-linear-state, --expected-state, --reason
   sweep      --cleared-at, --last-activity, --stale-minutes,
              --threshold-minutes
+  merge      --state and --status {merged|already_merged|failed|no_pr};
+             --pr-url for merged/already_merged; --error for failed
 
 Stdout: the full comment body (HTML-comment marker line + visible markdown).
 Exit codes: 0 success; 1 bad / missing required input.
@@ -110,6 +112,38 @@ def build_gate(args):
     return _emit("gate", payload, visible)
 
 
+def build_merge(args):
+    if not args.state:
+        die("Cadence: --state is required for --kind merge.", 1)
+    if not args.status:
+        die("Cadence: --status is required for --kind merge.", 1)
+    if args.status in ("merged", "already_merged"):
+        if not args.pr_url:
+            die(f"Cadence: --pr-url is required for a "
+                f"'{args.status}' merge comment.", 1)
+        payload = {"state": args.state, "status": args.status,
+                   "pr_url": args.pr_url}
+        if args.status == "merged":
+            visible = f"**[Cadence]** Merged PR {args.pr_url}; advancing."
+        else:
+            visible = (f"**[Cadence]** PR {args.pr_url} was already merged; "
+                       f"advancing.")
+    elif args.status == "failed":
+        error = _clean_error(args.error) or ""
+        payload = {"state": args.state, "status": "failed", "error": error}
+        visible = (f"**[Cadence]** PR merge failed: {error}. "
+                   f"Needs human intervention.")
+    elif args.status == "no_pr":
+        payload = {"state": args.state, "status": "no_pr"}
+        visible = (f"**[Cadence]** Approved at gate **{args.state}** but no PR "
+                   f"URL was found in the issue history; cannot merge. Needs "
+                   f"human intervention.")
+    else:
+        die(f"Cadence: --kind merge does not support --status "
+            f"'{args.status}'.", 1)
+    return _emit("merge", payload, visible)
+
+
 def build_sweep(args):
     missing = [name for name, val in (
         ("--cleared-at", args.cleared_at),
@@ -153,11 +187,14 @@ def build_reconcile(args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--kind", required=True,
-                    choices=["state", "gate", "reconcile", "sweep"])
+                    choices=["state", "gate", "reconcile", "sweep", "merge"])
     ap.add_argument("--state")
     ap.add_argument("--attempt", type=int)
     ap.add_argument("--started-at")
-    ap.add_argument("--status", choices=["failed", "waiting", "rework", "escalated"])
+    ap.add_argument("--status", choices=["failed", "waiting", "rework",
+                                         "escalated", "merged",
+                                         "already_merged", "no_pr"])
+    ap.add_argument("--pr-url", help="PR URL for --kind merge.")
     ap.add_argument("--error")
     ap.add_argument("--subagent", help="Subagent name for a failure record's "
                                        "visible line.")
@@ -185,6 +222,8 @@ def main():
         body = build_gate(args)
     elif args.kind == "sweep":
         body = build_sweep(args)
+    elif args.kind == "merge":
+        body = build_merge(args)
     else:
         body = build_reconcile(args)
 
