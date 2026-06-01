@@ -8,6 +8,7 @@
 - **Attempt:** 1
 - **Priority:** 2 (High)
 - **Branch (Linear suggested):** eng/eng-42-wire-up-dashboard-widget
+- **Base branch:** main
 - **Labels:** frontend, P1
 
 ### Description

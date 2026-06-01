@@ -253,6 +253,7 @@ def compose_block(*, issue, target_state, attempt, next_name, next_type,
             parts.append(f"- **PR:** {pr_url}")
     else:
         parts.append(f"- **Branch (Linear suggested):** {branch}")
+        parts.append(f"- **Base branch:** {base_branch}")
     parts.append(f"- **Labels:** {_format_labels(issue.get('labels'))}")
     parts.append("")
     parts.append("### Description")

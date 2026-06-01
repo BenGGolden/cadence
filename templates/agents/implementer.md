@@ -40,9 +40,22 @@ comment and creates (or, on rework, reuses) the PR via the GitHub connector.
    against what's currently on disk (the plan may be hours or days old).
 3. Decide your branch:
    - **First attempt** (no existing branch for this issue): create a new
-     branch off the default branch. Use the Linear-suggested branch name
-     from the Lifecycle Context if present, otherwise derive a reasonable
-     name from the issue identifier and title.
+     branch off the **up-to-date base branch**, not the commit you happen
+     to be sitting on. You run inside a harness worktree whose `HEAD` is
+     whatever the checkout was at when you were spawned — it may be stale
+     or diverged from the remote base, and branching off it produces a PR
+     that conflicts on merge. So always fetch first and base the branch on
+     the remote ref explicitly:
+
+     ```
+     git fetch origin
+     git checkout -b <branch-name> origin/<base-branch>
+     ```
+
+     `<base-branch>` is the **Base branch** named in the Lifecycle Context
+     (default `main`). Use the Linear-suggested branch name from the
+     Lifecycle Context if present, otherwise derive a reasonable name from
+     the issue identifier and title.
    - **Rework attempt** (a branch already exists from a prior fire): check
      out the existing branch. Add commits on top — **do not force-push**, do
      not squash history, do not rebase. The reviewer needs to see what

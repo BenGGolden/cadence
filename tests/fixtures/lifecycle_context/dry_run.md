@@ -8,6 +8,7 @@
 - **Attempt:** 1
 - **Priority:** 3 (Medium)
 - **Branch (Linear suggested):** example/example-1-hypothetical-entry-state-issue
+- **Base branch:** main
 - **Labels:** (none)
 
 ### Description
