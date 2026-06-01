@@ -28,7 +28,7 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
   the rest are deterministic helpers the dispatch
   prose invokes via Bash (`validate_workflow.py`, `_common.py`,
   `parse_comments.py`, `emit_tracking_comment.py`, `classify_drift.py`,
-  `classify_gate.py`, `classify_merge.py`, `route_fire.py`,
+  `classify_gate.py`, `route_fire.py`,
   `compose_lifecycle_context.py`,
   `filter_candidates.py`, `render_status_report.py`,
   `render_sweep_report.py`, `promote_acceptance_criteria.py`).
@@ -60,6 +60,13 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
   change, not a doc edit. Step ordering and wording are behavior.
 - **The bootstrap is the sole Linear writer.** Subagents read code, make
   changes, and return a Markdown string; the bootstrap posts it verbatim.
+- **The bootstrap owns all GitHub PR operations, via GitHub MCP — not `gh`,
+  not the subagents.** The implementer only `git push`es a branch and returns
+  the PR title/body; the bootstrap creates the PR (reusing the open PR on
+  rework) and, for a `merge_on_approve` gate, reads state + merges
+  (`create_pull_request` / `list_pull_requests` / `get_pull_request` /
+  `merge_pull_request`). The connector scopes to the bound repo, so there is
+  **no repo config** and no `GH_TOKEN` / `gh` anywhere.
 - **Linear column ↔ workflow state is 1:1.** No aliasing.
 - **`commands/*.md` are invoked independently** as slash commands and must
   stay self-contained — do not factor shared prose into a file a command

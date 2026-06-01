@@ -257,9 +257,11 @@ rework will emit `<!-- cadence:gate {"state":"review","status":"rework",
 Pick an invocation mode (see README for details):
 
 - **Remote (`/schedule`)** — create a routine running `/cadence:tick`
-  every minute, with Linear MCP and `GH_TOKEN` configured.
-- **Local (`/loop`)** — `claude /loop 1m /cadence:tick` from the
-  repo, after `gh auth login`.
+  every minute, with the Linear connector added and a GitHub repository
+  bound (the repo picker). No `GH_TOKEN` or `gh` setup — PR ops run via
+  the GitHub connector's MCP tools.
+- **Local (`/loop`)** — `claude /loop 1m /cadence:tick` from the repo,
+  with the Linear and GitHub MCP connectors configured locally.
 
 Stop the Stokowski daemon (`stokowski stop` or however your install is
 managed). The first Cadence fire will pick up the highest-priority

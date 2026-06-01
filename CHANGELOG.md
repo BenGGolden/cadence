@@ -6,24 +6,48 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — PR operations via GitHub MCP, owned by the bootstrap
+- **GitHub pull-request operations moved from the `gh` CLI to the GitHub MCP
+  connector, and from the subagents to the bootstrap.** The implementer now
+  only `git push`es a branch and returns the PR title/body; the **bootstrap**
+  creates the PR (reusing the open PR on a rework run), and — for a
+  `merge_on_approve` gate — reads PR state and merges, all via GitHub MCP
+  (`create_pull_request` / `list_pull_requests` / `get_pull_request` /
+  `merge_pull_request`). PR creation/merge is a transition-coupled side-effect,
+  so it belongs to the orchestrator (GUIDEPOSTS #6), like AC promotion and the
+  merge step before it.
+- **`gh` is gone entirely** — no `GH_TOKEN`, no `GH_REPO`, no `apt install gh`
+  setup script, no remote-detection fragility. Both `git` push and the GitHub
+  MCP tools authenticate via the routine's **bound GitHub repository** (or the
+  local GitHub connector under `/loop`), and scope to that repo on their own,
+  so **no repo config** is added. Connector tools auto-allow their writes
+  during a run.
+- The reviewer drops its supplementary `gh pr view` file-stats call; it reads
+  the diff via `git diff` only (already its primary source).
+- **`merge_args` → `merge_method`.** The merge gate's config field now takes a
+  GitHub merge method (`merge` / `squash` / `rebase`, default `squash`) instead
+  of raw `gh pr merge` flags. Validator Rule 9 validates `merge_method` and
+  rejects a leftover `merge_args` key with a migration message.
+- `/loop`-local users now also need the **GitHub connector / MCP** configured
+  in their local Claude Code — there is no `gh` fallback.
+
 ### Added — opt-in `merge_on_approve` gate field
-- A gate whose `on_approve` is a terminal may now set `merge_on_approve: true`
-  (with optional `merge_args`, default `--squash`) to merge the issue's PR when
+- A gate whose `on_approve` is a terminal may set `merge_on_approve: true`
+  (with optional `merge_method`, default `squash`) to merge the issue's PR when
   a human approves, before the card advances to the terminal — closing the
   "approved but the PR is still open" gap. No new workflow state, subagent, or
   Linear column: the merge is a transition-coupled side-effect the bootstrap
   owns, mirroring AC promotion. The bootstrap reads PR state first
-  (`gh pr view`) and is idempotent — an already-merged PR (e.g. merged
-  manually) advances cleanly. A merge failure (CI red, conflicts, branch
-  protection) or a closed-unmerged PR adds `cadence-needs-human`, posts a
-  failure comment, and leaves the card in the gate's waiting column (no
-  terminal move).
-- New deterministic helper `templates/hooks/classify_merge.py` classifies the
-  `gh pr view` PR state into advance / merge / escalate. New `merge`
-  tracking-comment kind in `emit_tracking_comment.py` records the outcome.
-  Validator Rule 9 constrains the new fields. Off by default — no shipped
-  `workflow.yaml` sets `merge_on_approve`, so existing consumers see zero
-  behavior change.
+  (GitHub MCP `get_pull_request`) and is idempotent — an already-merged PR
+  (e.g. merged manually) advances cleanly. A merge failure (CI red, conflicts,
+  branch protection) or a closed-unmerged PR adds `cadence-needs-human`, posts
+  a failure comment, and leaves the card in the gate's waiting column (no
+  terminal move). The decision (`merged` → advance, `open` → merge, else →
+  escalate) is made inline in the bootstrap from the REST `{state, merged}`
+  shape. A `merge` tracking-comment kind in `emit_tracking_comment.py` records
+  the outcome. Validator Rule 9 constrains the fields. Off by default — no
+  shipped `workflow.yaml` sets `merge_on_approve`, so existing consumers see
+  zero behavior change.
 
 ### Removed — redundant audit-log hook
 - Removed the `audit_linear_writes.py` `PostToolUse` hook and `.cadence/audit.log`.

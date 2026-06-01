@@ -61,9 +61,10 @@ Once loaded, the five slash commands appear under the `cadence:` namespace:
 
 Both invocation modes use the same plugin and the same `/cadence:tick`
 command — they differ only in where the cron lives. You need: Claude Code with
-plugin support, a Linear MCP server, GitHub auth for the implementer subagent
-(`gh auth login` locally or `GH_TOKEN` on the routine), and a Linear board with
-one column per workflow stage. The default workflow:
+plugin support, a Linear MCP server, a **GitHub repository bound** to the
+session (the GitHub connector — used for `git push` and all PR operations; no
+`gh` CLI, no `GH_TOKEN`), and a Linear board with one column per workflow
+stage. The default workflow:
 
 ```mermaid
 flowchart TD
@@ -116,12 +117,16 @@ Fully autonomous. No operator presence required between fires.
    commit a `.mcp.json` at the consumer repo root. The same applies to any
    other MCP server the subagents need.
 5. **Create a `/schedule` routine** ([claude.ai/code/routines][routines]):
-   schedule `*/1 * * * *`, prompt `/cadence:tick`, Linear connector on,
-   `GH_TOKEN` set on the routine's cloud environment, and Linear MCP tools +
-   `Agent` + `Bash` + `Read`/`Write`/`Edit` set to Always Allow — an unattended
-   routine hangs on any permission prompt. Bake expensive repo setup (npm
-   install, native deps) into the cloud environment's setup script rather than
-   rerunning it every fire.
+   schedule `*/1 * * * *`, prompt `/cadence:tick`, Linear connector on, and a
+   **GitHub repository bound** via the routine's repo picker (the GitHub
+   Integration). That binding gives the routine both authenticated `git`
+   (branch/commit/push) and the GitHub MCP tools (create/read/merge PRs) — no
+   `GH_TOKEN`, no `GH_REPO`, no setup script. **Connector tools, including PR
+   writes, are auto-allowed during a run** — you only need to set Linear MCP
+   tools + `Agent` + `Bash` + `Read`/`Write`/`Edit` to Always Allow (an
+   unattended routine hangs on any permission prompt). Bake expensive repo
+   setup (npm install, native deps) into the cloud environment's setup script
+   rather than rerunning it every fire.
 6. **Create a second routine for stale-lock cleanup:** schedule `*/15 * * * *`,
    prompt `/cadence:sweep`, same connectors / env / permissions as the tick
    routine.
@@ -130,32 +135,27 @@ Fully autonomous. No operator presence required between fires.
 [connectors]: https://claude.ai/customize/connectors
 [routines]: https://claude.ai/code/routines
 
-#### GitHub CLI setup
+#### GitHub PR operations
 
-The implementer subagent opens PRs via `gh`, which isn't preinstalled
-on the routine image. Without it, the implementer falls back to
-"branch pushed; PR creation skipped" — workable, but you lose
-automatic PR links in the Linear summary.
+There is **no `gh` CLI setup** — no `apt install gh`, no `GH_TOKEN`, no
+`GH_REPO`. Binding a GitHub repository to the routine (step 5) gives it
+everything PR ops need:
 
-The fix is one line in the routine's **Setup script** field
-(environment settings, runs once at environment build and is cached
-across fires — not the routine prompt):
+- **`git`** (branch/commit/**push**), authenticated by the connector — the
+  implementer subagent uses this and nothing else.
+- **GitHub MCP** tools (`create_pull_request`, `list_pull_requests`,
+  `get_pull_request`, `merge_pull_request`), used by the **bootstrap** — not
+  the subagents. The bootstrap owns every PR operation: it creates the PR from
+  the branch the implementer pushed (reusing the open PR on a rework run),
+  and, for an opt-in `merge_on_approve` gate, reads PR state and merges. The
+  connector's tools auto-allow their writes during a run, and they scope to
+  the bound repo on their own (create needs no repo argument; read/merge take
+  `owner`/`repo`/`number` from the PR URL) — so **no repo config** is added
+  anywhere.
 
-```bash
-#!/bin/bash
-apt update && apt install -y gh
-```
-
-Routine sandboxes run as root on Ubuntu 24.04, so no `sudo` is
-needed. Pair the install with `GH_TOKEN` on the routine env (already
-covered in step 5 above) — `gh` reads `GH_TOKEN` automatically and
-auths headlessly. No `gh auth login` flow required.
-
-If you skip this and `gh` is missing at fire time, the implementer
-template is designed to bail cleanly rather than improvise — see the
-`## Short-circuits` section in
-[templates/agents/implementer.md](./templates/agents/implementer.md)
-for the discipline.
+If `git push` itself fails (no connector, remote rejects), the implementer
+bails cleanly rather than improvise — see the `## Short-circuits` section in
+[templates/agents/implementer.md](./templates/agents/implementer.md).
 
 ### Ticket quality
 
@@ -190,8 +190,10 @@ planned, with the planner supplying any missing AC for you to approve.
 ### Mode B — Local (`/loop`)
 
 Operator-tended. Steps 1–3 are identical to Mode A. Then, from an interactive
-Claude Code session in the repo (after `gh auth login`), run
-`claude /loop 1m /cadence:tick` and leave it running — Ctrl+C to pause.
+Claude Code session in the repo, run `claude /loop 1m /cadence:tick` and leave
+it running — Ctrl+C to pause. Your local Claude Code must have the **GitHub
+connector / MCP configured** (the bootstrap creates and merges PRs through it;
+there is no `gh` fallback) and the Linear MCP reachable.
 
 No stale-lock sweeper needed — `/loop` has no platform timeout that could
 strand a lock, and you can clear `cadence-active` manually in Linear if needed.
@@ -203,7 +205,7 @@ strand a lock, and you can clear `cadence-active` manually in Linear if needed.
 | Operator presence        | Not required                | Required                       |
 | Subagent timeout ceiling | Platform max (~30 min)      | Effectively none               |
 | Multi-operator safety    | Soft lock essential         | Soft lock essential if multi-op |
-| Credentials              | Configured on routine       | Local MCP + `gh auth login`    |
+| Credentials              | Connectors on routine (Linear + bound GitHub repo) | Local Linear + GitHub MCP connectors |
 | Debug loop               | Slow (remote logs)          | Fast (live terminal)           |
 | Bus factor               | Higher                      | 1                              |
 
@@ -293,7 +295,8 @@ prose, adjust accordingly.
 | Tool        | Why                                                          |
 |-------------|--------------------------------------------------------------|
 | `Read`      | Read `.claude/workflow.yaml`, `.claude/prompts/global.md`, subagent files. |
-| `Bash`      | Generate the current UTC timestamp for tracking-comment JSON (`date -u …` or `Get-Date …`), and run the Python helper scripts under the plugin's `scripts/` directory (config validation, comment parsing, tracking-comment emission). With an opt-in `merge_on_approve` gate it also runs `gh pr view` / `gh pr merge`. |
+| `Bash`      | Generate the current UTC timestamp for tracking-comment JSON (`date -u …` or `Get-Date …`), and run the Python helper scripts under `.claude/hooks/` (config validation, comment parsing, tracking-comment emission). |
+| GitHub MCP  | Create the PR after the implementer pushes (`create_pull_request` / `list_pull_requests`); for an opt-in `merge_on_approve` gate, read state + merge (`get_pull_request` / `merge_pull_request`). Auto-allowed by the bound GitHub connector — no allowlist entry needed. |
 | `Agent`     | Invoke planner / implementer / reviewer subagents.           |
 | `TodoWrite` | Optional — only if you want progress visibility on long fires. |
 
@@ -316,7 +319,7 @@ no longer uses Cadence does no harm.
 | Subagent       | Tools declared in frontmatter                         |
 |----------------|-------------------------------------------------------|
 | `planner`      | `Read, Grep, Glob, WebFetch, Bash`                    |
-| `implementer`  | `Read, Edit, Write, Bash, Grep, Glob` (`Bash` covers `git` and `gh`) |
+| `implementer`  | `Read, Edit, Write, Bash, Grep, Glob` (`Bash` covers `git`; the bootstrap, not the implementer, opens the PR) |
 | `reviewer`     | `Read, Grep, Glob, WebFetch`                          |
 
 ### Linear MCP tools
@@ -398,11 +401,11 @@ future prose change fails closed instead of silently mutating Linear.
 
 ### Environment variables
 
-| Var        | Where to set (Mode A)                                | Why                                            |
-|------------|------------------------------------------------------|------------------------------------------------|
-| `GH_TOKEN` | Routine's cloud environment → Environment variables  | Implementer subagent's `gh` CLI calls.         |
-
-In Mode B (`/loop`) `gh auth login` once locally; no env var needed.
+**None.** Cadence sets no environment variables. Earlier versions needed
+`GH_TOKEN` (and a `GH_REPO`) for the implementer's `gh` CLI; PR operations now
+run via the GitHub connector's MCP tools and `git` push, both authenticated by
+the **bound GitHub repository** — so there is no token or repo variable to set
+in either mode.
 
 ---
 
@@ -568,8 +571,8 @@ See [GUIDEPOSTS.md](./GUIDEPOSTS.md) for why the system is shaped this way.
     │   └── global.md             # shared subagent preamble — edit me
     ├── agents/                   # edit subagent prompts here
     │   ├── planner.md            # Opus, read-only
-    │   ├── implementer.md        # Sonnet, full edit + git/gh
-    │   └── reviewer.md           # Opus, adversarial, read + git/gh
+    │   ├── implementer.md        # Sonnet, full edit + git push
+    │   └── reviewer.md           # Opus, adversarial, read + git diff
     ├── commands/cadence/         # dispatch prose — committed so /schedule cloud routines can find it
     │   ├── tick.md
     │   ├── sweep.md

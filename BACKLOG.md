@@ -47,7 +47,7 @@ one is the longer-horizon companion.
 ## Optional `merge` state between `review` and `done` — RESOLVED
 
 Shipped (Unreleased) as the opt-in **`merge_on_approve`** gate field rather
-than a new `merge` workflow state + `merger` subagent. A `gh pr merge` reads no
+than a new `merge` workflow state + `merger` subagent. A PR merge reads no
 code and makes no judgment, so it is not agentic work; instead the bootstrap
 runs it as a transition-coupled side-effect (read PR state, merge if open,
 advance to the terminal — escalate to `cadence-needs-human` on failure or a
@@ -59,55 +59,52 @@ explicitly dropped (unreliable — the human may have merged manually). See
 
 ---
 
-## Configurable PR-creation tool (beyond `gh`)
+## PR operations for non-GitHub hosts (GitLab / Bitbucket)
 
-**Idea**: today [templates/agents/implementer.md](./templates/agents/implementer.md)
-Rule B and [templates/agents/reviewer.md](./templates/agents/reviewer.md)
-both hardcode `gh` as the PR tool. The "or the configured PR-creation
-tool" hedge in the prose has no configuration path. Add an optional
-schema field that names the tool and the minimal invocation surface,
-so a GitLab or Bitbucket consumer can route the implementer to `glab`
-/ `bb` / etc. instead of silently bailing.
+**Status update**: GitHub PR operations are no longer `gh`-based. The
+bootstrap now creates/reads/merges PRs via the **GitHub MCP** connector
+(see CHANGELOG "PR operations via GitHub MCP"), and the implementer only
+`git push`es. So this item is narrowed to **non-GitHub hosts only** — a
+GitLab- or Bitbucket-hosted consumer has no equivalent connector path and
+currently gets branch-pushed-but-no-MR.
 
-**Why**: a GitLab-hosted consumer running Cadence today has the
-implementer push the branch, hit Rule B (`gh` missing), and bail
-without opening a merge request. The branch lands; the MR doesn't.
-Everything downstream that uses the PR URL — the reviewer's
-`gh pr view`, [parse_comments.py](./templates/hooks/parse_comments.py)'s
-`latest_implementer_summary.pr_url`, the adversarial Lifecycle
-Context's `PR:` line — falls back to `git diff`, which works but
-loses platform-side context (reviewers, conversation, CI status).
+**Idea**: route the bootstrap's PR create/read/merge to a host other than
+GitHub when the consumer's remote isn't GitHub — either via that host's own
+MCP connector (preferred, mirroring the GitHub path) or, failing that, a
+configured CLI (`glab` / `bb`).
+
+**Why**: a GitLab-hosted consumer running Cadence today has the implementer
+push the branch, but the bootstrap's GitHub MCP `create_pull_request` won't
+target GitLab. The branch lands; the MR doesn't. Everything downstream that
+uses the PR URL — [parse_comments.py](./templates/hooks/parse_comments.py)'s
+`latest_implementer_summary.pr_url`, the adversarial Lifecycle Context's
+`PR:` line — has nothing to surface (the reviewer's `git diff` still works
+but loses platform-side context: reviewers, conversation, CI status).
 
 **Shape sketch**:
 
-- Workflow.yaml gains an optional `tools.pr_create` block naming the
-  command, a URL-extraction pattern, and any required env var.
-- Implementer Rule B branches on `which $TOOL` instead of `which gh`.
-- Reviewer's `gh pr view` fallback in step 2 of "How to review"
-  follows the same lookup.
-- Validator rejects malformed `tools.pr_create` shapes (P1.1-style
-  rule).
-- README documents the GitHub default and a GitLab example.
+- An optional `tools.pr_host` (or `platforms:`) block selecting the host /
+  connector the bootstrap's PR sub-phases target.
+- The bootstrap's create / list / read / merge sub-phases resolve the
+  host's MCP tool names (or a CLI invocation) from that config instead of
+  assuming GitHub.
+- `parse_comments`'s PR-URL regex generalises beyond `github.com/.../pull/N`
+  to the host's MR/PR URL shape.
+- Validator rejects malformed `tools.pr_host` shapes (P1.1-style rule).
 
 **Open questions**:
 
-- How much of the PR-tool surface needs to be configurable? `gh pr
-  create --title X --body Y` and `glab mr create --title X
-  --description Y` are similar but not identical; a thin abstraction
-  works only if the operator can supply the flag mapping.
-- The reviewer's `gh pr view --json files,additions,deletions` is
-  structured JSON; `glab` has its own JSON shape. Either Cadence
-  stays oblivious to the JSON (just run the command and read what
-  comes back) or it standardises a small wrapper.
+- Do the major non-GitHub hosts expose MCP connectors with comparable
+  create/merge tools? If yes, the GitHub path generalises cleanly; if not,
+  a CLI fallback reintroduces the setup-script fragility we just removed.
 - Does this overlap with the [Linear OAuth app](#linear-oauth-app-cadence-as-a-first-class-integration)
-  backlog item — should the per-platform PR tool live in a
-  `platforms:` block alongside the Linear config?
+  backlog item — should the per-platform PR host live in a `platforms:`
+  block alongside the Linear config?
 
-**Why not now**: no consumer has hit this. The implicit "Cadence is
-`gh` / GitHub only" assumption is documented nowhere but holds for
-every current user. Pick this up when a GitLab/Bitbucket operator
-surfaces the gap, or when the PR-tool indirection becomes part of a
-broader platforms refactor.
+**Why not now**: no consumer has hit this. Every current user is on GitHub,
+which the MCP path now covers end-to-end. Pick this up when a
+GitLab/Bitbucket operator surfaces the gap, or when host indirection becomes
+part of a broader platforms refactor.
 
 **Discussed in**: post-P9 review conversation on 2026-05-25 —
 surfaced when checking Rule B's wording in the implementer template.
