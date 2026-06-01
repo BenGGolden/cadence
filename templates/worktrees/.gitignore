@@ -1,0 +1,7 @@
+# The Claude Code harness creates git worktrees under .claude/worktrees/ to
+# isolate subagent runs (notably on cloud /schedule routines, which run the
+# implementer/reviewer in their own worktree). Those checkouts are runtime
+# scratch — never commit them. This file keeps the directory present and
+# ignores everything else inside it from the main checkout's perspective.
+*
+!.gitignore

@@ -24,5 +24,6 @@ Re-run with --force to overwrite. This will replace:
   - .claude/commands/cadence/tick.md
   - .claude/commands/cadence/sweep.md
   - .claude/commands/cadence/status.md
+  - .claude/worktrees/.gitignore
 Cadence's hook entries in .claude/settings.json will also be re-merged
 (non-Cadence entries are preserved).

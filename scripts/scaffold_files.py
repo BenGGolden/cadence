@@ -90,6 +90,7 @@ SCAFFOLD_PLAN = (
     ("commands/tick.md",   ".claude/commands/cadence/tick.md",   "plugin-owned"),
     ("commands/sweep.md",  ".claude/commands/cadence/sweep.md",  "plugin-owned"),
     ("commands/status.md", ".claude/commands/cadence/status.md", "plugin-owned"),
+    ("templates/worktrees/.gitignore", ".claude/worktrees/.gitignore", "plugin-owned"),
 )
 
 # Directories the plan's destinations live under. Created up-front so a copy
@@ -100,6 +101,7 @@ _REQUIRED_DIRS = (
     ".claude/prompts",
     ".claude/hooks",
     ".claude/commands/cadence",
+    ".claude/worktrees",
 )
 
 _WORKFLOW_YAML = ".claude/workflow.yaml"

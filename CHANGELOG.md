@@ -30,6 +30,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rejects a leftover `merge_args` key with a migration message.
 - `/loop`-local users now also need the **GitHub connector / MCP** configured
   in their local Claude Code — there is no `gh` fallback.
+- The bootstrap creates PRs with **`draft: false`** so they are review-ready
+  and mergeable (a draft PR would block `merge_pull_request`).
+- The implementer now returns its **PR body inside a fenced block**, and the
+  bootstrap copies that fence whole — so `###` subheadings in the summary no
+  longer truncate the PR body.
+- `/cadence:init` scaffolds **`.claude/worktrees/.gitignore`** so the git
+  worktrees the harness creates for subagent isolation (notably on cloud
+  `/schedule` routines) never show as untracked in the main checkout.
 
 ### Added — opt-in `merge_on_approve` gate field
 - A gate whose `on_approve` is a terminal may set `merge_on_approve: true`

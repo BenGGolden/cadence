@@ -24,6 +24,7 @@ Files written:
   .claude/commands/cadence/tick.md
   .claude/commands/cadence/sweep.md
   .claude/commands/cadence/status.md
+  .claude/worktrees/.gitignore
   .claude/settings.json (Cadence hook entries merged in)
   .claude/settings.local.json (Linear MCP allowlist merged in)
 

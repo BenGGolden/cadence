@@ -560,8 +560,13 @@ When it does apply:
 
 1. Read three fields out of `subagentSummary`: the branch from its
    `**Branch:**` line, the PR title from its `**PR title:**` line, and the PR
-   body from its `### PR body` section (the text between that heading and the
-   next `###` heading).
+   body from the **fenced code block** under its `### PR body` heading — copy
+   the content *inside* that fence verbatim, stripping the fence delimiters.
+   (The implementer wraps the body in one fence precisely so the bootstrap
+   can take it whole; a `###` subheading the implementer writes elsewhere in
+   the summary must **not** truncate the body.) If no fenced block is present
+   (an older summary shape), fall back to the lines between `### PR body` and
+   the next `###` heading.
 2. **Reuse if a PR already exists** (rework run, or an idempotent re-fire):
    call GitHub MCP `list_pull_requests` filtered to the head branch and open
    state. Some connectors expect the `head` filter as `<owner>:<branch>` rather
@@ -569,9 +574,11 @@ When it does apply:
    owner-qualified. If an open PR for the branch is found, take its URL as
    `prUrl` and skip the create.
 3. **Otherwise create it:** call GitHub MCP `create_pull_request` with
-   `head` = the branch, `base` = the repo's default branch, and the `title` /
-   `body` read above. No repo argument — the tool scopes to the bound repo.
-   Take the returned PR URL as `prUrl`.
+   `head` = the branch, `base` = the repo's default branch, the `title` /
+   `body` read above, and **`draft: false`** (Cadence PRs are review-ready —
+   the reviewer subagent and human gate review them, and a draft PR blocks
+   `merge_pull_request`, breaking `merge_on_approve`). No repo argument — the
+   tool scopes to the bound repo. Take the returned PR URL as `prUrl`.
 4. **Inject the URL into the summary.** Insert a line `**PR:** <prUrl>`
    immediately after `subagentSummary`'s leading `## Implementation` header, so
    the comment posted below carries the URL exactly where `parse_comments`

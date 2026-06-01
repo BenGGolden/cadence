@@ -153,7 +153,7 @@ and reads three fields out of it — **Branch**, **PR title**, and **PR body**
 — to open the PR. Keep those three field markers exactly as shown so the
 bootstrap can parse them. Required content:
 
-```
+````
 ## Implementation
 
 **Branch:** `{branch-name}`
@@ -161,9 +161,11 @@ bootstrap can parse them. Required content:
 **PR title:** [{issue-identifier}] {short description}
 
 ### PR body
+```
 A short PR description for the reviewer: what changed and why, a link back
-to the Linear issue, and the tests run with their outcomes. This block
-becomes the PR body verbatim.
+to the Linear issue, and the tests run with their outcomes. This whole
+fenced block becomes the PR body verbatim.
+```
 
 ### What changed
 - File-level summary of edits.
@@ -176,10 +178,14 @@ becomes the PR body verbatim.
 ### Notes for review
 Anything the reviewer should pay attention to: trade-offs taken,
 follow-ups deferred, places where the plan was adapted.
-```
+````
 
-Do **not** include a **PR:** / PR-URL line — you do not create the PR, so
-you have no URL. The bootstrap adds the URL after it opens the PR.
+Write the PR body inside its fenced block as ordinary prose/markdown. Keep
+it to that one block, and do not open another triple-backtick code fence
+inside it — the bootstrap copies the fenced content whole, and a nested
+fence would close it early. Do **not** include a **PR:** / PR-URL line —
+you do not create the PR, so you have no URL. The bootstrap adds the URL
+after it opens the PR.
 
 ### Acceptance criteria
 
