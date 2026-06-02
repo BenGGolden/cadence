@@ -6,6 +6,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Decommission path (`/cadence:uninstall`)
+- **New `/cadence:uninstall` command** reverses `/cadence:init`. It deletes the
+  plugin-owned files it scaffolded, unmerges Cadence's hook + Linear-MCP
+  permission entries from the two settings files, removes the `.cadence/`
+  scratch dir, clears the `__pycache__` bytecode the hook scripts generate,
+  and prunes the now-empty Cadence-created `.claude/` subdirectories (never
+  `.claude/` itself). Mirrors the init architecture: thin dispatch prose over
+  `scripts/` helpers.
+- **Removal is hard delete with a `--dry-run` preview** (computed by the same
+  code path as the real run, so the preview is faithful). User-config files
+  (`workflow.yaml`, `prompts/global.md`, `agents/*.md`, `ticket-template.md`)
+  are left in place and listed unless `--force` is passed.
+- **New unmerge (`--remove`) mode** on `merge_settings_hooks.py` and
+  `merge_settings_permissions.py`, reusing their existing Cadence-ownership
+  detectors. A settings file is deleted only if it reduces to `{}`; an
+  unparseable file is refused, never corrupted. Permission removal is
+  namespace-agnostic (it matches any `linear`-namespaced Cadence entry).
+- **New `scripts/unscaffold_files.py`** (removal driver, imports
+  `SCAFFOLD_PLAN` as the single source of truth) and
+  **`scripts/render_uninstall_steps.py`** (the Linear-cleanup checklist —
+  deterministic code per GUIDEPOSTS #7).
+- **The Linear side stays manual.** Uninstall prints a checklist for deleting
+  the four `cadence-*` labels and reviewing the workflow columns; it makes no
+  Linear MCP call, preserving the plugin's files-vs-Linear boundary.
+- `/cadence:uninstall` is plugin-only — like `init` and `create-ticket`, it is
+  a deliberate local operation and is **not** scaffolded into the consumer.
+
 ### Changed — PR operations via GitHub MCP, owned by the bootstrap
 - **GitHub pull-request operations moved from the `gh` CLI to the GitHub MCP
   connector, and from the subagents to the bootstrap.** The implementer now

@@ -1,0 +1,25 @@
+Cadence files removed.
+
+Linear cleanup (manual — Cadence never touches your Linear workspace):
+
+  Cadence manages files; you manage Linear. The plugin made no changes to
+  your Linear board on install and makes none on uninstall, so the items
+  below are yours to do by hand once you're sure no in-flight issue still
+  depends on them.
+
+  1. Labels. Once no issue still carries them, delete the four Cadence
+     labels:
+       • cadence-active        (the soft lock added during a fire)
+       • cadence-needs-human   (the escalation flag)
+       • cadence-approve        (the gate verdict label)
+       • cadence-rework         (the gate verdict label)
+     Check each label's issue count in Linear first; deleting a label that
+     is still applied removes it from those issues.
+
+  2. Workflow columns. The board columns you mapped in
+     .claude/workflow.yaml (one per workflow stage) are no longer driven by
+     Cadence. If Cadence was their only consumer, you can remove or
+     repurpose them; if your team also uses them, leave them be.
+
+  3. Nothing else. Cadence created no Linear projects, cycles, or
+     integrations — there is no API token or webhook to revoke.

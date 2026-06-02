@@ -1,0 +1,17 @@
+Cadence: [dry-run] would remove 18 files (6 user-config left in place, 0 already absent).
+  would remove .cadence/ scratch directory
+would remove empty directories:
+  .claude/commands/cadence
+  .claude/commands
+  .claude/hooks
+  .claude/worktrees
+user-config left in place (re-run with --force to remove):
+  .claude/workflow.yaml
+  .claude/prompts/global.md
+  .claude/ticket-template.md
+  .claude/agents/planner.md
+  .claude/agents/implementer.md
+  .claude/agents/reviewer.md
+directories left in place (not empty):
+  .claude/agents
+  .claude/prompts

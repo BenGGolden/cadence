@@ -609,6 +609,45 @@ verbatim on `/cadence:init --force`.
 Re-running `/cadence:init` without `--force` refuses to overwrite. Use
 `/cadence:init --force` to replace existing files.
 
+To reverse all of the above, see [Uninstalling Cadence](#uninstalling-cadence).
+
+---
+
+## Uninstalling Cadence
+
+`/cadence:uninstall` reverses `/cadence:init`. It deletes the plugin-owned
+files it scaffolded (hooks, the `/cadence:*` commands, `worktrees/.gitignore`),
+unmerges Cadence's hook entries from `.claude/settings.json` and the Linear-MCP
+allowlist from `.claude/settings.local.json`, and removes the `.cadence/`
+runtime scratch dir. Empty Cadence-created directories are pruned; `.claude/`
+itself is never removed.
+
+```
+/cadence:uninstall --dry-run    # preview everything; change nothing
+/cadence:uninstall              # remove plugin-owned files; keep your edited config
+/cadence:uninstall --force      # also remove the user-config files you edit
+```
+
+- **User-config files** (`workflow.yaml`, `prompts/global.md`,
+  `agents/*.md`, `ticket-template.md`) are **left in place by default** and
+  listed in the summary — you likely edited and committed them. Pass
+  `--force` to remove them too.
+- A settings file is **deleted only if unmerging Cadence reduces it to `{}`**
+  (it was effectively Cadence-only). A file that still holds non-Cadence
+  entries is rewritten with just the Cadence entries stripped. An empty
+  `{}` settings file you kept intentionally would be removed — that is by
+  design (an empty settings file is a no-op).
+- **`.claude/worktrees/`** is removed only when empty, so a live subagent
+  worktree keeps it alive and it is listed as left-behind rather than nuked.
+- Removal is **hard delete** — git history is the recovery path. Run
+  `--dry-run` first.
+- The **Linear side** (the `cadence-*` labels and the workflow columns) is a
+  printed manual checklist, never an automated change: the plugin manages
+  files, you manage Linear, on uninstall as on install.
+
+`/cadence:uninstall` is a local-only command — unlike `/cadence:tick`, it is
+not scaffolded for `/schedule` routines to call.
+
 ---
 
 ## Migration from Stokowski
