@@ -43,11 +43,25 @@ prose IS the dispatch logic.
 the plugin into a session without a permanent install; useful while iterating
 on the plugin itself.
 
-**Persistent install** — Cadence is not yet published to a marketplace. Either
-clone this repo and add the `--plugin-dir` flag to whatever launches Claude Code
-in your consumer repo (wrapper script, shell alias, `.envrc`), or roll your own
-marketplace pointing at this repo and `claude plugin install cadence@<your-mp>`
-(see the [plugin marketplaces docs][marketplaces]).
+**Persistent install (marketplace)** — this repo doubles as its own
+single-plugin marketplace via [`.claude-plugin/marketplace.json`](./.claude-plugin/marketplace.json),
+so it installs like any other plugin. From GitHub:
+
+```
+/plugin marketplace add BenGGolden/cadence
+/plugin install cadence@cadence
+```
+
+Or from a local clone (no GitHub round-trip):
+
+```
+/plugin marketplace add /path/to/cadence
+/plugin install cadence@cadence
+```
+
+This copies the plugin into `~/.claude/plugins/` — no `--plugin-dir` flag on
+every launch. See the [plugin marketplaces docs][marketplaces] for managing and
+updating marketplaces.
 
 Once loaded, the five slash commands appear under the `cadence:` namespace:
 `/cadence:tick`, `/cadence:init`, `/cadence:sweep`, `/cadence:status`,
