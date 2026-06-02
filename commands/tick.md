@@ -52,6 +52,18 @@ server vendor; commonly they look like `mcp__linear__list_issues`, `mcp__linear_
 `mcp__linear__add_label`, `mcp__linear__remove_label`. Use whichever names are present
 in your available tool list — the verbs below describe intent, not exact names.
 
+**GitHub pull-request operations** (PR create on the implement step, PR
+read + merge in the `merge_on_approve` sub-phase) run via the **GitHub MCP**
+tools, never the `gh` CLI. The bootstrap owns every PR operation; subagents
+only `git push`. The GitHub connector is bound to the routine (or to your
+local Claude Code under `/loop`), so its tools — commonly
+`mcp__github__create_pull_request`, `mcp__github__list_pull_requests`,
+`mcp__github__get_pull_request`, `mcp__github__merge_pull_request` — are
+present and auto-authorized. Use whichever names your connector exposes. They
+scope to the bound repo on their own: create needs **no** repo argument, and
+read/merge take `owner` / `repo` / `pullNumber` parsed from the PR URL. No
+`GH_TOKEN`, `GH_REPO`, or setup script is involved.
+
 ### Scratch files
 
 Every transient JSON file this fire writes with the Write tool (the comment
@@ -329,8 +341,9 @@ verbatim and exit. The plan carries:
   fire.
 - `pr_url` — the PR URL extracted from the latest implementer summary (or
   `null` when none was found). Only meaningful when `merge_on_approve` is `true`.
-- `merge_args` — the flags to append to `gh pr merge <url>` (defaults to
-  `--squash` when the gate did not configure `merge_args`). Only meaningful when
+- `merge_method` — the merge method to pass to GitHub MCP's
+  `merge_pull_request` (one of `merge` / `squash` / `rebase`; defaults to
+  `squash` when the gate did not configure `merge_method`). Only meaningful when
   `merge_on_approve` is `true`.
 - `merge_target_linear_state` — the terminal's Linear column to move the issue
   to **after** a successful (or already-merged) merge. Only meaningful when
@@ -365,8 +378,12 @@ it** — the bootstrap's job is to apply the plan.
   `plan.merge_on_approve` is `true`. The `exit_plan` actions above have already
   removed the `cadence_approve` label (and posted any drift-reconcile comment);
   this sub-phase performs the conditional terminal move and lock release. All
-  Linear writes remain the bootstrap's; the `gh` calls are the bootstrap's too,
-  covered by its existing `Bash` grant. Read-before-write per Cadence
+  Linear writes remain the bootstrap's; the GitHub PR reads/merge are the
+  bootstrap's too, run via the **GitHub MCP** tools (commonly
+  `mcp__github__get_pull_request` / `mcp__github__merge_pull_request`; use
+  whichever names are present — they are auto-authorized in this session). The
+  `owner` / `repo` / `pullNumber` arguments come from parsing `plan.pr_url`
+  (`https://github.com/<owner>/<repo>/pull/<n>`). Read-before-write per Cadence
   discipline — read PR state first, then act. In every branch below, the gate
   name passed to `--state` is `plan.matched_state`.
 
@@ -377,37 +394,37 @@ it** — the bootstrap's job is to apply the plan.
      label; print `exit_summary` (noting the no-PR escalation); **exit**. The
      card stays in the gate's waiting column — it is **not** advanced to the
      terminal.
-  2. **Read PR state.** Otherwise, run Bash
-     `gh pr view <plan.pr_url> --json state,url` and write its stdout to
-     `.cadence/pr-state.json` (Write tool). If `gh` is missing or the command
-     errors, skip classification and go straight to the **escalate** branch
-     (step 6) using the `gh` error text as `--error`.
-  3. **Classify.** Run Bash
-     `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/classify_merge.py --input .cadence/pr-state.json`
-     and parse the `{action, reason}` JSON on stdout.
-  4. **`action` is `advance` (already merged).** Build the audit comment via
+  2. **Read PR state.** Otherwise, parse `owner` / `repo` / `pullNumber` from
+     `plan.pr_url` and call GitHub MCP `get_pull_request`. It returns the REST
+     shape: a `state` field (`open` / `closed`) plus a `merged` boolean. If the
+     call errors or returns no usable `{state, merged}`, go straight to the
+     **escalate** branch (step 5) using the error text (or
+     "could not read PR state") as `--error`.
+  3. **`merged` is `true` (already merged — e.g. a human merged manually).**
+     Build the audit comment via
      `emit_tracking_comment.py --kind merge --status already_merged --pr-url <plan.pr_url> --state <plan.matched_state>`
      and post it verbatim; move the issue to `plan.merge_target_linear_state`
      via the Linear MCP; remove the `label.cadence_active` label; print a
      summary; **exit**.
-  5. **`action` is `merge` (PR open).** Run Bash
-     `gh pr merge <plan.pr_url> <plan.merge_args>` (pass `plan.merge_args` as
-     its own argument token(s); do not splice it into a single interpolated
-     string).
+  4. **`merged` is `false` and `state` is `open` (mergeable).** Call GitHub MCP
+     `merge_pull_request` with the URL-derived `owner` / `repo` / `pullNumber`
+     and the merge method from `plan.merge_method` (the tool's
+     `merge_method` / `mergeMethod` parameter — one of `merge` / `squash` /
+     `rebase`).
      - **Success:** post
        `emit_tracking_comment.py --kind merge --status merged --pr-url <plan.pr_url> --state <plan.matched_state>`
        verbatim; move the issue to `plan.merge_target_linear_state`; remove the
        `label.cadence_active` label; print a summary; **exit**.
-     - **Failure** (CI red, conflicts, branch protection — `gh` exits
-       non-zero): post
-       `emit_tracking_comment.py --kind merge --status failed --error "<gh stderr>" --state <plan.matched_state>`
+     - **Failure** (CI red, conflicts, branch protection — the
+       `merge_pull_request` call errors or returns a non-merged result): post
+       `emit_tracking_comment.py --kind merge --status failed --error "<merge error>" --state <plan.matched_state>`
        verbatim; add the `label.cadence_needs_human` label; remove the
        `label.cadence_active` label; **do not** move the issue to the terminal;
        print a summary noting the escalation; **exit**. The card stays in the
        gate's waiting column.
-  6. **`action` is `escalate`** (PR closed-unmerged / indeterminate, or the
-     `gh pr view` in step 2 failed): post
-     `emit_tracking_comment.py --kind merge --status failed --error "<reason or gh error>" --state <plan.matched_state>`
+  5. **Escalate** (PR `closed` but not `merged` — an abandoned PR — or the
+     `get_pull_request` read in step 2 failed): post
+     `emit_tracking_comment.py --kind merge --status failed --error "<reason or PR-read error>" --state <plan.matched_state>`
      verbatim; add the `label.cadence_needs_human` label; remove the
      `label.cadence_active` label; leave the issue in the gate's waiting
      column; print a summary noting the escalation; **exit**.
@@ -526,11 +543,60 @@ advance Linear state.
 
 ---
 
-## Step 10 — Post the subagent's summary
+## Step 10 — Create the PR (if applicable), then post the subagent's summary
 
-Post `subagentSummary` as a Linear comment on the issue, **verbatim**. Do not
-add a tracking-comment prefix; this is a plain work-product comment intended
-for human readers.
+### Create or reuse the PR
+
+The bootstrap owns all GitHub pull-request operations (subagents only push
+branches; they never create PRs). This sub-phase runs **only when
+`subagentSummary` declares a pushed branch and a PR** — i.e. the summary carries
+both a `**Branch:**` line naming a real branch (not `(no-op — none created)` or
+blank) **and** a `**PR title:**` line. That is the implementer's return
+contract. A planner / reviewer summary, or an implementer no-op that pushed
+nothing, has no such fields → **skip this entire sub-phase**, set `prUrl` to
+null, and go straight to the post below.
+
+When it does apply:
+
+1. Read three fields out of `subagentSummary`: the branch from its
+   `**Branch:**` line, the PR title from its `**PR title:**` line, and the PR
+   body from the **fenced code block** under its `### PR body` heading — copy
+   the content *inside* that fence verbatim, stripping the fence delimiters.
+   (The implementer wraps the body in one fence precisely so the bootstrap
+   can take it whole; a `###` subheading the implementer writes elsewhere in
+   the summary must **not** truncate the body.) If no fenced block is present
+   (an older summary shape), fall back to the lines between `### PR body` and
+   the next `###` heading.
+2. **Reuse if a PR already exists** (rework run, or an idempotent re-fire):
+   call GitHub MCP `list_pull_requests` filtered to the head branch and open
+   state. Some connectors expect the `head` filter as `<owner>:<branch>` rather
+   than a bare branch name; if a bare-branch query returns nothing, retry
+   owner-qualified. If an open PR for the branch is found, take its URL as
+   `prUrl` and skip the create.
+3. **Otherwise create it:** call GitHub MCP `create_pull_request` with
+   `head` = the branch, `base` = the repo's default branch, the `title` /
+   `body` read above, and **`draft: false`** (Cadence PRs are review-ready —
+   the reviewer subagent and human gate review them, and a draft PR blocks
+   `merge_pull_request`, breaking `merge_on_approve`). No repo argument — the
+   tool scopes to the bound repo. Take the returned PR URL as `prUrl`.
+4. **Inject the URL into the summary.** Insert a line `**PR:** <prUrl>`
+   immediately after `subagentSummary`'s leading `## Implementation` header, so
+   the comment posted below carries the URL exactly where `parse_comments`
+   discovers it (paired with the implement attempt marker from step 7). The
+   rest of the summary is posted verbatim.
+5. **PR-creation failure** (the `create_pull_request` call errors): treat it as
+   a failed attempt and escalate. Build a failure record via Bash
+   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --status failed --error "<PR-creation error>" --subagent <subagent>`,
+   post its stdout verbatim, add the `label.cadence_needs_human` label, remove
+   the `label.cadence_active` label, and **exit** without advancing Linear
+   state. (The branch is pushed; a human resolves the PR creation.)
+
+### Post the summary
+
+Post `subagentSummary` (with the `**PR:**` line injected in step 4 above, when
+this fire created or reused a PR) as a Linear comment on the issue,
+**verbatim**. Do not add a tracking-comment prefix; this is a plain
+work-product comment intended for human readers.
 
 If `subagentSummary` is empty or whitespace, post:
 > **[Cadence]** Subagent **<subagent>** returned no summary at attempt <attempt>.

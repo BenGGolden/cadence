@@ -30,7 +30,7 @@ LABELS = {
 
 
 def _validator_output(*, on_rework=None, max_rework=None, max_attempts=3,
-                      merge_on_approve=False, merge_args=None):
+                      merge_on_approve=False, merge_method=None):
     on_rework_default = {"plan_review": "plan", "human_review": "implement"}
     on_rework_default.update(on_rework or {})
     states = {
@@ -54,8 +54,8 @@ def _validator_output(*, on_rework=None, max_rework=None, max_attempts=3,
         states["human_review"]["max_rework"] = max_rework
     if merge_on_approve:
         states["human_review"]["merge_on_approve"] = True
-    if merge_args is not None:
-        states["human_review"]["merge_args"] = merge_args
+    if merge_method is not None:
+        states["human_review"]["merge_method"] = merge_method
     linear_to_workflow = {
         "Todo": {"kind": "pickup", "workflow_state": None,
                  "linear_state_type": None},
@@ -311,7 +311,7 @@ class RouteFireTests(unittest.TestCase):
             self.assertFalse(plan["invoke_subagent"])
             self.assertFalse(plan["merge_on_approve"])
             self.assertIsNone(plan["pr_url"])
-            self.assertIsNone(plan["merge_args"])
+            self.assertIsNone(plan["merge_method"])
             self.assertIsNone(plan["merge_target_linear_state"])
             self.assertEqual(_types(plan["exit_plan"]),
                              ["remove_label", "move_state", "remove_label"])
@@ -338,7 +338,7 @@ class RouteFireTests(unittest.TestCase):
             self.assertFalse(plan["invoke_subagent"])
             self.assertTrue(plan["merge_on_approve"])
             self.assertEqual(plan["pr_url"], "https://github.com/o/r/pull/7")
-            self.assertEqual(plan["merge_args"], "--squash")
+            self.assertEqual(plan["merge_method"], "squash")
             self.assertEqual(plan["merge_target_linear_state"], "Done")
             self.assertEqual(plan["matched_state"], "human_review")
             self.assertEqual(plan["target_state"], "done")
@@ -354,15 +354,15 @@ class RouteFireTests(unittest.TestCase):
             plan = json.loads(r.stdout)
             self.assertTrue(plan["merge_on_approve"])
             self.assertIsNone(plan["pr_url"])
-            self.assertEqual(plan["merge_args"], "--squash")
+            self.assertEqual(plan["merge_method"], "squash")
 
-    def test_merge_on_approve_merge_args_override(self):
+    def test_merge_on_approve_merge_method_override(self):
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
-            wf = _validator_output(merge_on_approve=True, merge_args="--merge")
+            wf = _validator_output(merge_on_approve=True, merge_method="merge")
             r = _run(td, wf, "In Review", [], labels_csv="cadence-approve")
             plan = json.loads(r.stdout)
-            self.assertEqual(plan["merge_args"], "--merge")
+            self.assertEqual(plan["merge_method"], "merge")
 
     def test_merge_on_approve_drift_reconcile_preserved_in_exit_plan(self):
         # A reconcile pre-action accumulated before gate routing must remain in

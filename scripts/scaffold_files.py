@@ -82,7 +82,6 @@ SCAFFOLD_PLAN = (
     ("templates/hooks/emit_tracking_comment.py",       ".claude/hooks/emit_tracking_comment.py",       "plugin-owned"),
     ("templates/hooks/classify_drift.py",              ".claude/hooks/classify_drift.py",              "plugin-owned"),
     ("templates/hooks/classify_gate.py",               ".claude/hooks/classify_gate.py",               "plugin-owned"),
-    ("templates/hooks/classify_merge.py",              ".claude/hooks/classify_merge.py",              "plugin-owned"),
     ("templates/hooks/route_fire.py",                  ".claude/hooks/route_fire.py",                  "plugin-owned"),
     ("templates/hooks/compose_lifecycle_context.py",   ".claude/hooks/compose_lifecycle_context.py",   "plugin-owned"),
     ("templates/hooks/filter_candidates.py",           ".claude/hooks/filter_candidates.py",           "plugin-owned"),
@@ -91,6 +90,7 @@ SCAFFOLD_PLAN = (
     ("commands/tick.md",   ".claude/commands/cadence/tick.md",   "plugin-owned"),
     ("commands/sweep.md",  ".claude/commands/cadence/sweep.md",  "plugin-owned"),
     ("commands/status.md", ".claude/commands/cadence/status.md", "plugin-owned"),
+    ("templates/worktrees/.gitignore", ".claude/worktrees/.gitignore", "plugin-owned"),
 )
 
 # Directories the plan's destinations live under. Created up-front so a copy
@@ -101,6 +101,7 @@ _REQUIRED_DIRS = (
     ".claude/prompts",
     ".claude/hooks",
     ".claude/commands/cadence",
+    ".claude/worktrees",
 )
 
 _WORKFLOW_YAML = ".claude/workflow.yaml"

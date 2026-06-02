@@ -221,6 +221,36 @@ class ParseCommentsTests(unittest.TestCase):
                  "branch": "feat/new"},
             )
 
+    def test_bootstrap_authored_summary_with_injected_url(self):
+        # D3 guard: PR ops moved to the bootstrap. The bootstrap now authors
+        # BOTH the implement attempt marker AND the work-product summary, and
+        # injects the PR URL as a `**PR:**` line right after the
+        # `## Implementation` header (the implementer no longer carries a URL).
+        # parse_comments must still surface latest_implementer_summary.pr_url
+        # exactly as before — the author-match constraint is satisfied because
+        # the bootstrap authors both comments.
+        bot = "Cadence"
+        injected_summary = _comment(
+            "## Implementation\n"
+            "**PR:** https://github.com/o/r/pull/123\n"
+            "**Branch:** `feat/eng-7-thing`\n"
+            "**Attempt:** 1\n\n"
+            "### What changed\n- stuff\n",
+            "2026-05-26T11:00:01Z", user=bot,
+        )
+        comments = [
+            attempt_marker("implement", 1, "2026-05-26T11:00:00Z", user=bot),
+            injected_summary,
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            p = write_comments(td, comments)
+            payload = json.loads(run_parser(p).stdout)
+            self.assertEqual(
+                payload["latest_implementer_summary"],
+                {"pr_url": "https://github.com/o/r/pull/123",
+                 "branch": "feat/eng-7-thing"},
+            )
+
     # ---------- legacy stokowski normalisation ----------
 
     def test_stokowski_run_normalised_to_attempt(self):

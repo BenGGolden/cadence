@@ -16,7 +16,6 @@ Re-run with --force to overwrite. This will replace:
   - .claude/hooks/emit_tracking_comment.py
   - .claude/hooks/classify_drift.py
   - .claude/hooks/classify_gate.py
-  - .claude/hooks/classify_merge.py
   - .claude/hooks/route_fire.py
   - .claude/hooks/compose_lifecycle_context.py
   - .claude/hooks/filter_candidates.py
@@ -25,5 +24,6 @@ Re-run with --force to overwrite. This will replace:
   - .claude/commands/cadence/tick.md
   - .claude/commands/cadence/sweep.md
   - .claude/commands/cadence/status.md
+  - .claude/worktrees/.gitignore
 Cadence's hook entries in .claude/settings.json will also be re-merged
 (non-Cadence entries are preserved).

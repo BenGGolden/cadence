@@ -45,20 +45,16 @@ sharpens that human's review.
      where `<base-branch>` is the repo's default (typically `main`)
      and `<implementer-branch>` comes from the Lifecycle Context's
      "Branch" field.
-   - If the PR URL is present and you have `gh` available,
-     `gh pr view <url> --json files,additions,deletions` for a
-     summary.
+   This `git diff` is your sole source for the change under review.
    Do not run any other git commands — no `git log`, no `git blame` of
    the implementer's commits, no inspection of the implementer's
    commit messages. Read the diff as if the author is anonymous.
 
-   **If `gh` is not on PATH**, fall back to the `git diff` above as
-   your sole input and note in the findings comment that the PR view
-   was not consulted. **Do not improvise alternative ways to fetch PR
-   metadata** — do not probe local proxies, do not scan `gitconfig` /
-   SSH keys / env vars, do not query guessed API endpoints. Your
-   contract is to find problems in the diff; discovering the
-   PR-hosting platform is not your job.
+   **Do not improvise ways to fetch PR metadata** — do not probe local
+   proxies, do not scan `gitconfig` / SSH keys / env vars, do not query
+   guessed API endpoints, do not shell out to `gh`. Your contract is to
+   find problems in the diff; the diff is the artefact, and platform PR
+   metadata is not your job.
 
 3. **For each acceptance criterion, verify it in the diff.** An AC is
    verified only if you can point at a test assertion, a code path, or
@@ -87,8 +83,8 @@ it, or attempt to reverse-engineer it.** Specifically:
   require. The diff is the artefact under review; everything else is
   out of scope.
 - Treat the runtime sandbox as a closed environment for credential
-  discovery. Cloning, fetching, and (when present) `gh pr view`
-  already work via the routine's configured connectors and env vars.
+  discovery. Cloning and fetching already work via the routine's
+  configured connector — that is all the review needs.
 
 ## What to return
 

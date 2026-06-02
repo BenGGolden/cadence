@@ -293,22 +293,28 @@ def _rule8_legacy_gate_keys(states):
     }
 
 
+MERGE_METHODS = ("merge", "squash", "rebase")
+
+
 def _rule9_merge_on_approve(states):
     """`merge_on_approve`, where present, must be a boolean and may only appear
     on `type: gate` states. When `true`, the gate's `on_approve` target must
     resolve to a `type: terminal` state — Cadence merges the PR then advances
     straight to the terminal; a merge-then-continue-to-another-agent shape is a
     deliberate non-goal (the merge logic lives only in the router's terminal
-    branch). `merge_args`, where present, must be a string and only on a gate
-    that sets `merge_on_approve: true`."""
+    branch). `merge_method`, where present, must be one of `merge` / `squash` /
+    `rebase` (GitHub MCP's `merge_pull_request` takes a method, not flags) and
+    only on a gate that sets `merge_on_approve: true`. The pre-MCP `merge_args`
+    key (raw CLI merge flags) is rejected with a migration message."""
     lines = []
     failures = []
     for name, body in states.items():
         if not isinstance(body, dict):
             continue
         has_moa = "merge_on_approve" in body
-        has_args = "merge_args" in body
-        if not has_moa and not has_args:
+        has_method = "merge_method" in body
+        has_legacy_args = "merge_args" in body
+        if not has_moa and not has_method and not has_legacy_args:
             continue
         stype = body.get("type")
         moa = body.get("merge_on_approve")
@@ -338,17 +344,24 @@ def _rule9_merge_on_approve(states):
                         f"not `terminal` (merge_on_approve requires a terminal "
                         f"on_approve target)"
                     )
-        if has_args:
-            margs = body.get("merge_args")
-            lines.append(f"states.{name}.merge_args -> {margs!r}")
-            if not isinstance(margs, str):
+        if has_legacy_args:
+            lines.append(f"states.{name}.merge_args -> PRESENT (legacy)")
+            failures.append(
+                f"states.{name}.merge_args is no longer supported — the `gh` "
+                f"backend was removed; PR ops now run via GitHub MCP. Use "
+                f"`merge_method` (one of {', '.join(MERGE_METHODS)}) instead."
+            )
+        if has_method:
+            method = body.get("merge_method")
+            lines.append(f"states.{name}.merge_method -> {method!r}")
+            if method not in MERGE_METHODS:
                 failures.append(
-                    f"states.{name}.merge_args must be a string, got "
-                    f"{type(margs).__name__}"
+                    f"states.{name}.merge_method must be one of "
+                    f"{', '.join(MERGE_METHODS)}, got {method!r}"
                 )
             if moa is not True:
                 failures.append(
-                    f"states.{name}.merge_args is only valid on a gate that "
+                    f"states.{name}.merge_method is only valid on a gate that "
                     f"sets `merge_on_approve: true`; `{name}` does not"
                 )
     if not lines:

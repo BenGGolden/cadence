@@ -585,11 +585,11 @@ class ValidateWorkflowTests(unittest.TestCase):
             self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 9)["result"],
                              "PASS")
 
-    def test_rule9_pass_with_merge_args_string(self):
+    def test_rule9_pass_with_merge_method(self):
         wf = _valid_workflow()
         wf["states"]["plan_review"]["on_approve"] = "done"
         wf["states"]["plan_review"]["merge_on_approve"] = True
-        wf["states"]["plan_review"]["merge_args"] = "--merge"
+        wf["states"]["plan_review"]["merge_method"] = "merge"
         with tempfile.TemporaryDirectory() as td:
             r = run_validator(td, wf, evidence=True)
             self.assertEqual(r.returncode, 0, msg=r.stderr)
@@ -628,20 +628,33 @@ class ValidateWorkflowTests(unittest.TestCase):
             self.assertEqual(ev["result"], "FAIL")
             self.assertIn("terminal", ev["failure"])
 
-    def test_rule9_fail_non_string_merge_args(self):
+    def test_rule9_fail_invalid_merge_method(self):
         wf = _valid_workflow()
         wf["states"]["plan_review"]["on_approve"] = "done"
         wf["states"]["plan_review"]["merge_on_approve"] = True
-        wf["states"]["plan_review"]["merge_args"] = 123
+        wf["states"]["plan_review"]["merge_method"] = "fast-forward"
         with tempfile.TemporaryDirectory() as td:
             r = run_validator(td, wf, evidence=True)
             self.assertEqual(r.returncode, 2)
             ev = _rule(json.loads(r.stdout)["evidence"], 9)
             self.assertEqual(ev["result"], "FAIL")
-            self.assertIn("merge_args", ev["failure"])
+            self.assertIn("merge_method", ev["failure"])
 
-    def test_rule9_fail_merge_args_without_merge_on_approve(self):
+    def test_rule9_fail_merge_method_without_merge_on_approve(self):
         wf = _valid_workflow()
+        wf["states"]["plan_review"]["merge_method"] = "squash"
+        with tempfile.TemporaryDirectory() as td:
+            r = run_validator(td, wf, evidence=True)
+            self.assertEqual(r.returncode, 2)
+            ev = _rule(json.loads(r.stdout)["evidence"], 9)
+            self.assertEqual(ev["result"], "FAIL")
+            self.assertIn("merge_method", ev["failure"])
+
+    def test_rule9_reject_legacy_merge_args(self):
+        # The pre-MCP `gh`-flag field is rejected with a migration message.
+        wf = _valid_workflow()
+        wf["states"]["plan_review"]["on_approve"] = "done"
+        wf["states"]["plan_review"]["merge_on_approve"] = True
         wf["states"]["plan_review"]["merge_args"] = "--squash"
         with tempfile.TemporaryDirectory() as td:
             r = run_validator(td, wf, evidence=True)
@@ -649,6 +662,7 @@ class ValidateWorkflowTests(unittest.TestCase):
             ev = _rule(json.loads(r.stdout)["evidence"], 9)
             self.assertEqual(ev["result"], "FAIL")
             self.assertIn("merge_args", ev["failure"])
+            self.assertIn("merge_method", ev["failure"])
 
 
 class ScratchDirTests(unittest.TestCase):
