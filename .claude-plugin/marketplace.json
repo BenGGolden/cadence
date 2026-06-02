@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "cadence",
+  "owner": {
+    "name": "Ben Golden",
+    "url": "https://github.com/BenGGolden"
+  },
+  "metadata": {
+    "description": "Marketplace for the Cadence plugin: a Linear-driven workflow supervisor for Claude Code."
+  },
+  "plugins": [
+    {
+      "name": "cadence",
+      "source": "./"
+    }
+  ]
+}
