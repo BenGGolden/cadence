@@ -80,6 +80,7 @@ class _Plan:
         self.cadence_present = False
         self.dirs_removed = []     # Cadence dirs that will be / were pruned
         self.dirs_left = []        # Cadence dirs left because non-empty
+        self.pycache_dirs = []     # __pycache__ cruft under candidate dirs
 
 
 def _compute_plan(force):
@@ -100,8 +101,21 @@ def _compute_plan(force):
 
     plan.cadence_present = Path(_CADENCE_DIR).exists()
 
+    # `__pycache__` under a candidate dir is the bytecode the hook scripts
+    # generate when they import their siblings (e.g. `_common`) — plugin cruft
+    # in the same category as `.cadence/`, safe to clear. Removing it lets a
+    # dir that held only plugin files + its cache (notably `.claude/hooks`)
+    # prune instead of surviving on the cache alone.
+    removable = set(removed_paths)
+    for d in _CANDIDATE_DIRS:
+        pycache = Path(d) / "__pycache__"
+        if pycache.is_dir() and not pycache.is_symlink():
+            plan.pycache_dirs.append(pycache)
+            removable.add(pycache)
+
     # Simulate empty-dir pruning, deepest-first. A dir prunes if every current
-    # entry is either a file scheduled for removal or a subdir already pruned.
+    # entry is either a file scheduled for removal, a __pycache__ to be cleared,
+    # or a subdir already pruned.
     pruned = set()
     for d in _CANDIDATE_DIRS:
         p = Path(d)
@@ -110,11 +124,11 @@ def _compute_plan(force):
         all_gone = True
         for entry in p.iterdir():
             if entry.is_dir() and not entry.is_symlink():
-                if entry not in pruned:
+                if entry not in pruned and entry not in removable:
                     all_gone = False
                     break
             else:
-                if entry not in removed_paths:
+                if entry not in removable:
                     all_gone = False
                     break
         if all_gone:
@@ -141,6 +155,12 @@ def _apply(plan):
             shutil.rmtree(_CADENCE_DIR)
         except OSError as e:
             failures.append((_CADENCE_DIR, e))
+
+    for pycache in plan.pycache_dirs:
+        try:
+            shutil.rmtree(pycache)
+        except OSError as e:
+            failures.append((str(pycache), e))
 
     for d in plan.dirs_removed:
         try:

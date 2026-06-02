@@ -10,9 +10,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **New `/cadence:uninstall` command** reverses `/cadence:init`. It deletes the
   plugin-owned files it scaffolded, unmerges Cadence's hook + Linear-MCP
   permission entries from the two settings files, removes the `.cadence/`
-  scratch dir, and prunes the now-empty Cadence-created `.claude/`
-  subdirectories (never `.claude/` itself). Mirrors the init architecture:
-  thin dispatch prose over `scripts/` helpers.
+  scratch dir, clears the `__pycache__` bytecode the hook scripts generate,
+  and prunes the now-empty Cadence-created `.claude/` subdirectories (never
+  `.claude/` itself). Mirrors the init architecture: thin dispatch prose over
+  `scripts/` helpers.
 - **Removal is hard delete with a `--dry-run` preview** (computed by the same
   code path as the real run, so the preview is faithful). User-config files
   (`workflow.yaml`, `prompts/global.md`, `agents/*.md`, `ticket-template.md`)
