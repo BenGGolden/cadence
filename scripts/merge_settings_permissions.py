@@ -30,12 +30,20 @@ duplicating, and leaves unrelated entries the consumer added by hand
 alone. "Cadence-owned" is identified by a heuristic — entries matching
 `mcp__<namespace-containing-"linear"-case-insensitive>__<canonical-verb>`.
 
+`--remove` reverses the merge for `/cadence:uninstall`: it strips every
+Cadence-owned allowlist entry (reusing the same `_is_cadence_owned`
+heuristic, which matches any `linear`-containing namespace — so removal is
+namespace-agnostic and needs no `--namespace`) and prunes empty `allow` /
+`permissions` containers, deleting the file if it reduces to `{}`. Unrelated
+allow entries survive byte-for-byte; an unparseable file is refused (exit 1).
+
 CLI:
   python merge_settings_permissions.py --settings-path PATH --namespace NAME
   python merge_settings_permissions.py --print-only --namespace NAME
+  python merge_settings_permissions.py --settings-path PATH --remove [--dry-run]
 
 Exit codes:
-  0  success (settings.local.json written / up-to-date / printed)
+  0  success (settings.local.json written / deleted / up-to-date / printed)
   1  bad input (missing/empty namespace, settings.local.json unreadable)
   3  internal error
 """
@@ -123,16 +131,114 @@ def _merge_into_settings(existing, new_entries):
     return merged
 
 
+def _unmerge_allowlist(existing_allow):
+    """Return a copy of the allow list with Cadence-owned entries dropped."""
+    return [e for e in existing_allow if not _is_cadence_owned(e)]
+
+
+def _unmerge_from_settings(existing):
+    """Return a copy of `existing` with Cadence-owned allow entries stripped.
+
+    Prune `allow` if it ends up empty, then `permissions` if it ends up empty,
+    so a Cadence-only file collapses to `{}` (the caller deletes it). Other
+    keys and unrelated allow entries are preserved.
+    """
+    merged = json.loads(json.dumps(existing))  # deep copy via JSON round-trip
+    permissions = merged.get("permissions")
+    if not isinstance(permissions, dict):
+        return merged
+    existing_allow = permissions.get("allow")
+    if isinstance(existing_allow, list):
+        kept = _unmerge_allowlist(existing_allow)
+        if kept:
+            permissions["allow"] = kept
+        else:
+            permissions.pop("allow", None)
+    if not permissions:
+        merged.pop("permissions", None)
+    return merged
+
+
+def _load_existing(settings_path):
+    """Read + parse settings_path, enforcing the dict invariant (exit 1 on
+    parse error / non-dict). The caller handles the missing-file case."""
+    try:
+        existing = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        print(
+            f"Cadence: could not parse {settings_path}: {e}\n"
+            "Refusing to overwrite. Fix or move the file and re-run.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if not isinstance(existing, dict):
+        print(
+            f"Cadence: {settings_path} is not a JSON object. Refusing to overwrite.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return existing
+
+
+def _run_remove(settings_path, dry_run):
+    """Strip Cadence-owned allow entries from settings_path. Returns exit code."""
+    if not settings_path.is_file():
+        print(f"Cadence: {settings_path} not present; nothing to remove.")
+        return 0
+
+    existing = _load_existing(settings_path)
+    unmerged = _unmerge_from_settings(existing)
+
+    prefix = "[dry-run] " if dry_run else ""
+    if not unmerged:
+        print(f"Cadence: {prefix}removing {settings_path} "
+              "(reduced to empty after stripping Cadence permissions).")
+        if not dry_run:
+            settings_path.unlink()
+        return 0
+
+    if unmerged == existing:
+        print(f"Cadence: {prefix}no Cadence permission entries in "
+              f"{settings_path}; nothing to remove.")
+        return 0
+
+    print(f"Cadence: {prefix}stripped Cadence permission entries from "
+          f"{settings_path}.")
+    if not dry_run:
+        settings_path.write_text(
+            json.dumps(unmerged, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--settings-path",
                     help="Path to .claude/settings.local.json (required unless --print-only).")
-    ap.add_argument("--namespace", required=True,
-                    help="Linear MCP namespace (e.g. linear, linear-server, claude_ai_Linear).")
+    ap.add_argument("--namespace",
+                    help="Linear MCP namespace (e.g. linear, linear-server, "
+                         "claude_ai_Linear). Required for the merge/--print-only "
+                         "paths; not needed for --remove.")
     ap.add_argument("--print-only", action="store_true",
                     help="Skip writing; print the canonical allowlist on stdout.")
+    ap.add_argument("--remove", action="store_true",
+                    help="Unmerge: strip Cadence-owned allow entries (namespace-agnostic).")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="With --remove, report changes without writing.")
     args = ap.parse_args()
 
+    if args.remove:
+        if not args.settings_path:
+            print("Cadence: --settings-path is required with --remove.",
+                  file=sys.stderr)
+            sys.exit(1)
+        sys.exit(_run_remove(Path(args.settings_path), args.dry_run))
+
+    if not args.namespace:
+        print("Cadence: --namespace is required unless --remove is set.",
+              file=sys.stderr)
+        sys.exit(1)
     namespace = (args.namespace or "").strip()
     if not namespace:
         print("Cadence: --namespace must be a non-empty string.", file=sys.stderr)
