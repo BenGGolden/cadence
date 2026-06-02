@@ -121,7 +121,7 @@ Next steps:
        • Local: from an interactive Claude Code session in this repo, run
          `claude /loop 1m /cadence:tick` (with the Linear and GitHub MCP
          connectors configured in your local Claude Code).
-  5. Smoke test with /cadence:tick dry-run before going live.
+  5. Smoke test with /cadence:tick --dry-run before going live.
 
 To draft well-formed tickets quickly, run `/cadence:create-ticket` in
 your local Claude Code session and paste the output into Linear's New

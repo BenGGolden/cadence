@@ -36,7 +36,7 @@ def ensure_cadence_dir():
     """Create `.cadence/` and its self-ignoring `.gitignore` if absent.
 
     Idempotent. Ensures the scratch directory is git-ignored even on
-    read-only paths (e.g. a `/cadence:tick dry-run`, which writes only
+    read-only paths (e.g. a `/cadence:tick --dry-run`, which writes only
     transient JSON). Returns the directory path. Best-effort: filesystem
     errors are swallowed — scratch placement must never break a fire."""
     try:

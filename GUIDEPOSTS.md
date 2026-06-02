@@ -139,7 +139,7 @@ reconstructable after the fact.
   keeps a native, durable activity history already provides this; where it
   doesn't, a write-time hook that appends an out-of-band log closes the gap.
 - **Dry-run mode** that validates config and renders the prompt without side
-  effects. Cadence's `/cadence:tick dry-run` with the "show your work"
+  effects. Cadence's `/cadence:tick --dry-run` with the "show your work"
   validation evidence is the right grain.
 - **Caps and escalation** — never let an issue retry forever. Cadence's
   `max_attempts_per_issue` + `cadence-needs-human` label is the right pattern.
