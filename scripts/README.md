@@ -1,18 +1,21 @@
-# Cadence init-time scripts
+# Cadence command-time scripts
 
-The six helpers in this directory are invoked **only by
-[`commands/init.md`](../commands/init.md)** during `/cadence:init`. They
-are plugin-internal — they are never scaffolded into a consumer repo and
-they never run after init.
+The helpers in this directory are invoked **only by
+[`commands/init.md`](../commands/init.md)** during `/cadence:init` and by
+[`commands/uninstall.md`](../commands/uninstall.md) during
+`/cadence:uninstall`. They are plugin-internal — they are never scaffolded
+into a consumer repo and they never run during a `/cadence:tick` fire.
 
 | Script                              | Purpose                                                                                       |
 |-------------------------------------|-----------------------------------------------------------------------------------------------|
-| `scaffold_files.py`                 | Step 2 driver. Owns the overwrite check, directory creation, and the canonical source→destination copy plan (`SCAFFOLD_PLAN`). Copies plugin-owned files (hooks, `/cadence:*` commands) unconditionally and user-config files only with `--force`. Exit 2 = already initialized (abort message on stdout). Single source of truth for the file list — `render_next_steps.py` imports `SCAFFOLD_PLAN`. |
-| `merge_settings_hooks.py`           | Step 3. Merge the Cadence hooks block from [`templates/settings.json`](../templates/settings.json) into the consumer's `.claude/settings.json`. Idempotent — re-running replaces Cadence-owned hook entries without disturbing non-Cadence ones. Stop-on-failure (hooks never fire without it). |
-| `configure_linear.py`               | Step 4 orchestrator. Reads `claude mcp list` on stdin, detects the Linear MCP namespace, merges the allowlist into `.claude/settings.local.json` (placeholder path on detection failure), and renders the "Next steps" block on stdout. Thin layer over the three helpers below — no detection/merge/render logic of its own. Best-effort. |
-| `merge_settings_permissions.py`     | Merge the Linear MCP allowlist into the consumer's `.claude/settings.local.json` (or `--print-only` for the copy-pasteable block surfaced for `/schedule` cloud routines). Imported by `configure_linear.py`. |
+| `scaffold_files.py`                 | Init Step 2 driver. Owns the overwrite check, directory creation, and the canonical source→destination copy plan (`SCAFFOLD_PLAN`). Copies plugin-owned files (hooks, `/cadence:*` commands) unconditionally and user-config files only with `--force`. Exit 2 = already initialized (abort message on stdout). Single source of truth for the file list — `render_next_steps.py` and `unscaffold_files.py` import `SCAFFOLD_PLAN`. |
+| `merge_settings_hooks.py`           | Init Step 3. Merge the Cadence hooks block from [`templates/settings.json`](../templates/settings.json) into the consumer's `.claude/settings.json`. Idempotent. `--remove` (uninstall) strips Cadence hook entries instead, deleting the file iff it reduces to `{}`; `--dry-run` previews. Refuses to corrupt an unparseable file (exit 1). |
+| `configure_linear.py`               | Init Step 4 orchestrator. Reads `claude mcp list` on stdin, detects the Linear MCP namespace, merges the allowlist into `.claude/settings.local.json` (placeholder path on detection failure), and renders the "Next steps" block on stdout. Thin layer over the three helpers below — no detection/merge/render logic of its own. Best-effort. |
+| `merge_settings_permissions.py`     | Merge the Linear MCP allowlist into the consumer's `.claude/settings.local.json` (or `--print-only` for the copy-pasteable block surfaced for `/schedule` cloud routines). `--remove` (uninstall) strips Cadence-owned allow entries — namespace-agnostic, so it needs no `--namespace` — deleting the file iff it reduces to `{}`; `--dry-run` previews. Imported by `configure_linear.py`. |
 | `detect_linear_mcp_namespace.py`    | Scan `claude mcp list` stdout (via stdin) and/or `.mcp.json` to detect the consumer's Linear MCP server namespace. Exit 2 = no Linear server found. Imported by `configure_linear.py`. |
 | `render_next_steps.py`              | Render the "Cadence initialised." operator handoff block — file list (from `SCAFFOLD_PLAN`), gate-label hint, permissions block, next-step checklist — with three interpolation points for the settings.local outcome, detection note, and permissions block. `render()` is called by `configure_linear.py`. |
+| `unscaffold_files.py`               | Uninstall Step 2 driver. Reverses `SCAFFOLD_PLAN` (imported, never re-listed): removes plugin-owned dests unconditionally, user-config dests only with `--force`, the `.cadence/` scratch dir, and Cadence `.claude/` subdirs **only when empty** (never `.claude/` itself). `--dry-run` previews via the same code path. Exit 1 = a deletion failed (best-effort, partial OK). |
+| `render_uninstall_steps.py`         | Render the `/cadence:uninstall` Linear-cleanup checklist (the four `cadence-*` labels + the workflow columns). No interpolation points; mirrors `render_next_steps.py`. |
 
 The runtime helpers that ship to the consumer's `.claude/hooks/` live
 under [`templates/hooks/`](../templates/hooks/) — three event-hook scripts

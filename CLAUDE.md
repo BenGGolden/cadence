@@ -12,11 +12,13 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
 
 ## Repo map
 
-- `commands/` — the five slash commands (`tick`, `init`, `sweep`, `status`,
-  `create-ticket`). Each `.md` is **dispatch prose the harness executes**,
-  not documentation. `tick.md`, `sweep.md`, and `status.md` are also copied
-  to the consumer's `.claude/commands/cadence/` at init so `/schedule`
-  cloud routines can dispatch them without resolving a plugin root.
+- `commands/` — the six slash commands (`tick`, `init`, `sweep`, `status`,
+  `create-ticket`, `uninstall`). Each `.md` is **dispatch prose the harness
+  executes**, not documentation. `tick.md`, `sweep.md`, and `status.md` are
+  also copied to the consumer's `.claude/commands/cadence/` at init so
+  `/schedule` cloud routines can dispatch them without resolving a plugin root.
+  `uninstall.md` (`/cadence:uninstall`) reverses init — it is plugin-only and
+  *not* scaffolded, since it's a deliberate local operation.
 - `templates/` — **mirror of the consumer's `.claude/` tree.** Everything
   here is copied 1:1 to the same relative path under `.claude/` by
   `/cadence:init`: `workflow.yaml`, `prompts/global.md`, `ticket-template.md`,
@@ -42,13 +44,16 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
   The canonical, count-free copy list lives in
   [`scripts/scaffold_files.py`](./scripts/scaffold_files.py)'s
   `SCAFFOLD_PLAN` (the single source of truth — add a hook = add one row).
-- `scripts/` — plugin-only init-time helpers (`scaffold_files.py` is the
+- `scripts/` — plugin-only command-time helpers (`scaffold_files.py` is the
   Step 2 copy driver and owns `SCAFFOLD_PLAN`; `merge_settings_hooks.py`,
   `merge_settings_permissions.py`, `detect_linear_mcp_namespace.py`,
   `render_next_steps.py`; and `configure_linear.py`, the Step 4c
-  orchestrator over the last three). Never scaffolded to the consumer; only
-  invoked from `commands/init.md`. Contract documented in
-  [`scripts/README.md`](./scripts/README.md).
+  orchestrator over the last three). `unscaffold_files.py` (reverses
+  `SCAFFOLD_PLAN`) and `render_uninstall_steps.py` (the Linear-cleanup
+  checklist) back `commands/uninstall.md`, and the two `merge_settings_*`
+  scripts gained a `--remove` unmerge mode for it. Never scaffolded to the
+  consumer; invoked only from `commands/init.md` and `commands/uninstall.md`.
+  Contract documented in [`scripts/README.md`](./scripts/README.md).
 - `.claude-plugin/plugin.json` — plugin manifest (name, version, metadata).
 - `.github/workflows/validate.yml` — CI: manifest schema + command frontmatter.
 - Root docs: `README.md` (operational shape), `GUIDEPOSTS.md` (design
