@@ -521,7 +521,7 @@ no Linear writes happen.
 **Cause:** `.claude/workflow.yaml` violates a validation rule (duplicate column,
 undefined target, missing subagent file).
 **Fix:** the error names the offending keys — fix the YAML. Run
-`/cadence:tick dry-run` to confirm before going live again.
+`/cadence:tick --dry-run` to confirm before going live again.
 
 ### Issue moved to an unmapped state
 

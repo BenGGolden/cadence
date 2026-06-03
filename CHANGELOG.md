@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — `/cadence:tick` takes `--dry-run` (was `dry-run`)
+- **`/cadence:tick` now expects the `--dry-run` flag instead of the bare
+  `dry-run` token**, matching `/cadence:init` and `/cadence:uninstall` — all
+  Cadence commands now use `--flag` style. **Breaking:** a routine or session
+  still passing the bare `dry-run` no longer enters the dry-run branch (it runs
+  a normal tick). Update any `/schedule` routine or muscle memory to
+  `/cadence:tick --dry-run`.
+
 ### Added — Decommission path (`/cadence:uninstall`)
 - **New `/cadence:uninstall` command** reverses `/cadence:init`. It deletes the
   plugin-owned files it scaffolded, unmerges Cadence's hook + Linear-MCP

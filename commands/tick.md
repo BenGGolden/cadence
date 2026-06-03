@@ -1,6 +1,6 @@
 ---
-description: Cadence dispatch tick — runs one workflow step against the next eligible Linear issue. Reads .claude/workflow.yaml, picks an issue, invokes the matching subagent, advances Linear state. Pass "dry-run" to validate config without side effects.
-argument-hint: "[dry-run]"
+description: Cadence dispatch tick — runs one workflow step against the next eligible Linear issue. Reads .claude/workflow.yaml, picks an issue, invokes the matching subagent, advances Linear state. Pass --dry-run to validate config without side effects.
+argument-hint: "[--dry-run]"
 disable-model-invocation: true
 ---
 
@@ -80,8 +80,8 @@ scratch to the repo root, `tmp/`, or an OS temp directory.
 
 ## Step 0 — Dry-run branch
 
-Trim `$ARGUMENTS` of surrounding whitespace. If the trimmed value matches `dry-run`
-case-insensitively (i.e. the user typed `/cadence:tick dry-run`):
+Trim `$ARGUMENTS` of surrounding whitespace. If the trimmed value matches `--dry-run`
+case-insensitively (i.e. the user typed `/cadence:tick --dry-run`):
 
 1. Invoke Bash:
    `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/validate_workflow.py --evidence`
