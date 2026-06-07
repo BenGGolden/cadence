@@ -63,9 +63,9 @@ This copies the plugin into `~/.claude/plugins/` — no `--plugin-dir` flag on
 every launch. See the [plugin marketplaces docs][marketplaces] for managing and
 updating marketplaces.
 
-Once loaded, the five slash commands appear under the `cadence:` namespace:
+Once loaded, the six slash commands appear under the `cadence:` namespace:
 `/cadence:tick`, `/cadence:init`, `/cadence:sweep`, `/cadence:status`,
-`/cadence:create-ticket`.
+`/cadence:create-ticket`, `/cadence:uninstall`.
 
 [marketplaces]: https://code.claude.com/docs/en/plugin-marketplaces
 
@@ -114,7 +114,7 @@ Fully autonomous. No operator presence required between fires.
    **not** load Claude Code plugins — plugins are local-only. Cadence works
    around this by having `/cadence:init` copy the dispatch prose
    (`.claude/commands/cadence/{tick,sweep,status}.md`) and helper scripts
-   (`.claude/hooks/*.py`) into the consumer repo, so the cloud session
+   (`.claude/cadence/hooks/*.py`) into the consumer repo, so the cloud session
    reads them as project-scoped slash commands. The local install only
    exists to run `/cadence:init` once and to drive `/loop` if you also
    want Mode B.
@@ -169,7 +169,7 @@ everything PR ops need:
 
 If `git push` itself fails (no connector, remote rejects), the implementer
 bails cleanly rather than improvise — see the `## Short-circuits` section in
-[templates/agents/implementer.md](./templates/agents/implementer.md).
+[templates/agents/cadence/cadence-implementer.md](./templates/agents/cadence/cadence-implementer.md).
 
 ### Ticket quality
 
@@ -186,7 +186,7 @@ gap items and never rewrites existing AC.
 Those proposed criteria are the human's call at the `plan_review` gate. On
 **approve**, the Cadence bootstrap promotes the planner's latest proposed AC
 into the issue description's `## Acceptance Criteria` block (a deterministic,
-idempotent merge — `templates/hooks/promote_acceptance_criteria.py`), *then*
+idempotent merge — `templates/cadence/hooks/promote_acceptance_criteria.py`), *then*
 the same fire proceeds to `implement`, so the implementer reads the
 now-populated AC from the description. On **rework**, the description is
 left untouched and the re-running planner re-proposes per the feedback.
@@ -301,7 +301,7 @@ approve interactively, but pre-allowing the same set lets the loop run
 unattended for stretches without stalling on prompts.
 
 The lists below are the minimum surface for the shipped templates. If
-you edit `.claude/agents/*.md` `tools:` lines or extend the bootstrap
+you edit `.claude/agents/cadence/*.md` `tools:` lines or extend the bootstrap
 prose, adjust accordingly.
 
 ### Bootstrap (`/cadence:tick`, `/cadence:sweep`, `/cadence:status`)
@@ -309,14 +309,14 @@ prose, adjust accordingly.
 | Tool        | Why                                                          |
 |-------------|--------------------------------------------------------------|
 | `Read`      | Read `.claude/workflow.yaml`, `.claude/prompts/global.md`, subagent files. |
-| `Bash`      | Generate the current UTC timestamp for tracking-comment JSON (`date -u …` or `Get-Date …`), and run the Python helper scripts under `.claude/hooks/` (config validation, comment parsing, tracking-comment emission). |
+| `Bash`      | Generate the current UTC timestamp for tracking-comment JSON (`date -u …` or `Get-Date …`), and run the Python helper scripts under `.claude/cadence/hooks/` (config validation, comment parsing, tracking-comment emission). |
 | GitHub MCP  | Create the PR after the implementer pushes (`create_pull_request` / `list_pull_requests`); for an opt-in `merge_on_approve` gate, read state + merge (`get_pull_request` / `merge_pull_request`). Auto-allowed by the bound GitHub connector — no allowlist entry needed. |
 | `Agent`     | Invoke planner / implementer / reviewer subagents.           |
 | `TodoWrite` | Optional — only if you want progress visibility on long fires. |
 
-### Hooks (scaffolded into `.claude/hooks/` by `/cadence:init`)
+### Hooks (scaffolded into `.claude/cadence/hooks/` by `/cadence:init`)
 
-`/cadence:init` writes two Claude Code hook scripts under `.claude/hooks/`
+`/cadence:init` writes two Claude Code hook scripts under `.claude/cadence/hooks/`
 and merges the matching entries into `.claude/settings.json`:
 
 | Hook                              | Event              | Why                                                                                                                       |
@@ -332,9 +332,9 @@ no longer uses Cadence does no harm.
 
 | Subagent       | Tools declared in frontmatter                         |
 |----------------|-------------------------------------------------------|
-| `planner`      | `Read, Grep, Glob, WebFetch, Bash`                    |
-| `implementer`  | `Read, Edit, Write, Bash, Grep, Glob` (`Bash` covers `git`; the bootstrap, not the implementer, opens the PR) |
-| `reviewer`     | `Read, Grep, Glob, WebFetch`                          |
+| `cadence-planner`      | `Read, Grep, Glob, WebFetch, Bash`                    |
+| `cadence-implementer`  | `Read, Edit, Write, Bash, Grep, Glob` (`Bash` covers `git`; the bootstrap, not the implementer, opens the PR) |
+| `cadence-reviewer`     | `Read, Grep, Glob, WebFetch`                          |
 
 ### Linear MCP tools
 
@@ -583,27 +583,39 @@ See [GUIDEPOSTS.md](./GUIDEPOSTS.md) for why the system is shaped this way.
     ├── ticket-template.md        # Cadence ticket skeleton — paste into Linear
     ├── prompts/
     │   └── global.md             # shared subagent preamble — edit me
-    ├── agents/                   # edit subagent prompts here
-    │   ├── planner.md            # Opus, read-only
-    │   ├── implementer.md        # Sonnet, full edit + git push
-    │   └── reviewer.md           # Opus, adversarial, read + git diff
+    ├── agents/
+    │   └── cadence/              # edit subagent prompts here (namespaced to avoid collisions)
+    │       ├── cadence-planner.md       # Opus, read-only
+    │       ├── cadence-implementer.md   # Sonnet, full edit + git push
+    │       └── cadence-reviewer.md      # Opus, adversarial, read + git diff
     ├── commands/cadence/         # dispatch prose — committed so /schedule cloud routines can find it
     │   ├── tick.md
     │   ├── sweep.md
     │   └── status.md
-    ├── hooks/                    # JSON validator, prompt validator — copied from the plugin
-    │   ├── validate_tracking_json.py
-    │   ├── validate_workflow_on_prompt.py
-    │   ├── validate_workflow.py
-    │   ├── parse_comments.py
-    │   ├── emit_tracking_comment.py
-    │   └── _common.py
+    ├── cadence/
+    │   └── hooks/                # plugin-owned Python helpers — copied from the plugin
+    │       ├── validate_tracking_json.py     # PreToolUse event hook
+    │       ├── validate_workflow_on_prompt.py # UserPromptSubmit event hook
+    │       ├── validate_workflow.py
+    │       ├── _common.py
+    │       ├── parse_comments.py
+    │       ├── promote_acceptance_criteria.py
+    │       ├── emit_tracking_comment.py
+    │       ├── classify_drift.py
+    │       ├── classify_gate.py
+    │       ├── route_fire.py
+    │       ├── compose_lifecycle_context.py
+    │       ├── filter_candidates.py
+    │       ├── render_status_report.py
+    │       └── render_sweep_report.py
+    ├── worktrees/
+    │   └── .gitignore            # ignores runtime subagent worktrees from the main checkout
     ├── settings.json             # hook entries merged in
     └── settings.local.json       # Linear MCP permissions allowlist merged in (per-operator, gitignored)
 ```
 
-The top three (`workflow.yaml`, `prompts/global.md`, `agents/*.md`) are
-the operator-facing surface. The rest is infrastructure — re-copied
+The top three (`workflow.yaml`, `prompts/global.md`, `agents/cadence/*.md`)
+are the operator-facing surface. The rest is infrastructure — re-copied
 verbatim on `/cadence:init --force`.
 
 Re-running `/cadence:init` without `--force` refuses to overwrite. Use
@@ -629,7 +641,7 @@ itself is never removed.
 ```
 
 - **User-config files** (`workflow.yaml`, `prompts/global.md`,
-  `agents/*.md`, `ticket-template.md`) are **left in place by default** and
+  `agents/cadence/*.md`, `ticket-template.md`) are **left in place by default** and
   listed in the summary — you likely edited and committed them. Pass
   `--force` to remove them too.
 - A settings file is **deleted only if unmerging Cadence reduces it to `{}`**
@@ -658,7 +670,7 @@ See [MIGRATION.md](./MIGRATION.md). The short version:
    stage; Stokowski allowed many-to-one. Add the missing columns.
 2. Rename `tracker:` → `linear:` in workflow.yaml; flatten the
    transitions block.
-3. Move prompt files to `.claude/agents/*.md` with subagent frontmatter.
+3. Move prompt files to `.claude/agents/cadence/cadence-*.md` with subagent frontmatter.
 4. Move the global prompt to `.claude/prompts/global.md`.
 5. Existing `<!-- stokowski:state ... -->` comments are parsed
    transparently — no rewrite needed for attempt history.

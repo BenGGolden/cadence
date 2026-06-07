@@ -1,4 +1,4 @@
-"""Tests for templates/hooks/filter_candidates.py.
+"""Tests for templates/cadence/hooks/filter_candidates.py.
 
 Covers plan mode (queries the prose should fire) and filter mode (post-
 query candidate filter, priority sort, bounded reachability walk, drain
@@ -21,7 +21,7 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPT = REPO_ROOT / "templates" / "hooks" / "filter_candidates.py"
+SCRIPT = REPO_ROOT / "templates" / "cadence" / "hooks" / "filter_candidates.py"
 
 
 def _default_validator_output(project_slug=None, caps=None,
@@ -739,7 +739,7 @@ def _workflow_yaml_dict(caps=None):
 def _materialise_workflow(td, wf):
     """Write `.claude/workflow.yaml` + the three agent files under td."""
     claude = td / ".claude"
-    agents = claude / "agents"
+    agents = claude / "agents" / "cadence"
     agents.mkdir(parents=True, exist_ok=True)
     for a in ("planner", "implementer", "reviewer"):
         (agents / f"{a}.md").write_text("# agent\n", encoding="utf-8")

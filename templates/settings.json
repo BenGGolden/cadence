@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/validate_tracking_json.py"
+            "command": "python \"$CLAUDE_PROJECT_DIR\"/.claude/cadence/hooks/validate_tracking_json.py"
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/validate_workflow_on_prompt.py"
+            "command": "python \"$CLAUDE_PROJECT_DIR\"/.claude/cadence/hooks/validate_workflow_on_prompt.py"
           }
         ]
       }

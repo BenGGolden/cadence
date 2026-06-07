@@ -17,14 +17,14 @@ into a consumer repo and they never run during a `/cadence:tick` fire.
 | `unscaffold_files.py`               | Uninstall Step 2 driver. Reverses `SCAFFOLD_PLAN` (imported, never re-listed): removes plugin-owned dests unconditionally, user-config dests only with `--force`, the `.cadence/` scratch dir, and Cadence `.claude/` subdirs **only when empty** (never `.claude/` itself). `--dry-run` previews via the same code path. Exit 1 = a deletion failed (best-effort, partial OK). |
 | `render_uninstall_steps.py`         | Render the `/cadence:uninstall` Linear-cleanup checklist (the four `cadence-*` labels + the workflow columns). No interpolation points; mirrors `render_next_steps.py`. |
 
-The runtime helpers that ship to the consumer's `.claude/hooks/` live
-under [`templates/hooks/`](../templates/hooks/) — three event-hook scripts
+The runtime helpers that ship to the consumer's `.claude/cadence/hooks/` live
+under [`templates/cadence/hooks/`](../templates/cadence/hooks/) — three event-hook scripts
 plus the dispatch-prose helpers the `/cadence:*` commands invoke directly.
 They are copied verbatim by `scaffold_files.py` regardless of the `--force`
 flag (they are tagged `plugin-owned` in `SCAFFOLD_PLAN`) — keeping them in
 sync with the installed plugin is the point. The dispatch-prose helpers are
 siblings of the event-hook scripts so the copied `/cadence:*` commands can
-call them via `$CLAUDE_PROJECT_DIR/.claude/hooks/...` without resolving a
+call them via `$CLAUDE_PROJECT_DIR/.claude/cadence/hooks/...` without resolving a
 plugin path at runtime (which would not exist under `/schedule`). The full,
 canonical list of what gets copied lives in
 [`scaffold_files.py`](./scaffold_files.py)'s `SCAFFOLD_PLAN`.
@@ -50,7 +50,7 @@ but never spawns a CLI child of its own.
 
 ## Tests
 
-The runtime helpers under [`templates/hooks/`](../templates/hooks/) are
+The runtime helpers under [`templates/cadence/hooks/`](../templates/cadence/hooks/) are
 covered by a `unittest`-based suite under [`tests/`](../tests/) at the
 repo root. One test file per script. Run:
 

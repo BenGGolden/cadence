@@ -1,4 +1,4 @@
-"""Tests for templates/hooks/render_status_report.py.
+"""Tests for templates/cadence/hooks/render_status_report.py.
 
 Covers header rendering, issue-table rendering (incl empty-set sentinel),
 workflow-state column lookup (pickup / state / gate_waiting), verdict
@@ -23,7 +23,7 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPT = REPO_ROOT / "templates" / "hooks" / "render_status_report.py"
+SCRIPT = REPO_ROOT / "templates" / "cadence" / "hooks" / "render_status_report.py"
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "status"
 
 

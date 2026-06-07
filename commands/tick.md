@@ -84,7 +84,7 @@ Trim `$ARGUMENTS` of surrounding whitespace. If the trimmed value matches `--dry
 case-insensitively (i.e. the user typed `/cadence:tick --dry-run`):
 
 1. Invoke Bash:
-   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/validate_workflow.py --evidence`
+   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/validate_workflow.py --evidence`
    The `--evidence` flag is the dry-run substitute for step 1's live invocation;
    the script also covers step 2's workflow-Linear-states build. It emits the
    per-rule evidence array, the validated config blocks (`workflow_linear_states`,
@@ -95,7 +95,7 @@ case-insensitively (i.e. the user typed `/cadence:tick --dry-run`):
 2. Do **NOT** call any Linear MCP tool. Do **NOT** invoke any subagent. Do **NOT**
    write to any file.
 3. Invoke Bash:
-   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/compose_lifecycle_context.py --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml" --dry-run`
+   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/compose_lifecycle_context.py --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml" --dry-run`
    The script validates `.claude/workflow.yaml` internally to derive the
    `entry_state_name` and the entry state's `linear_state` / `next` /
    `adversarial_context`, synthesises a hypothetical `EXAMPLE-1` issue internally, and renders the
@@ -135,13 +135,13 @@ case-insensitively (i.e. the user typed `/cadence:tick --dry-run`):
 
 ## Step 1 — Read and validate config
 
-Invoke Bash: `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/validate_workflow.py`.
+Invoke Bash: `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/validate_workflow.py`.
 
 This script reads `.claude/workflow.yaml` and enforces the config rules
 deterministically (uniqueness of every `linear_state` value plus
 `linear.pickup_state`; `entry` resolves to a `type: agent` state; every
 `next` / `on_approve` / `on_rework` resolves; every `subagent` resolves
-to `.claude/agents/{name}.md` on disk; `linear.pickup_state` non-empty;
+to `.claude/agents/cadence/{name}.md` on disk; `linear.pickup_state` non-empty;
 any `max_in_flight` value is a positive integer (>= 1) and appears only
 on `type: agent` or `type: gate` states (Rule 6 — terminals rejected);
 any `adversarial_context` field is a boolean and appears only on
@@ -188,7 +188,7 @@ live in `filter_candidates.py`. The bootstrap's job here is to run the
 MCP queries the script tells it to and feed the results back in.
 
 1. **Get the query plan.** Invoke Bash:
-   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/filter_candidates.py --plan --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml"`
+   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/filter_candidates.py --plan --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml"`
    Parse the JSON on stdout. It has two fields: `pickup_query`
    (with `team`, `project_slug`, `workflow_linear_states`) and
    `in_flight_queries` (zero or more `{state_name, linear_state}`
@@ -239,7 +239,7 @@ MCP queries the script tells it to and feed the results back in.
    results as a JSON array to `.cadence/candidates.json` (call it
    `candidatesPath`) using the Write tool. Write `inFlightCounts` to
    `.cadence/in-flight.json` (call it `inFlightPath`). Invoke Bash:
-   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/filter_candidates.py --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml" --candidates <candidatesPath> --in-flight <inFlightPath>`
+   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/filter_candidates.py --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml" --candidates <candidatesPath> --in-flight <inFlightPath>`
    Parse the JSON on stdout.
 
 5. **Act on the script's output.** If `diagnostic_message` is non-null,
@@ -310,7 +310,7 @@ bootstrap remains the sole Linear writer; the router only decides.
 ### Route (one Bash call)
 
 Invoke Bash:
-`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/route_fire.py --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml" --linear-state "<column>" --comments <commentsFile> --labels "<comma-separated present label names>"`
+`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/route_fire.py --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml" --linear-state "<column>" --comments <commentsFile> --labels "<comma-separated present label names>"`
 
 (`--labels` also accepts a path to a JSON file of label names/objects; the CSV
 form is fine for the handful of labels an issue carries. Pass an empty string
@@ -388,7 +388,7 @@ it** — the bootstrap's job is to apply the plan.
   name passed to `--state` is `plan.matched_state`.
 
   1. **No PR URL.** If `plan.pr_url` is null: build the audit comment via Bash
-     `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind merge --status no_pr --state <plan.matched_state>`
+     `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/emit_tracking_comment.py --kind merge --status no_pr --state <plan.matched_state>`
      and post its stdout as a Linear comment verbatim; add the
      `label.cadence_needs_human` label; remove the `label.cadence_active`
      label; print `exit_summary` (noting the no-PR escalation); **exit**. The
@@ -443,7 +443,7 @@ it** — the bootstrap's job is to apply the plan.
   1. Write the locked `issue`'s current `description` to
      `.cadence/description-current.md` (Write tool).
   2. Invoke Bash:
-     `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/promote_acceptance_criteria.py --comments <commentsFile> --description-file .cadence/description-current.md`
+     `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/promote_acceptance_criteria.py --comments <commentsFile> --description-file .cadence/description-current.md`
      Parse the JSON on stdout. (`<commentsFile>` is the `.cadence/comments.json`
      written in this step's Gather.) The helper finds the planner's latest
      `## Proposed Acceptance Criteria` comment, merges (augments) its items
@@ -478,7 +478,7 @@ include a reliable current time, invoke Bash to run
 `Get-Date -AsUTC -Format yyyy-MM-ddTHH:mm:ssZ` and use the output.
 
 Build the attempt-marker comment by invoking Bash:
-`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --started-at <ISO8601>`
+`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --started-at <ISO8601>`
 Post its stdout as a Linear comment verbatim. The script emits no `status`
 field — this comment **is** the attempt marker counted by the Route step
 (step 6) on future fires.
@@ -490,7 +490,7 @@ field — this comment **is** the attempt marker counted by the Route step
 Write the locked `issue` MCP object verbatim as JSON to `.cadence/issue.json`
 (call it `issueJsonPath`) using the Write tool. Then invoke Bash:
 
-`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/compose_lifecycle_context.py --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml" --issue <issueJsonPath> --target-state <targetState> --attempt <attempt> --parse-comments-output <parseCommentsOutputPath>`
+`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/compose_lifecycle_context.py --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml" --issue <issueJsonPath> --target-state <targetState> --attempt <attempt> --parse-comments-output <parseCommentsOutputPath>`
 
 If the router's plan set `rework: true` (this fire entered via a gate
 **rework** route), append `--rework` so the script includes the Rework
@@ -525,11 +525,11 @@ branch** / optional **PR:** lines), the rework-section rendering
 
 ## Step 9 — Invoke the subagent
 
-Look up `targetState.subagent` in the config (e.g. `planner`, `implementer`,
-`reviewer`). Invoke the **Agent** tool with:
+Look up `targetState.subagent` in the config (e.g. `cadence-planner`,
+`cadence-implementer`, `cadence-reviewer`). Invoke the **Agent** tool with:
 
 - `subagent_type`: the subagent name from config (case-sensitive, matches the
-  `name` field in `.claude/agents/<subagent>.md`).
+  `name` field in `.claude/agents/cadence/<subagent>.md`).
 - `description`: a short string like `Cadence <targetState> for <identifier>`.
 - `prompt`: the full string composed in step 8.
 
@@ -586,7 +586,7 @@ When it does apply:
    rest of the summary is posted verbatim.
 5. **PR-creation failure** (the `create_pull_request` call errors): treat it as
    a failed attempt and escalate. Build a failure record via Bash
-   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --status failed --error "<PR-creation error>" --subagent <subagent>`,
+   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --status failed --error "<PR-creation error>" --subagent <subagent>`,
    post its stdout verbatim, add the `label.cadence_needs_human` label, remove
    the `label.cadence_active` label, and **exit** without advancing Linear
    state. (The branch is pushed; a human resolves the PR creation.)
@@ -635,7 +635,7 @@ Then:
 - If `next` is `type: agent`: move the issue's Linear state to `next.linear_state`.
 - If `next` is `type: gate`: first build the gate's waiting marker by invoking
   Bash:
-  `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind gate --state <next> --status waiting`
+  `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/emit_tracking_comment.py --kind gate --state <next> --status waiting`
   Post its stdout as a Linear comment verbatim. Then move the issue's Linear
   state to `next.linear_state` (the gate's waiting column).
 
@@ -678,7 +678,7 @@ If the Agent invocation in step 9 raises an exception:
 
 1. Take the subagent's exception message as the error string.
 2. Build the failure record by invoking Bash:
-   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --status failed --error "<exception message>" --subagent <subagent>`
+   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --status failed --error "<exception message>" --subagent <subagent>`
    (The script collapses newlines to spaces and truncates the error to 400
    chars itself.) Post its stdout as a Linear comment verbatim.
 

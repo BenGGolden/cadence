@@ -1,4 +1,4 @@
-"""Tests for templates/hooks/render_sweep_report.py.
+"""Tests for templates/cadence/hooks/render_sweep_report.py.
 
 Covers the classification (stale vs fresh) including the boundary case at
 exactly the cutoff, the per-issue stale_minutes math, the dual-stream
@@ -19,7 +19,7 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPT = REPO_ROOT / "templates" / "hooks" / "render_sweep_report.py"
+SCRIPT = REPO_ROOT / "templates" / "cadence" / "hooks" / "render_sweep_report.py"
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "sweep"
 
 

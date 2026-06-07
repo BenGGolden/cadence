@@ -3,7 +3,9 @@ Cadence: removed 24 files (0 user-config left in place, 0 already absent).
 removed empty directories:
   .claude/commands/cadence
   .claude/commands
-  .claude/hooks
+  .claude/cadence/hooks
+  .claude/cadence
   .claude/worktrees
+  .claude/agents/cadence
   .claude/agents
   .claude/prompts

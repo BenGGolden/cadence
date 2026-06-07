@@ -22,11 +22,13 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
 - `templates/` — **mirror of the consumer's `.claude/` tree.** Everything
   here is copied 1:1 to the same relative path under `.claude/` by
   `/cadence:init`: `workflow.yaml`, `prompts/global.md`, `ticket-template.md`,
-  `agents/*.md`, `hooks/*.py`, `worktrees/.gitignore` (ignores the harness's
+  `agents/cadence/cadence-*.md` (nested + `cadence-` prefixed so the agents
+  can't collide with a consumer's same-named agent), `cadence/hooks/*.py`,
+  `worktrees/.gitignore` (ignores the harness's
   runtime subagent worktrees from the main checkout), `settings.json` (the
   last is merged into `.claude/settings.json` rather than copied verbatim).
-- `templates/hooks/` — Python files copied to the consumer's
-  `.claude/hooks/`. Some are PreToolUse / UserPromptSubmit
+- `templates/cadence/hooks/` — Python files copied to the consumer's
+  `.claude/cadence/hooks/`. Some are PreToolUse / UserPromptSubmit
   hooks (`validate_tracking_json.py`, `validate_workflow_on_prompt.py`);
   the rest are deterministic helpers the dispatch
   prose invokes via Bash (`validate_workflow.py`, `_common.py`,

@@ -1,4 +1,4 @@
-"""Tests for templates/hooks/classify_drift.py.
+"""Tests for templates/cadence/hooks/classify_drift.py.
 
 The drift decision is a pure function imported directly. Covers the ordered
 branch the old tick.md step-9 prose specified: null latest, Match,
@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-HOOKS = REPO_ROOT / "templates" / "hooks"
+HOOKS = REPO_ROOT / "templates" / "cadence" / "hooks"
 SCRIPT = HOOKS / "classify_drift.py"
 sys.path.insert(0, str(HOOKS))
 

@@ -22,7 +22,7 @@ _CADENCE_ENTRY = {
     "matcher": "Bash",
     "hooks": [{
         "type": "command",
-        "command": 'python "$CLAUDE_PROJECT_DIR"/.claude/hooks/validate_tracking_json.py',
+        "command": 'python "$CLAUDE_PROJECT_DIR"/.claude/cadence/hooks/validate_tracking_json.py',
     }],
 }
 # A hand-added non-Cadence hook entry that must always survive.

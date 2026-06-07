@@ -9,7 +9,7 @@ with a clear diagnostic.
 Why this exists:
   Tracking-comment bodies embed JSON that downstream fires read back to count
   attempts and route rework. An LLM that hand-writes a comment instead of going
-  through `templates/hooks/emit_tracking_comment.py` can produce malformed JSON, which
+  through `templates/cadence/hooks/emit_tracking_comment.py` can produce malformed JSON, which
   poisons every subsequent fire's bookkeeping. This hook is the last line of
   defence before bad JSON reaches Linear.
 

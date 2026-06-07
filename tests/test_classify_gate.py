@@ -1,4 +1,4 @@
-"""Tests for templates/hooks/classify_gate.py.
+"""Tests for templates/cadence/hooks/classify_gate.py.
 
 The gate verdict decision is a pure function imported directly. Covers
 waiting / approve / rework-under-cap / rework-at-cap (escalate) / both-labels-
@@ -12,7 +12,7 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-HOOKS = REPO_ROOT / "templates" / "hooks"
+HOOKS = REPO_ROOT / "templates" / "cadence" / "hooks"
 SCRIPT = HOOKS / "classify_gate.py"
 sys.path.insert(0, str(HOOKS))
 

@@ -1,5 +1,5 @@
 ---
-description: Scaffold Cadence workflow config into the consumer repo — creates .claude/workflow.yaml, .claude/agents/*.md, .claude/prompts/global.md from plugin templates.
+description: Scaffold Cadence workflow config into the consumer repo — creates .claude/workflow.yaml, .claude/agents/cadence/*.md, .claude/prompts/global.md from plugin templates.
 argument-hint: "[--force]"
 disable-model-invocation: true
 ---
@@ -47,7 +47,7 @@ Pass `--force` only when the operator passed it to `/cadence:init`.
   is acceptable — the operator can fix the underlying problem and re-run
   with `--force`.
 
-The driver copies plugin-owned files (hook scripts under `.claude/hooks/`,
+The driver copies plugin-owned files (hook scripts under `.claude/cadence/hooks/`,
 the three `/cadence:*` commands under `.claude/commands/cadence/`) on every
 run, with or without `--force` — they are plugin executables kept in sync
 with the installed plugin. User-config files (`workflow.yaml`,

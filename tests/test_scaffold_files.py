@@ -26,9 +26,9 @@ from scaffold_files import SCAFFOLD_PLAN  # noqa: E402
 
 _REQUIRED_DIRS = (
     ".claude",
-    ".claude/agents",
+    ".claude/agents/cadence",
     ".claude/prompts",
-    ".claude/hooks",
+    ".claude/cadence/hooks",
     ".claude/commands/cadence",
 )
 
@@ -107,8 +107,8 @@ class AbortPathTests(unittest.TestCase):
             # workflow.yaml untouched; no other destination or dir created.
             self.assertEqual((consumer / ".claude/workflow.yaml").read_bytes(),
                              sentinel)
-            self.assertFalse((consumer / ".claude/hooks").exists())
-            self.assertFalse((consumer / ".claude/agents/planner.md").exists())
+            self.assertFalse((consumer / ".claude/cadence/hooks").exists())
+            self.assertFalse((consumer / ".claude/agents/cadence/cadence-planner.md").exists())
 
     def test_workflow_yaml_present_with_force_copies_all(self):
         with tempfile.TemporaryDirectory() as p, tempfile.TemporaryDirectory() as c:
@@ -128,17 +128,17 @@ class DefensiveSkipTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as p, tempfile.TemporaryDirectory() as c:
             root = _make_plugin_root(p)
             consumer = Path(c)
-            (consumer / ".claude/agents").mkdir(parents=True)
+            (consumer / ".claude/agents/cadence").mkdir(parents=True)
             preserved = b"MY PLANNER EDITS\n"
-            (consumer / ".claude/agents/planner.md").write_bytes(preserved)
+            (consumer / ".claude/agents/cadence/cadence-planner.md").write_bytes(preserved)
             out = _run(root, c)
             self.assertEqual(out.returncode, 0, msg=out.stderr)
             self.assertEqual(
-                (consumer / ".claude/agents/planner.md").read_bytes(),
+                (consumer / ".claude/agents/cadence/cadence-planner.md").read_bytes(),
                 preserved)
             # Every other destination copied.
             for src_rel, dest_rel, _ in SCAFFOLD_PLAN:
-                if dest_rel == ".claude/agents/planner.md":
+                if dest_rel == ".claude/agents/cadence/cadence-planner.md":
                     continue
                 self.assertEqual(_sha(consumer / dest_rel),
                                  _sha(root / src_rel), dest_rel)
@@ -150,13 +150,13 @@ class DefensiveSkipTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as p, tempfile.TemporaryDirectory() as c:
             root = _make_plugin_root(p)
             consumer = Path(c)
-            (consumer / ".claude/agents").mkdir(parents=True)
-            (consumer / ".claude/agents/planner.md").write_bytes(b"edits\n")
+            (consumer / ".claude/agents/cadence").mkdir(parents=True)
+            (consumer / ".claude/agents/cadence/cadence-planner.md").write_bytes(b"edits\n")
             out = _run(root, c, force=True)
             self.assertEqual(out.returncode, 0, msg=out.stderr)
             self.assertEqual(
-                _sha(consumer / ".claude/agents/planner.md"),
-                _sha(root / "templates/agents/planner.md"))
+                _sha(consumer / ".claude/agents/cadence/cadence-planner.md"),
+                _sha(root / "templates/agents/cadence/cadence-planner.md"))
 
 
 class PluginOwnedOverwriteTests(unittest.TestCase):
@@ -164,15 +164,15 @@ class PluginOwnedOverwriteTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as p, tempfile.TemporaryDirectory() as c:
             root = _make_plugin_root(p)
             consumer = Path(c)
-            (consumer / ".claude/hooks").mkdir(parents=True)
-            (consumer / ".claude/hooks/validate_workflow.py").write_bytes(
+            (consumer / ".claude/cadence/hooks").mkdir(parents=True)
+            (consumer / ".claude/cadence/hooks/validate_workflow.py").write_bytes(
                 b"STALE HOOK\n")
             # workflow.yaml absent → step 2 does not abort; no --force.
             out = _run(root, c)
             self.assertEqual(out.returncode, 0, msg=out.stderr)
             self.assertEqual(
-                _sha(consumer / ".claude/hooks/validate_workflow.py"),
-                _sha(root / "templates/hooks/validate_workflow.py"))
+                _sha(consumer / ".claude/cadence/hooks/validate_workflow.py"),
+                _sha(root / "templates/cadence/hooks/validate_workflow.py"))
 
 
 class ReinitByteForByteTests(unittest.TestCase):
@@ -223,7 +223,7 @@ class ErrorPathTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as p, tempfile.TemporaryDirectory() as c:
             root = _make_plugin_root(p)
             # Remove one source after building the rest.
-            (root / "templates/hooks/render_sweep_report.py").unlink()
+            (root / "templates/cadence/hooks/render_sweep_report.py").unlink()
             out = _run(root, c)
             self.assertEqual(out.returncode, 1, msg=out.stdout)
             self.assertIn("render_sweep_report.py", out.stderr)
@@ -245,7 +245,7 @@ class PlanIntegrityTests(unittest.TestCase):
 
     def test_category_tagging(self):
         for src, dest, policy in SCAFFOLD_PLAN:
-            if src.startswith("templates/hooks/") or src.startswith("commands/"):
+            if src.startswith("templates/cadence/hooks/") or src.startswith("commands/"):
                 self.assertEqual(policy, "plugin-owned", src)
             elif (src.startswith("templates/agents/")
                   or src.startswith("templates/prompts/")):

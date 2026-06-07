@@ -11,7 +11,7 @@
 #   - Exactly one `entry` state; it must exist and be of type: agent.
 #   - Every `next`, `on_approve`, `on_rework` target must reference a
 #     defined state.
-#   - Every state.subagent must resolve to .claude/agents/{name}.md.
+#   - Every state.subagent must resolve to .claude/agents/cadence/{name}.md.
 #   - No gate state may carry the legacy `approved_linear_state` or
 #     `rework_linear_state` keys (removed in P4 — gates now signal
 #     verdicts via the cadence_approve / cadence_rework labels).
@@ -95,7 +95,7 @@ states:
   # ----------- planning -----------
   plan:
     type: agent
-    subagent: planner                # → .claude/agents/planner.md
+    subagent: cadence-planner        # → .claude/agents/cadence/cadence-planner.md
     linear_state: "Planning"         # Linear column for this state
     next: plan_review                # On success → this state
     # Optional: cap **parallel subagent runs at this state** by counting
@@ -135,7 +135,7 @@ states:
   # ----------- implementation -----------
   implement:
     type: agent
-    subagent: implementer            # → .claude/agents/implementer.md
+    subagent: cadence-implementer    # → .claude/agents/cadence/cadence-implementer.md
     linear_state: "Implementing"
     next: agent_review
     # Optional cap on **parallel implementer runs** at this state (see
@@ -150,7 +150,7 @@ states:
   # ----------- automated code review (adversarial, no implementer narrative) -----------
   agent_review:
     type: agent
-    subagent: reviewer               # → .claude/agents/reviewer.md
+    subagent: cadence-reviewer       # → .claude/agents/cadence/cadence-reviewer.md
     linear_state: "Reviewing"        # NEW Linear column — add it to your board
     # Strip the implementer's narrative from the Lifecycle Context so the
     # reviewer reads the diff cold (tick.md Step 8 adversarial-context

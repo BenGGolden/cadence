@@ -2,7 +2,7 @@
 """Decide whether a Cadence fire is picking up an issue that drifted.
 
 Caller(s):
-  - templates/hooks/route_fire.py (imported; the drift sub-decision of the
+  - templates/cadence/hooks/route_fire.py (imported; the drift sub-decision of the
     old tick.md step 9)
 
 Pure function — no I/O, no MCP, no shell-out. Mirrors the ordered branch the

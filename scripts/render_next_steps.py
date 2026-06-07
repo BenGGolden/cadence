@@ -108,8 +108,8 @@ Next steps:
   2. Edit .claude/prompts/global.md with the always-on instructions you
      want every Cadence subagent to receive (coding standards, repo
      conventions, secrets-handling rules).
-  3. Tune .claude/agents/{{planner,implementer,reviewer}}.md — model, tools,
-     and system prompt.
+  3. Tune .claude/agents/cadence/cadence-{{planner,implementer,reviewer}}.md
+     — model, tools, and system prompt.
   4. Pick an invocation mode:
        • Remote: create a /schedule routine running /cadence:tick
          every minute. Add the Linear connector and bind a GitHub

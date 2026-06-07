@@ -51,8 +51,10 @@ _CADENCE_DIR = ".cadence"
 _CANDIDATE_DIRS = (
     ".claude/commands/cadence",
     ".claude/commands",
-    ".claude/hooks",
+    ".claude/cadence/hooks",
+    ".claude/cadence",
     ".claude/worktrees",
+    ".claude/agents/cadence",
     ".claude/agents",
     ".claude/prompts",
 )
@@ -104,7 +106,7 @@ def _compute_plan(force):
     # `__pycache__` under a candidate dir is the bytecode the hook scripts
     # generate when they import their siblings (e.g. `_common`) — plugin cruft
     # in the same category as `.cadence/`, safe to clear. Removing it lets a
-    # dir that held only plugin files + its cache (notably `.claude/hooks`)
+    # dir that held only plugin files + its cache (notably `.claude/cadence/hooks`)
     # prune instead of surviving on the cache alone.
     removable = set(removed_paths)
     for d in _CANDIDATE_DIRS:

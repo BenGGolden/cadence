@@ -89,13 +89,13 @@ entry: plan
 states:
   plan:
     type: agent
-    subagent: planner
+    subagent: cadence-planner
     linear_state: "Planning"
     next: implement
 
   implement:
     type: agent
-    subagent: implementer
+    subagent: cadence-implementer
     linear_state: "Implementing"
     next: review
 
@@ -140,11 +140,13 @@ Key renames and removals from the Stokowski schema:
 
 Each Stokowski stage had a plain `.md` prompt file (e.g.
 `prompts/plan.md`). Convert each to a Claude Code subagent under
-`.claude/agents/` with YAML frontmatter:
+`.claude/agents/cadence/` with YAML frontmatter (the `cadence-` name prefix
+keeps the agents from colliding with any same-named agent in the consumer
+repo):
 
 ```markdown
 ---
-name: planner
+name: cadence-planner
 description: Breaks down a Linear issue into a concrete implementation plan. Returns a Markdown plan summary string.
 model: opus
 tools: [Read, Grep, Glob, WebFetch, Bash]
@@ -172,7 +174,7 @@ auto-injected lifecycle), the mapping is direct:
 | Stokowski layer       | Cadence equivalent                              |
 |-----------------------|-------------------------------------------------|
 | Global prompt         | `.claude/prompts/global.md`                     |
-| Stage prompt          | `.claude/agents/<name>.md` body                 |
+| Stage prompt          | `.claude/agents/cadence/cadence-<name>.md` body |
 | Auto-injected lifecycle | Lifecycle Context block (built by bootstrap)  |
 
 ### 4. Migrate the global prompt
