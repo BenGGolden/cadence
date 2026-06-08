@@ -22,7 +22,12 @@ Three implementations are referenced for contrast: the
 
 ---
 
-## 1. Ticket quality is upstream of everything else
+## Get the inputs right
+
+The agent is only as good as what you feed it: the ticket that defines the task
+and the codebase it works in.
+
+### Ticket quality is upstream of everything else
 
 A perfect orchestrator cannot compensate for a vague ticket. If "done" cannot
 be checked against something written down before the work started, then "done"
@@ -36,14 +41,35 @@ before declaring the work complete. The way to get there can be a dedicated
 ticket-creation flow that refuses to file ambiguous work, or a standing rule
 that rejects it on sight. That self-check gates the handoff, not the verdict: it
 forces the implementer to confront each criterion before claiming done, but the
-agent doesn't certify its own work — the adversarial review (#3) re-checks the
-criteria and owns the call.
+agent doesn't certify its own work — the adversarial review (*Adversarial review
+with no shared context*) re-checks the criteria and owns the call.
 
 In practice: Stokowski encodes this as an acceptance-criteria JSON block the
 agent must mark off before it can claim completion; both it and Cadence ship a
 ticket-creation command. The Symphony spec leaves ticket quality to the author.
 
-## 2. Split the workflow into separate stages
+### Make the codebase self-describing for agents
+
+Agent output quality is roughly proportional to how self-describing the codebase
+is — this is the "harness engineering" idea, and it is load-bearing. A thorough
+top-level agent guide, rule files for known footguns, conventions docs, and a
+maintained build log are not nice-to-haves; they are the difference between
+agents that follow your conventions and agents that invent their own. Treat them
+as first-class engineering artifacts with the same review bar as code. Keep
+agent-only instructions (headless mode, no slash commands) separate from
+interactive ones, or they bleed into day-to-day sessions.
+
+In practice: Stokowski and Cadence separate agent-facing prompts into a dedicated
+directory so they don't leak into interactive use.
+
+---
+
+## The pipeline: stages, gates, and rework
+
+Shape the work as distinct stages with human gates between them, and make every
+rejection count toward the next attempt.
+
+### Split the workflow into separate stages
 
 One agent run from ticket all the way to a finished change is the wrong shape.
 Investigation, implementation, and review are different kinds of work — different
@@ -57,7 +83,7 @@ from review, picking a model per stage — a stronger reasoning model for
 investigation, a faster one for execution, ideally a different provider for
 review. The Symphony spec describes a single ticket-to-PR run.
 
-## 3. Adversarial review with no shared context
+### Adversarial review with no shared context
 
 An agent reviewing its own work defends its own choices — it is sycophantic
 toward the thread that produced the code. A review is only worth running if it
@@ -70,7 +96,7 @@ In practice: Stokowski runs its code-review stage with a fresh session that
 explicitly drops the prior thread. Pushing further toward a different model or
 provider strengthens it.
 
-## 4. Humans gate where machines can't judge
+### Humans gate where machines can't judge
 
 Some questions are not automatable: did the agent solve the right problem, in
 the right shape, with judgment a stakeholder would endorse? A machine can check
@@ -85,7 +111,7 @@ an automated review. A rework cap prevents infinite human-agent ping-pong;
 exceeding it escalates with a "needs human" signal. Both Cadence and Stokowski
 build such gates; the Symphony spec doesn't.
 
-## 5. Rework carries the rejection forward
+### Rework carries the rejection forward
 
 When a gate sends work back, the rejection is the most valuable signal the
 system produces: a specific judgment about what is wrong. Re-running the stage
@@ -95,60 +121,24 @@ Every rework cycle should re-enter with the rejection captured as explicit
 input, aimed at the objection rather than starting cold.
 
 This is the difference between a retry counter and a feedback loop. A bare cap
-(#4) stops infinite ping-pong but does nothing to make each bounce more likely
-to land; carrying the reason forward is what makes the next attempt better. The
-two compose: carry the reason so attempts improve, cap the count so they can't
-run forever.
+(*Humans gate where machines can't judge*) stops infinite ping-pong but does
+nothing to make each bounce more likely to land; carrying the reason forward is
+what makes the next attempt better. The two compose: carry the reason so
+attempts improve, cap the count so they can't run forever.
 
 In practice: when Cadence reworks an issue it injects a "Rework Context" section
 into the next subagent's prompt, quoting the reviewer's comments verbatim, so the
 attempt addresses the feedback instead of guessing at why it was sent back.
 
-## 6. Keep all durable state in the tracker
+---
 
-State, locks, attempt history, and the audit trail can all live in the tracker
-itself rather than in a separate store. When durable state lives where the work
-already lives, you get restart-survivability for free, legibility to humans
-(they look at the tracker, not a custom dashboard), drift reconciliation as a
-natural operation, and no infrastructure to host. Every piece of durable state
-should answer the question "where does this live in the tracker?" — if the
-answer is "in memory" or "in a sqlite file," a crash loses it and a human can't
-see it.
+## Move guarantees out of the agent's hands
 
-How cleanly this maps depends on the tracker. Some state has an obvious home —
-workflow states are columns. The rest has to be mapped onto whatever primitives
-the tracker exposes, and where the tracker lacks a native mechanism the system
-improvises one. A tracker with a built-in locking or claim concept can use it
-directly; one without forces a stand-in.
+Anything that depends on the agent choosing well eventually fails — move the
+guarantee into the harness, into deterministic code, or behind a workspace
+boundary.
 
-In practice: Cadence keeps all of this in Linear. Columns map naturally to
-workflow states, but Linear offers no native lock and no native per-attempt
-history, so Cadence improvises — a label stands in for the lock, and tracking
-comments carry attempt history. Those are workarounds for missing primitives,
-not the ideal shape of the principle; on a tracker that provided locking or
-attempt records natively, the right move would be to use those instead.
-
-## 7. Every operation must be safe to re-run
-
-A one-shot, externally-triggered run can die anywhere — after pushing a branch
-but before opening the PR, after moving the column but before releasing the lock,
-after posting some of its comments but not the rest. The only sane recovery model
-is "run it again," which holds only if every operation is idempotent: reconcile
-current state before acting, reuse an artifact that already exists rather than
-create a duplicate, and treat "already in the target state" as success, not
-error.
-
-Designed in from the start this is nearly free; bolted on after the first crash
-it is a rewrite, because act-then-record has to become reconcile-act-record
-everywhere. It pairs with #6: because each run reconstructs what it needs from
-the tracker rather than from a resident process holding state in memory, there is
-nothing to repair after a crash — recovery is just firing again.
-
-In practice: on rework Cadence reuses the already-open PR instead of opening a
-second, and reconciles drift at the start of every tick before it acts — so a
-tick that died halfway leaves nothing a re-run can't sort out.
-
-## 8. Mechanical guardrails beat agent discipline
+### Mechanical guardrails beat agent discipline
 
 Anything that depends on the agent remembering will eventually fail. Move the
 guarantee out of the agent's discretion and into the harness, so it holds
@@ -176,7 +166,7 @@ Common forms:
 In practice: the single-writer pattern is Cadence's "bootstrap is the sole
 tracker-writer," with the bootstrap also owning PR creation and merge.
 
-## 9. Prefer deterministic code to agent prose
+### Prefer deterministic code to agent prose
 
 Anything mechanical — parsing a structured comment, validating config,
 formatting a string, merging JSON — a small script does faster, cheaper, and the
@@ -188,15 +178,15 @@ designs, writing the code itself. Everything else should be code — reproducibl
 across model versions, free at inference time, and reviewable as code rather
 than as a prompt's emergent behavior.
 
-This is distinct from #8: guardrails are about what the agent shouldn't be
-trusted to remember; determinism is about what shouldn't be re-derived by a
-model at all when a short script will do.
+This is distinct from *Mechanical guardrails beat agent discipline*: guardrails
+are about what the agent shouldn't be trusted to remember; determinism is about
+what shouldn't be re-derived by a model at all when a short script will do.
 
 In practice: Cadence parses tracking comments, validates its workflow file,
 formats audit lines, and merges settings with small scripts. Each could have
 been a paragraph of dispatch prose; none should be.
 
-## 10. Isolate agent work so a bad run is discardable
+### Isolate agent work so a bad run is discardable
 
 An agent loose on the canonical checkout can corrupt it — a half-finished edit, a
 bad merge, two concurrent runs colliding on the same files. Give each run its own
@@ -205,15 +195,68 @@ and that can be thrown away whole if the run fails or turns hostile. The goal is
 containment, not cleanup: a discarded workspace needs no unwinding, and the trunk
 everyone else depends on is never the thing at risk.
 
-This is distinct from the single-writer rule (#8): that governs who may write to
-the tracker; this governs where the code changes happen. The blast radius of any
-one run should be a throwaway artifact, never shared state.
+This is distinct from the single-writer rule (*Mechanical guardrails beat agent
+discipline*): that governs who may write to the tracker; this governs where the
+code changes happen. The blast radius of any one run should be a throwaway
+artifact, never shared state.
 
 In practice: Cadence runs each subagent in its own git worktree, gitignored from
 the main checkout, so concurrent fires and failed attempts can't disturb the
 trunk or each other.
 
-## 11. Build for forensic debugging
+---
+
+## Tracker as the system of record
+
+Keep durable state where the work already lives, so the system survives a crash
+and stays reconstructable after the fact.
+
+### Keep all durable state in the tracker
+
+State, locks, attempt history, and the audit trail can all live in the tracker
+itself rather than in a separate store. When durable state lives where the work
+already lives, you get restart-survivability for free, legibility to humans
+(they look at the tracker, not a custom dashboard), drift reconciliation as a
+natural operation, and no infrastructure to host. Every piece of durable state
+should answer the question "where does this live in the tracker?" — if the
+answer is "in memory" or "in a sqlite file," a crash loses it and a human can't
+see it.
+
+How cleanly this maps depends on the tracker. Some state has an obvious home —
+workflow states are columns. The rest has to be mapped onto whatever primitives
+the tracker exposes, and where the tracker lacks a native mechanism the system
+improvises one. A tracker with a built-in locking or claim concept can use it
+directly; one without forces a stand-in.
+
+In practice: Cadence keeps all of this in Linear. Columns map naturally to
+workflow states, but Linear offers no native lock and no native per-attempt
+history, so Cadence improvises — a label stands in for the lock, and tracking
+comments carry attempt history. Those are workarounds for missing primitives,
+not the ideal shape of the principle; on a tracker that provided locking or
+attempt records natively, the right move would be to use those instead.
+
+### Every operation must be safe to re-run
+
+A one-shot, externally-triggered run can die anywhere — after pushing a branch
+but before opening the PR, after moving the column but before releasing the lock,
+after posting some of its comments but not the rest. The only sane recovery model
+is "run it again," which holds only if every operation is idempotent: reconcile
+current state before acting, reuse an artifact that already exists rather than
+create a duplicate, and treat "already in the target state" as success, not
+error.
+
+Designed in from the start this is nearly free; bolted on after the first crash
+it is a rewrite, because act-then-record has to become reconcile-act-record
+everywhere. It pairs with *Keep all durable state in the tracker*: because each
+run reconstructs what it needs from the tracker rather than from a resident
+process holding state in memory, there is nothing to repair after a crash —
+recovery is just firing again.
+
+In practice: on rework Cadence reuses the already-open PR instead of opening a
+second, and reconciles drift at the start of every tick before it acts — so a
+tick that died halfway leaves nothing a re-run can't sort out.
+
+### Build for forensic debugging
 
 Things break in ways the operator wasn't watching. The system has to be
 reconstructable after the fact.
@@ -238,20 +281,6 @@ reconstructable after the fact.
 In practice: Cadence's dry-run renders the prompt with "show your work"
 validation evidence; an attempt cap plus a needs-human label is its escalation;
 it keeps failure records separate from attempt markers for cap accuracy.
-
-## 12. Make the codebase self-describing for agents
-
-Agent output quality is roughly proportional to how self-describing the codebase
-is — this is the "harness engineering" idea, and it is load-bearing. A thorough
-top-level agent guide, rule files for known footguns, conventions docs, and a
-maintained build log are not nice-to-haves; they are the difference between
-agents that follow your conventions and agents that invent their own. Treat them
-as first-class engineering artifacts with the same review bar as code. Keep
-agent-only instructions (headless mode, no slash commands) separate from
-interactive ones, or they bleed into day-to-day sessions.
-
-In practice: Stokowski and Cadence separate agent-facing prompts into a dedicated
-directory so they don't leak into interactive use.
 
 ---
 
@@ -279,8 +308,7 @@ A few anti-goals — the optimizations that look like improvements and aren't.
   "small enough that the workflow definition fits on one screen and a new
   contributor can read it in 30 seconds." Beyond that, expressiveness in the
   definition starts trading off against legibility for humans. The Symphony spec
-  has no DSL; Stokowski has a rich one; Cadence has a small
-  one.
+  has no DSL; Stokowski has a rich one; Cadence has a small one.
 
 ---
 

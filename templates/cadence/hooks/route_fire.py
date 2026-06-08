@@ -6,7 +6,8 @@ Caller:
     used to live in steps 8–11).
 
 This is the *decision core* of a fire, extracted out of dispatch prose into a
-pure, testable orchestrator (GUIDEPOSTS #7 — determinism). It answers one
+pure, testable orchestrator (GUIDEPOSTS "Prefer deterministic code to agent
+prose"). It answers one
 question — "given where this issue sits and its history, what should this fire
 do to it?" — as a pure function of `(config, current Linear column, present
 labels, comment history)`. It performs **no** MCP, network, or shell-out
