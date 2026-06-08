@@ -36,7 +36,7 @@ In practice: Stokowski encodes this as an acceptance-criteria JSON block the
 agent must mark off before it can claim completion; both it and Cadence ship a
 ticket-creation command. The Symphony spec leaves ticket quality to the author.
 
-## 2. Split investigation, implementation, and review into separate stages
+## 2. Split the workflow into separate stages
 
 One agent run from ticket all the way to a finished change is the wrong shape.
 Investigation, implementation, and review are different kinds of work — different
@@ -98,7 +98,7 @@ In practice: when Cadence reworks an issue it injects a "Rework Context" section
 into the next subagent's prompt, quoting the reviewer's comments verbatim, so the
 attempt addresses the feedback instead of guessing at why it was sent back.
 
-## 6. The tracker IS the workflow
+## 6. Keep all durable state in the tracker
 
 State, locks, attempt history, and the audit trail can all live in the tracker
 itself rather than in a separate store. When durable state lives where the work
