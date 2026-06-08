@@ -184,8 +184,8 @@ as first-class engineering artifacts with the same review bar as code. Keep
 agent-only instructions (headless mode, no slash commands) separate from
 interactive ones, or they bleed into day-to-day sessions.
 
-In practice: Stokowski separates agent-facing prompts into a dedicated directory
-so they don't leak into interactive use.
+In practice: Stokowski and Cadence separate agent-facing prompts into a dedicated
+directory so they don't leak into interactive use.
 
 ---
 
@@ -204,11 +204,16 @@ A few anti-goals — the optimizations that look like improvements and aren't.
   A dashboard is a maintenance burden that pulls effort away from the
   agent-quality work that matters. Stokowski ships one; Cadence deliberately
   doesn't.
-- **An expressive workflow DSL.** The right amount is "small enough that the
-  workflow definition fits on one screen and a new contributor can read it in 30
-  seconds." Beyond that, complexity in the definition starts trading off against
-  legibility for humans. The Symphony spec has no DSL and is weaker for it;
-  Stokowski has a rich one; Cadence has a small one.
+- **An expressive workflow DSL.** A workflow DSL is the configuration language
+  that defines the states, transitions, gates, and per-stage settings — the
+  declarative spec that says "investigation flows to implementation, which needs
+  approval before review." The temptation is to make it ever more expressive
+  (conditionals, loops, custom hooks, computed fields) until it becomes a
+  programming language in its own right. The right amount is "small enough that
+  the workflow definition fits on one screen and a new contributor can read it
+  in 30 seconds." Beyond that, expressiveness in the definition starts trading
+  off against legibility for humans. The Symphony spec has no DSL and is weaker
+  for it; Stokowski has a rich one; Cadence has a small one.
 
 ---
 
