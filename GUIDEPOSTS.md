@@ -229,7 +229,7 @@ In practice: Cadence's dry-run renders the prompt with "show your work"
 validation evidence; an attempt cap plus a needs-human label is its escalation;
 it keeps failure records separate from attempt markers for cap accuracy.
 
-## 12. The codebase has to teach the agent
+## 12. Make the codebase self-describing for agents
 
 Agent output quality is roughly proportional to how self-describing the codebase
 is — this is the "harness engineering" idea, and it is load-bearing. A thorough
