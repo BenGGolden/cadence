@@ -2,9 +2,12 @@
 
 These are design principles for any system that drives coding agents from a
 work tracker — issues moving through states, agents doing the work, humans
-approving at gates. They describe what actually moves output quality (as
-opposed to operational completeness), independent of how any particular system
-implements it.
+approving at gates. They describe what makes such a system produce good
+software rather than merely appear to: both the levers that improve the agents'
+output and the operational foundations that keep that output from being lost to
+a crash or a drifted board. They leave out the features that only make a system
+look finished, gathered at the end as anti-goals. None of it depends on how a
+particular system is built.
 
 They are goals to strive toward, not a compliance checklist. A deliberately
 lightweight implementation may satisfy some only partially; that is a
@@ -14,7 +17,8 @@ goal; another implementation may reach it a different way.
 
 Three implementations are referenced for contrast: the
 [Symphony spec](https://github.com/openai/symphony/blob/main/SPEC.md),
-[Stokowski](https://github.com/Sugar-Coffee/stokowski), and Cadence.
+[Stokowski](https://github.com/Sugar-Coffee/stokowski), and 
+[Cadence](https://github.com/BenGGolden/cadence).
 
 ---
 
@@ -30,7 +34,10 @@ The strongest mechanism is a set of acceptance criteria that are each
 independently verifiable, that the agent is forced to read, mark, and self-check
 before declaring the work complete. The way to get there can be a dedicated
 ticket-creation flow that refuses to file ambiguous work, or a standing rule
-that rejects it on sight.
+that rejects it on sight. That self-check gates the handoff, not the verdict: it
+forces the implementer to confront each criterion before claiming done, but the
+agent doesn't certify its own work — the adversarial review (#3) re-checks the
+criteria and owns the call.
 
 In practice: Stokowski encodes this as an acceptance-criteria JSON block the
 agent must mark off before it can claim completion; both it and Cadence ship a
@@ -48,8 +55,7 @@ you match a model to the task.
 In practice: both Cadence and Stokowski separate investigate/plan from implement
 from review, picking a model per stage — a stronger reasoning model for
 investigation, a faster one for execution, ideally a different provider for
-review. The Symphony spec describes a single ticket-to-PR run, which is its
-biggest gap.
+review. The Symphony spec describes a single ticket-to-PR run.
 
 ## 3. Adversarial review with no shared context
 
@@ -77,7 +83,7 @@ In practice: place gates after investigation (before implementation spends the
 budget), after implementation (before merge), and optionally before merge after
 an automated review. A rework cap prevents infinite human-agent ping-pong;
 exceeding it escalates with a "needs human" signal. Both Cadence and Stokowski
-build such gates; the Symphony spec doesn't, and is weaker for it.
+build such gates; the Symphony spec doesn't.
 
 ## 5. Rework carries the rejection forward
 
@@ -269,7 +275,7 @@ A few anti-goals — the optimizations that look like improvements and aren't.
   "small enough that the workflow definition fits on one screen and a new
   contributor can read it in 30 seconds." Beyond that, expressiveness in the
   definition starts trading off against legibility for humans. The Symphony spec
-  has no DSL and is weaker for it; Stokowski has a rich one; Cadence has a small
+  has no DSL; Stokowski has a rich one; Cadence has a small
   one.
 
 ---
