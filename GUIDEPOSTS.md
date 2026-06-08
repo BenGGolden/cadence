@@ -1,198 +1,207 @@
-# Guideposts for a Symphony-style system that produces good software
+# Guideposts for orchestrating coding agents off a tracker
 
-Captured from a review of the [Symphony spec](https://github.com/openai/symphony/blob/main/SPEC.md),
-[Stokowski](https://github.com/Sugar-Coffee/stokowski), and Cadence itself. These
-are design principles for any system that orchestrates coding agents off a
-tracker — they framed Cadence's hardening track (see [CHANGELOG.md](./CHANGELOG.md))
-and should frame any future implementation of the concept.
+These are design principles for any system that drives coding agents from a
+work tracker — issues moving through states, agents doing the work, humans
+approving at gates. They describe what actually moves output quality (as
+opposed to operational completeness), independent of how any particular system
+implements it.
 
-They are goals to strive toward, not a compliance checklist — a deliberately
-lightweight implementation may satisfy some only partially, and that's a
-trade-off, not a defect. Where a principle names how Cadence or Stokowski does
-it, that's an illustration of the goal, not part of the goal; another
-implementation may reach it a different way.
+They are goals to strive toward, not a compliance checklist. A deliberately
+lightweight implementation may satisfy some only partially; that is a
+trade-off, not a defect. Where a principle is illustrated with how a real
+system does — or doesn't do — something, the illustration is not part of the
+goal; another implementation may reach it a different way.
 
-Across the spec and the two implementations, the things that actually move
-output quality (as opposed to operational completeness) cluster into a small
-number of principles.
+Three implementations are referenced for contrast: the
+[Symphony spec](https://github.com/openai/symphony/blob/main/SPEC.md),
+[Stokowski](https://github.com/Sugar-Coffee/stokowski), and Cadence.
 
 ---
 
 ## 1. Ticket quality is upstream of everything else
 
-A perfect orchestrator can't compensate for a vague ticket. Stokowski's strongest
-contribution here is the **acceptance-criteria JSON block** — each criterion
-independently verifiable, agent forced to read them, mark them, and self-check
-before declaring done. Without that, "done" is unfalsifiable.
+A perfect orchestrator cannot compensate for a vague ticket. If "done" cannot
+be checked against something written down before the work started, then "done"
+is whatever the agent decides it is — unfalsifiable. The ticket is the contract
+the agent is held to, not a hint about where to start, and everything
+downstream inherits its precision or its ambiguity.
 
-Practically: ship a `/create-ticket` flow (Stokowski has one) or a CLAUDE.md
-rule that refuses ambiguous tickets. Treat the ticket as the contract, not a
-hint.
+The strongest mechanism is a set of acceptance criteria that are each
+independently verifiable, that the agent is forced to read, mark, and self-check
+before declaring the work complete. The way to get there can be a dedicated
+ticket-creation flow that refuses to file ambiguous work, or a standing rule
+that rejects it on sight.
+
+In practice: Stokowski encodes this as an acceptance-criteria JSON block the
+agent must mark off before it can claim completion; both it and Cadence ship a
+ticket-creation command. The Symphony spec leaves ticket quality to the author.
 
 ## 2. Stage the work; don't lump it
 
-The single biggest gap in Symphony spec — and the single biggest insight in
-both Cadence and Stokowski — is that **one agent run from ticket-to-PR is the
-wrong shape**. Investigation, implementation, and review have different
-concerns, optimal models, and context needs. Lumping them produces a single
-sprawling session that loses focus and burns tokens.
+One agent run from ticket all the way to a finished change is the wrong shape.
+Investigation, implementation, and review are different kinds of work — different
+concerns, different ideal models, different context needs. Lumping them into a
+single session loses focus and burns tokens carrying context that two of the
+three phases never needed. Splitting them lets each phase start clean and lets
+you match a model to the task.
 
-Practically: at minimum, separate investigate/plan from implement from review.
-Pick the model per stage (Opus for reasoning, Sonnet for execution, possibly
-Codex or another provider for adversarial review).
+In practice: both Cadence and Stokowski separate investigate/plan from implement
+from review, picking a model per stage — a stronger reasoning model for
+investigation, a faster one for execution, ideally a different provider for
+review. The Symphony spec describes a single ticket-to-PR run, which is its
+biggest gap.
 
 ## 3. Adversarial review with no shared context
 
-The reviewer that wrote the code is sycophantic — it defends its choices.
-Stokowski's `session: fresh` for the code-review stage is a real insight: a
-clean session with no prior thread, ideally a different model or provider,
-catches things the implementer missed.
+An agent reviewing its own work defends its own choices — it is sycophantic
+toward the thread that produced the code. A review is only worth running if it
+can find what the implementation missed, which means it has to start without the
+implementer's context, assumptions, and rationalizations. The more independent
+the reviewer — fresh session, different model, different provider — the more it
+catches. Treat review as adversarial, not collaborative.
 
-Practically: review stages should explicitly drop session continuity.
-Different provider where you can. Treat the review as adversarial, not
-collaborative.
+In practice: Stokowski runs its code-review stage with a fresh session that
+explicitly drops the prior thread. Pushing further toward a different model or
+provider strengthens it.
 
 ## 4. Humans gate where machines can't judge
 
-"Did the agent solve the right problem, in the right shape, with judgment a
-stakeholder would endorse?" is not automatable. Both Cadence and Stokowski
-build human gates at meaningful points; Symphony doesn't, and is weaker for
-it. The gate isn't a bottleneck — it's the safety valve that catches drift
-before it compounds.
+Some questions are not automatable: did the agent solve the right problem, in
+the right shape, with judgment a stakeholder would endorse? A machine can check
+that tests pass; it cannot check that the work was worth doing or built the way
+the team would want. A human gate at the points where those questions arise is
+not a bottleneck — it is the safety valve that catches drift before it compounds
+into wasted budget or a wrong merge.
 
-Practically: gate after investigation (before implementation burns the
-budget), after implementation (before merge), and possibly before merge after
-automated review. Add `max_rework` to prevent infinite ping-pong; escalate
-with a "needs human" label when exceeded.
+In practice: place gates after investigation (before implementation spends the
+budget), after implementation (before merge), and optionally before merge after
+an automated review. A rework cap prevents infinite human-agent ping-pong;
+exceeding it escalates with a "needs human" signal. Both Cadence and Stokowski
+build such gates; the Symphony spec doesn't, and is weaker for it.
 
 ## 5. The tracker IS the workflow
 
-Cadence's strongest design call: **state, locks, attempt history, audit trail —
-all live in the tracker.** No separate database, no in-memory state to lose,
-no parallel UI to build. Linear columns *are* the workflow state. Tracking
-comments preserve attempt history. A label is the soft lock.
+State, locks, attempt history, and the audit trail can all live in the tracker
+itself rather than in a separate store. When the tracker's columns are the
+workflow states, a label is the lock, and comments are the attempt history, you
+get restart-survivability for free, legibility to humans (they look at the
+tracker, not a custom dashboard), drift reconciliation as a natural operation,
+and no infrastructure to host. Every piece of durable state should answer the
+question "where does this live in the tracker?" — if the answer is "in memory"
+or "in a sqlite file," a crash loses it and a human can't see it.
 
-This buys you: restart-survivability for free, legibility to humans (they
-look at Linear, not a dashboard), drift reconciliation as a natural operation,
-and no infrastructure to host.
-
-Practically: every piece of durable state should answer the question "where
-does this live in the tracker?" If the answer is "in memory" or "in a sqlite
-file," reconsider.
+In practice: Cadence keeps all of this in Linear — columns are states, a label
+is the soft lock, tracking comments hold attempt history.
 
 ## 6. Mechanical guardrails beat agent discipline
 
-Anything that depends on the agent remembering will eventually fail. Bake
-guardrails into the harness:
+Anything that depends on the agent remembering will eventually fail. Move the
+guarantee out of the agent's discretion and into the harness, so it holds
+regardless of whether the agent thought of it. Each guardrail converts "the
+agent might forget X" into "X is enforced."
 
-- **Hooks** (`before_run` / `after_run`) that always run typecheck, lint,
-  tests — regardless of whether the agent thought to.
-- **Bootstrap is the sole tracker-writer** (Cadence's pattern). Subagents
-  return summaries; the bootstrap posts them. No hallucinated comments,
-  consistent shape, single audit point. A state transition may also carry an
-  external side-effect beyond the tracker write — e.g. opening the
-  change-proposal artifact a step produced, or merging it once it's approved.
-  Keep those side-effects in the orchestrator too: executed once,
-  read-before-write, with a defined escalation path on failure — not delegated
-  to an agent (the agent produces the work; the orchestrator publishes and
-  lands it). The orchestrator owns transitions; a mechanical one-shot action
-  coupled to a transition is not agent work.
-- **Permission scoping per actual tool used**, not "the whole read-only
-  category." Cadence's README is exemplary; treat it as the floor.
+Common forms:
+
+- **Hooks** (`before_run` / `after_run`) that always run typecheck, lint, and
+  tests, regardless of whether the agent invoked them.
+- **A single writer for the tracker.** Subagents return summaries; one
+  orchestrator posts them — no hallucinated comments, one consistent shape, one
+  audit point. The same orchestrator owns any external side-effect coupled to a
+  state transition — opening the change-proposal artifact a step produced, or
+  merging it once it is approved. Keep those side-effects in the orchestrator:
+  executed once, read-before-write, with a defined escalation on failure, not
+  delegated to an agent. The agent produces the work; the orchestrator publishes
+  and lands it.
+- **Permission scoping to the actual tools used**, not a whole "read-only"
+  category.
 - **Acceptance criteria the agent must explicitly mark verified** before
   transitioning.
-- **Deterministic branch/PR naming** so humans can find the work.
+- **Deterministic branch and PR naming** so humans can find the work.
 
-Each of these is "the agent might forget X" → "X is enforced by the harness."
+In practice: the single-writer pattern is Cadence's "bootstrap is the sole
+tracker-writer," with the bootstrap also owning PR creation and merge.
 
 ## 7. Prefer deterministic code to agent prose
 
-Anything mechanical — parsing a structured comment, validating YAML, formatting
-a string, merging JSON — a small script does faster, cheaper, and the same way
-every time. The temptation in agentic systems is to lean on prose for
-everything ("the LLM can figure it out"), but that trades reproducibility,
-cost, and reviewability for flexibility you rarely need.
-
-Reserve LLM calls for what genuinely needs judgment: investigating an
-unfamiliar codebase, weighing two designs, writing the code itself. Everything
-else should be code.
-
-Practically: Cadence parses tracking comments with `parse_comments.py`,
-validates `workflow.yaml` with `validate_workflow.py`, formats audit lines
-with `emit_tracking_comment.py`, and merges settings via the helpers in
-`scripts/`. Each could have been a paragraph of dispatch prose. None should
-be — deterministic code is reproducible across model versions, free at
-inference time, and reviewable as code rather than as a prompt's emergent
-behavior.
+Anything mechanical — parsing a structured comment, validating config,
+formatting a string, merging JSON — a small script does faster, cheaper, and the
+same way every time. Agentic systems are tempted to lean on prose for everything
+("the model can figure it out"), trading reproducibility, cost, and
+reviewability for flexibility they rarely need. Reserve model calls for what
+genuinely needs judgment: investigating an unfamiliar codebase, weighing two
+designs, writing the code itself. Everything else should be code — reproducible
+across model versions, free at inference time, and reviewable as code rather
+than as a prompt's emergent behavior.
 
 This is distinct from #6: guardrails are about what the agent shouldn't be
-trusted to remember; determinism is about what shouldn't be re-derived by an
-LLM at all when a 20-line script will do.
+trusted to remember; determinism is about what shouldn't be re-derived by a
+model at all when a short script will do.
+
+In practice: Cadence parses tracking comments, validates its workflow file,
+formats audit lines, and merges settings with small scripts. Each could have
+been a paragraph of dispatch prose; none should be.
 
 ## 8. Build for forensic debugging
 
-Things will break in ways the operator wasn't watching. The system has to be
+Things break in ways the operator wasn't watching. The system has to be
 reconstructable after the fact.
 
-- **Audit log of every tracker write.** Every comment, label change, and
-  state transition should be reconstructable after the fact. A tracker that
-  keeps a native, durable activity history already provides this; where it
-  doesn't, a write-time hook that appends an out-of-band log closes the gap.
-- **Dry-run mode** that validates config and renders the prompt without side
-  effects. Cadence's `/cadence:tick --dry-run` with the "show your work"
-  validation evidence is the right grain.
-- **Caps and escalation** — never let an issue retry forever. Cadence's
-  `max_attempts_per_issue` + `cadence-needs-human` label is the right pattern.
-- **Drift reconciliation every tick.** Humans WILL move issues out of band.
-  A system that ignores this breaks in production within a week.
-- **Failure records distinct from attempt markers** (Cadence's distinction):
-  a failed attempt counts as an attempt happened, but a failure record
-  doesn't double-count. This matters for cap accuracy.
+- **An audit log of every tracker write.** Every comment, label change, and
+  state transition should be reconstructable later. A tracker that keeps a
+  durable native activity history already provides this; where it doesn't, a
+  write-time hook that appends an out-of-band log closes the gap.
+- **A dry-run mode** that validates config and renders the prompt without side
+  effects, ideally surfacing the validation evidence rather than just a verdict.
+- **Caps and escalation** — never let an issue retry forever.
+- **Drift reconciliation every run.** Humans will move issues out of band; a
+  system that ignores this breaks in production within a week.
+- **Failure records distinct from attempt markers.** A failed attempt still
+  counts as an attempt happening, but recording the failure shouldn't
+  double-count against the cap — the distinction keeps cap arithmetic accurate.
+
+In practice: Cadence's dry-run renders the prompt with "show your work"
+validation evidence; an attempt cap plus a needs-human label is its escalation;
+it keeps failure records separate from attempt markers for cap accuracy.
 
 ## 9. The codebase has to teach the agent
 
-This is OpenAI's "harness engineering" concept and it's load-bearing. Agent
-output quality is roughly proportional to how self-describing the codebase
-is. A thorough CLAUDE.md, rule files for known footguns
-(`.claude/rules/agent-pitfalls.md`), conventions docs, and an actively-
-maintained `docs/build-log.md` are not nice-to-haves — they're the difference
-between agents that follow your conventions and agents that hallucinate their
-own.
+Agent output quality is roughly proportional to how self-describing the codebase
+is — this is the "harness engineering" idea, and it is load-bearing. A thorough
+top-level agent guide, rule files for known footguns, conventions docs, and a
+maintained build log are not nice-to-haves; they are the difference between
+agents that follow your conventions and agents that invent their own. Treat them
+as first-class engineering artifacts with the same review bar as code. Keep
+agent-only instructions (headless mode, no slash commands) separate from
+interactive ones, or they bleed into day-to-day sessions.
 
-Practically: treat CLAUDE.md and rule files as first-class engineering
-artifacts with PR review. Keep agent-only instructions (headless mode, no
-slash commands) separate from interactive instructions, or they bleed into
-your day-to-day Claude Code sessions (Stokowski's `prompts/` directory
-pattern).
+In practice: Stokowski separates agent-facing prompts into a dedicated directory
+so they don't leak into interactive use.
 
 ---
 
 ## What to explicitly avoid optimizing for
 
-A few anti-goals that the implementations gesture at, mostly by omission:
+A few anti-goals — the optimizations that look like improvements and aren't.
 
-- **Throughput.** More concurrent agents ≠ more software shipped. Per-state
-  caps should be set for *coordination* (don't let two reviewers merge-
-  conflict), not for max parallelism. Cadence's "one issue per fire" is a
-  stricter version of this and worth keeping.
-- **End-to-end autonomy.** Removing the human gates is the obvious
-  "improvement" that ruins the system. The gates ARE the quality mechanism
-  for the things machines can't judge.
-- **A custom UI/dashboard.** Stokowski has one; Cadence explicitly doesn't.
-  Linear and GitHub are already the UIs. A dashboard is a maintenance burden
-  that pulls work away from the agent-quality stuff that matters.
-- **An expressive workflow DSL.** Symphony has none and is weaker for it;
-  Stokowski has a rich one; Cadence has a small one. The right amount is
-  "small enough that the workflow file fits on one screen and a new
-  contributor can read it in 30 seconds." Beyond that, complexity in the
-  workflow definition starts trading off against legibility for humans.
+- **Throughput.** More concurrent agents is not more software shipped. Per-state
+  caps should be set for *coordination* (don't let two reviewers create a merge
+  conflict), not for maximum parallelism. Cadence's "one issue per fire" is a
+  strict version of this and worth keeping.
+- **End-to-end autonomy.** Removing the human gates is the obvious "improvement"
+  that ruins the system. The gates *are* the quality mechanism for the things
+  machines can't judge.
+- **A custom UI/dashboard.** The tracker and the code host are already the UIs.
+  A dashboard is a maintenance burden that pulls effort away from the
+  agent-quality work that matters. Stokowski ships one; Cadence deliberately
+  doesn't.
+- **An expressive workflow DSL.** The right amount is "small enough that the
+  workflow definition fits on one screen and a new contributor can read it in 30
+  seconds." Beyond that, complexity in the definition starts trading off against
+  legibility for humans. The Symphony spec has no DSL and is weaker for it;
+  Stokowski has a rich one; Cadence has a small one.
 
 ---
 
 The through-line: **the system is a quality harness around the agent, not a
 replacement for human judgment.** The implementations that recognize that
 produce good software; the ones that try to remove the humans don't.
-
-For what Cadence has shipped against these principles see
-[CHANGELOG.md](./CHANGELOG.md); for known gaps and deferred ideas see
-[BACKLOG.md](./BACKLOG.md).
