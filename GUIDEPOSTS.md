@@ -225,6 +225,10 @@ reconstructable after the fact.
 - **A dry-run mode** that validates config and renders the prompt without side
   effects, ideally surfacing the validation evidence rather than just a verdict.
 - **Caps and escalation** — never let an issue retry forever.
+- **A spend ceiling per run, separate from the attempt cap.** The attempt cap
+  bounds how many times an issue cycles; it does nothing about a single run that
+  loops deep and burns the budget in one pass. Cap the cost of an individual run
+  too, and escalate when it trips.
 - **Drift reconciliation every run.** Humans will move issues out of band; a
   system that ignores this breaks in production within a week.
 - **Failure records distinct from attempt markers.** A failed attempt still
