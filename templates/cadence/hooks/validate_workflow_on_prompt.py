@@ -3,7 +3,7 @@
 
 Fires on every user prompt. If the prompt is `/cadence:tick` (with or without
 arguments), this hook runs `validate_workflow.py` (sitting alongside this hook
-in `.claude/hooks/`). A failure exits 2, which blocks the prompt and prints the
+in `.claude/cadence/hooks/`). A failure exits 2, which blocks the prompt and prints the
 underlying error to stderr so the operator sees it before any Linear call.
 
 Why this exists:

@@ -41,7 +41,7 @@ available tool list — the verbs below describe intent, not exact names.
 
 ## Step 1 — Read and validate config
 
-Invoke Bash: `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/validate_workflow.py --evidence`.
+Invoke Bash: `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/validate_workflow.py --evidence`.
 
 The script reads `.claude/workflow.yaml` and emits the full parsed config
 (plus per-rule evidence) as JSON on stdout. The sweeper does **not**
@@ -116,7 +116,7 @@ another team may use the same label name for a different purpose.
 
 ## Step 4 — Classify and pre-render the report
 
-Invoke Bash: `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/render_sweep_report.py --input "$sweepInputPath"`.
+Invoke Bash: `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/render_sweep_report.py --input "$sweepInputPath"`.
 
 The script owns the cutoff math, the per-issue stale-minutes derivation,
 the stale/fresh split, the ascending-`updated_at` ordering, and the
@@ -149,7 +149,7 @@ ascending):
 2. Build the sweep-comment body by invoking Bash:
 
    ```
-   python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/emit_tracking_comment.py \
+   python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/emit_tracking_comment.py \
      --kind sweep \
      --cleared-at "<now>" \
      --last-activity "<entry.updated_at>" \

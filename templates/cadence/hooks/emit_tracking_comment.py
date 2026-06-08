@@ -5,7 +5,7 @@ Caller(s):
   - commands/tick.md step 7 (attempt marker)
   - commands/tick.md step 11 (waiting gate comment)
   - commands/tick.md Failure path (failure record)
-  - templates/hooks/route_fire.py (imported; build_gate / build_reconcile
+  - templates/cadence/hooks/route_fire.py (imported; build_gate / build_reconcile
     produce the gate rework / gate escalation / reconcile comment bodies the
     router embeds in its plan — the old tick.md steps 9 / 10c.2 / 10c.4)
   - commands/sweep.md step 5 (stale-lock sweep comment)

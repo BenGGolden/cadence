@@ -4,23 +4,23 @@ Files written:
   .claude/workflow.yaml
   .claude/prompts/global.md
   .claude/ticket-template.md
-  .claude/agents/planner.md
-  .claude/agents/implementer.md
-  .claude/agents/reviewer.md
-  .claude/hooks/validate_tracking_json.py
-  .claude/hooks/validate_workflow_on_prompt.py
-  .claude/hooks/validate_workflow.py
-  .claude/hooks/_common.py
-  .claude/hooks/parse_comments.py
-  .claude/hooks/promote_acceptance_criteria.py
-  .claude/hooks/emit_tracking_comment.py
-  .claude/hooks/classify_drift.py
-  .claude/hooks/classify_gate.py
-  .claude/hooks/route_fire.py
-  .claude/hooks/compose_lifecycle_context.py
-  .claude/hooks/filter_candidates.py
-  .claude/hooks/render_status_report.py
-  .claude/hooks/render_sweep_report.py
+  .claude/agents/cadence/cadence-planner.md
+  .claude/agents/cadence/cadence-implementer.md
+  .claude/agents/cadence/cadence-reviewer.md
+  .claude/cadence/hooks/validate_tracking_json.py
+  .claude/cadence/hooks/validate_workflow_on_prompt.py
+  .claude/cadence/hooks/validate_workflow.py
+  .claude/cadence/hooks/_common.py
+  .claude/cadence/hooks/parse_comments.py
+  .claude/cadence/hooks/promote_acceptance_criteria.py
+  .claude/cadence/hooks/emit_tracking_comment.py
+  .claude/cadence/hooks/classify_drift.py
+  .claude/cadence/hooks/classify_gate.py
+  .claude/cadence/hooks/route_fire.py
+  .claude/cadence/hooks/compose_lifecycle_context.py
+  .claude/cadence/hooks/filter_candidates.py
+  .claude/cadence/hooks/render_status_report.py
+  .claude/cadence/hooks/render_sweep_report.py
   .claude/commands/cadence/tick.md
   .claude/commands/cadence/sweep.md
   .claude/commands/cadence/status.md
@@ -60,8 +60,8 @@ Next steps:
   2. Edit .claude/prompts/global.md with the always-on instructions you
      want every Cadence subagent to receive (coding standards, repo
      conventions, secrets-handling rules).
-  3. Tune .claude/agents/{planner,implementer,reviewer}.md — model, tools,
-     and system prompt.
+  3. Tune .claude/agents/cadence/cadence-{planner,implementer,reviewer}.md
+     — model, tools, and system prompt.
   4. Pick an invocation mode:
        • Remote: create a /schedule routine running /cadence:tick
          every minute. Add the Linear connector and bind a GitHub

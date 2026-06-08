@@ -149,7 +149,7 @@ def _rule4_subagent_files(states):
             lines.append(f"states.{name}.subagent -> (missing)")
             failures.append(f"states.{name}.subagent is missing or not a string")
             continue
-        agent_path = Path(".claude/agents") / f"{subagent}.md"
+        agent_path = Path(".claude/agents/cadence") / f"{subagent}.md"
         exists = agent_path.is_file()
         lines.append(
             f"states.{name}.subagent -> `{agent_path.as_posix()}` -> "

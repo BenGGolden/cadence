@@ -16,7 +16,7 @@ Invocation argument (verbatim, may be empty): `$ARGUMENTS`
 
 The goal is a well-formed ticket whose `## Acceptance Criteria` block will
 survive the planner subagent's ticket-quality gate (see
-`templates/agents/planner.md`). The judgment work — deciding whether an AC
+`templates/agents/cadence/cadence-planner.md`). The judgment work — deciding whether an AC
 is specific enough — is the point of running this in prose rather than a
 script.
 

@@ -1,4 +1,4 @@
-"""Tests for templates/hooks/compose_lifecycle_context.py.
+"""Tests for templates/cadence/hooks/compose_lifecycle_context.py.
 
 Covers:
   - Default (non-adversarial, non-rework) render.
@@ -23,7 +23,7 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPT = REPO_ROOT / "templates" / "hooks" / "compose_lifecycle_context.py"
+SCRIPT = REPO_ROOT / "templates" / "cadence" / "hooks" / "compose_lifecycle_context.py"
 FIXTURES = REPO_ROOT / "tests" / "fixtures" / "lifecycle_context"
 
 
@@ -507,7 +507,7 @@ def _workflow_yaml_dict():
 def _materialise_workflow(td, wf):
     """Write `.claude/workflow.yaml` + the three agent files under td."""
     claude = td / ".claude"
-    agents = claude / "agents"
+    agents = claude / "agents" / "cadence"
     agents.mkdir(parents=True, exist_ok=True)
     for a in ("planner", "implementer", "reviewer"):
         (agents / f"{a}.md").write_text("# agent\n", encoding="utf-8")

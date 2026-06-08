@@ -1,4 +1,4 @@
-"""Tests for templates/hooks/emit_tracking_comment.py.
+"""Tests for templates/cadence/hooks/emit_tracking_comment.py.
 
 Covers every documented --kind x --status combination, the missing-arg
 exit-1 paths, error-string truncation/newline collapsing, and that the
@@ -12,7 +12,7 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPT = REPO_ROOT / "templates" / "hooks" / "emit_tracking_comment.py"
+SCRIPT = REPO_ROOT / "templates" / "cadence" / "hooks" / "emit_tracking_comment.py"
 
 
 # Body shape: "<!-- cadence:<prefix> {json} -->\n<visible markdown>"

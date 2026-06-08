@@ -48,7 +48,7 @@ verbs are present.
 ## Step 1 — Read and validate config
 
 Invoke Bash:
-`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/validate_workflow.py --evidence`.
+`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/validate_workflow.py --evidence`.
 
 The script reads `.claude/workflow.yaml` and emits the full validated
 config (and per-rule evidence under `--evidence`) as JSON on stdout.
@@ -137,7 +137,7 @@ For **each** issue from step 3:
 2. Determine the issue's workflow-state name from its `linearToWorkflow`
    entry (step 2). For a `pickup` entry there is no workflow state — use
    `entry_state_name` from step 1. Invoke Bash:
-   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/parse_comments.py --input <commentsFile> --target-state <workflow-state name>`
+   `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/parse_comments.py --input <commentsFile> --target-state <workflow-state name>`
 3. From the JSON on stdout, read `attempt_count` and `latest_tracking_comment`
    (`kind`, `state`, `attempt`, `status`). Render the issue's **Attempt**
    column from `attempt_count`. Record `last_state` as
@@ -177,7 +177,7 @@ already gathered:
   was degraded (per step 4); omit or pass an empty list when none.
 
 Invoke Bash:
-`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/hooks/render_status_report.py --input <path-to-input-json>`.
+`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/render_status_report.py --input <path-to-input-json>`.
 
 Print the script's stdout verbatim. It contains the entire user-visible
 report — header, issues table (or empty-set sentinel), per-state

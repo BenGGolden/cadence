@@ -1,5 +1,5 @@
 ---
-name: implementer
+name: cadence-implementer
 description: Implements the plan from the prior planning comment, pushes a branch, and returns a Markdown summary string (branch + PR title + PR body + acceptance-criteria checklist) that the Cadence bootstrap posts as a Linear comment and uses to open the PR. Use during the `implement` workflow state.
 model: sonnet
 tools: [Read, Edit, Write, Bash, Grep, Glob]

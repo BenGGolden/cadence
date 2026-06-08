@@ -1,5 +1,5 @@
 ---
-name: reviewer
+name: cadence-reviewer
 description: Independent adversarial code reviewer for a freshly-implemented Linear issue. Reads the diff cold — no implementer narrative — and returns a Markdown findings summary the Cadence bootstrap posts as a Linear comment. Runs in the `agent_review` state; the human gate that follows decides approve/rework.
 model: opus
 tools: [Read, Grep, Glob, WebFetch, Bash]

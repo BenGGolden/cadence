@@ -6,7 +6,7 @@ to the consumer; it lives in `scripts/` (init-time only) and is called by
 `/cadence:init`.
 
 Idempotent. If the consumer's settings.json already has Cadence hook entries
-(identified by referencing `/.claude/hooks/{validate_tracking_json,
+(identified by referencing `/.claude/cadence/hooks/{validate_tracking_json,
 validate_workflow_on_prompt}.py`), they are replaced rather
 than duplicated. Non-Cadence hook entries are left untouched.
 
@@ -43,7 +43,7 @@ EVENTS = ("PreToolUse", "UserPromptSubmit", "PostToolUse")
 def _command_targets_cadence(cmd):
     if not isinstance(cmd, str):
         return False
-    if "/.claude/hooks/" not in cmd.replace("\\", "/"):
+    if "/.claude/cadence/hooks/" not in cmd.replace("\\", "/"):
         return False
     return any(name in cmd for name in CADENCE_HOOK_SCRIPTS)
 

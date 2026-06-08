@@ -1,4 +1,4 @@
-"""Tests for templates/hooks/validate_workflow.py.
+"""Tests for templates/cadence/hooks/validate_workflow.py.
 
 Covers rules 1-8 (pass + fail paths), --evidence output shape, exit codes,
 and workflow_linear_states ordering. Invoked via subprocess so the full
@@ -14,7 +14,7 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPT = REPO_ROOT / "templates" / "hooks" / "validate_workflow.py"
+SCRIPT = REPO_ROOT / "templates" / "cadence" / "hooks" / "validate_workflow.py"
 
 
 def _valid_workflow():
@@ -55,7 +55,7 @@ def run_validator(tmpdir, wf=None, agents=("planner", "implementer"),
     overrides the destination path entirely (for missing-file tests).
     """
     tmpdir = Path(tmpdir)
-    agent_dir = tmpdir / ".claude" / "agents"
+    agent_dir = tmpdir / ".claude" / "agents" / "cadence"
     agent_dir.mkdir(parents=True, exist_ok=True)
     for a in agents:
         (agent_dir / f"{a}.md").write_text("# agent\n", encoding="utf-8")
@@ -705,7 +705,7 @@ class ValidateEntrypointTests(unittest.TestCase):
         """Run `validate(path)` in a subprocess with cwd=td (Rule 4 resolves
         agent files relative to cwd) and return the parsed (valid, fail_rules).
         """
-        agent_dir = td / ".claude" / "agents"
+        agent_dir = td / ".claude" / "agents" / "cadence"
         agent_dir.mkdir(parents=True, exist_ok=True)
         for a in ("planner", "implementer"):
             (agent_dir / f"{a}.md").write_text("# agent\n", encoding="utf-8")

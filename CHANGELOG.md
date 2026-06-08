@@ -6,6 +6,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — Namespace the scaffolded files under `cadence/` (BREAKING)
+- **Hooks moved** `.claude/hooks/*.py` → `.claude/cadence/hooks/*.py`, **agents
+  nested + renamed** `.claude/agents/{planner,implementer,reviewer}.md` →
+  `.claude/agents/cadence/cadence-{planner,implementer,reviewer}.md`. This
+  shrinks Cadence's footprint in the consumer's `.claude/` and — via the
+  rename — fixes a silent collision: Claude Code keys agent identity off the
+  `name:` frontmatter, so a consumer with their own `reviewer` agent would have
+  had one of the two silently discarded. The `cadence-` prefix makes the
+  plugin's agents unambiguous.
+- **Why it's per-root, not a single `.claude/cadence/` parent:** agents and
+  slash commands are pinned to their discovery roots (`.claude/agents/`,
+  `.claude/commands/`) — Claude Code only finds them there. Only hooks are
+  path-referenced (from `settings.json` and dispatch prose) and so can move
+  freely. The achievable shape is therefore per-root `cadence/` namespacing
+  (`.claude/agents/cadence/`) plus a dedicated `.claude/cadence/hooks/` for the
+  hooks. Agent discovery is recursive, so the `cadence/` subfolder is found;
+  the subfolder is organizational — the **rename** is what fixes the collision.
+- **Breaking — existing installs must migrate.** Re-run `/cadence:init --force`
+  AND update `.claude/workflow.yaml` `subagent:` values to the `cadence-*` form,
+  then remove the old flat `.claude/hooks/*.py` and
+  `.claude/agents/{planner,implementer,reviewer}.md`. Because
+  `/cadence:uninstall` on an *old* layout won't recognise the new paths, the
+  cleanest path is **uninstall on the old version, then init on the new
+  version** (or a manual sweep of the old files).
+
 ### Changed — `/cadence:tick` takes `--dry-run` (was `dry-run`)
 - **`/cadence:tick` now expects the `--dry-run` flag instead of the bare
   `dry-run` token**, matching `/cadence:init` and `/cadence:uninstall` — all

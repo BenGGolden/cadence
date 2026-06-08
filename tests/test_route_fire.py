@@ -1,4 +1,4 @@
-"""Integration tests for templates/hooks/route_fire.py.
+"""Integration tests for templates/cadence/hooks/route_fire.py.
 
 Invoked via subprocess so the full argparse + I/O + import path (parse_comments
 / classify_drift / classify_gate / emit_tracking_comment formatters) runs on
@@ -19,7 +19,7 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPT = REPO_ROOT / "templates" / "hooks" / "route_fire.py"
+SCRIPT = REPO_ROOT / "templates" / "cadence" / "hooks" / "route_fire.py"
 
 LABELS = {
     "cadence_active": "cadence-active",
@@ -552,7 +552,7 @@ def _workflow_yaml_dict():
 def _materialise_workflow(td, wf):
     """Write `.claude/workflow.yaml` + the three agent files under td."""
     claude = td / ".claude"
-    agents = claude / "agents"
+    agents = claude / "agents" / "cadence"
     agents.mkdir(parents=True, exist_ok=True)
     for a in ("planner", "implementer", "reviewer"):
         (agents / f"{a}.md").write_text("# agent\n", encoding="utf-8")

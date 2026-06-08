@@ -2,7 +2,7 @@
 """Deterministically parse a Linear issue's comment list for Cadence.
 
 Caller(s):
-  - templates/hooks/route_fire.py (imported; `parse_comment_list` runs once
+  - templates/cadence/hooks/route_fire.py (imported; `parse_comment_list` runs once
     per fire — the latest tracking comment for the drift check, attempt_count
     for the resolved target, and rework_count / rework_context for a gate).
     This replaces the old per-step CLI calls in tick.md steps 9 / 10c / 11.

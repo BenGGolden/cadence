@@ -76,7 +76,7 @@ configured CLI (`glab` / `bb`).
 **Why**: a GitLab-hosted consumer running Cadence today has the implementer
 push the branch, but the bootstrap's GitHub MCP `create_pull_request` won't
 target GitLab. The branch lands; the MR doesn't. Everything downstream that
-uses the PR URL — [parse_comments.py](./templates/hooks/parse_comments.py)'s
+uses the PR URL — [parse_comments.py](./templates/cadence/hooks/parse_comments.py)'s
 `latest_implementer_summary.pr_url`, the adversarial Lifecycle Context's
 `PR:` line — has nothing to surface (the reviewer's `git diff` still works
 but loses platform-side context: reviewers, conversation, CI status).
@@ -108,64 +108,6 @@ part of a broader platforms refactor.
 
 **Discussed in**: post-P9 review conversation on 2026-05-25 —
 surfaced when checking Rule B's wording in the implementer template.
-
----
-
-## Decommission path / `/cadence:uninstall`
-
-**Idea**: a documented (and ideally scripted) way to remove Cadence
-from a consumer repo. Today [/cadence:init](./commands/init.md)
-scaffolds files into `.claude/`, merges hook entries into
-`.claude/settings.json`, writes permissions into
-`.claude/settings.local.json`, copies dispatch prose into
-`.claude/commands/cadence/`, and tells the operator to create Linear
-labels. Reversing this is currently a manual cleanup with no
-checklist.
-
-**Why**: a consumer that decides Cadence isn't a fit needs a clean
-exit. The hook scope-guard handles the case where they delete
-`.claude/workflow.yaml` but leave hooks behind (the hooks silently
-no-op), so the worst case isn't broken builds — it's slow
-accumulation of dead files in the repo. But the Linear side
-(`cadence-active`, `cadence-needs-human`, `cadence-approve`,
-`cadence-rework` labels; the workflow columns) is invisible to the
-plugin and stays unless the operator cleans it manually.
-
-**Shape sketch**:
-
-- New `/cadence:uninstall` command, or a documented runbook in
-  [README.md](./README.md).
-- Removes the scaffolded `.claude/` files, the merged hooks block
-  from `.claude/settings.json`, the Cadence permissions from
-  `.claude/settings.local.json`, and `.cadence/`.
-- Prints a checklist of Linear-side cleanup the plugin can't do for
-  the operator: which labels are safe to delete, which workflow
-  columns are no longer needed.
-- Optionally, a dry-run mode that lists what *would* be removed
-  without touching anything.
-- Idempotent (re-running on a half-uninstalled repo finishes the
-  job).
-
-**Open questions**:
-
-- Hard delete or move-aside? A `.claude/cadence.uninstalled/`
-  quarantine directory is safer for a panicky operator but adds
-  clutter; a hard delete is cleaner but irreversible.
-- Should it also offer to remove the Linear labels via MCP?
-  Possible, but mixes plugin-managed state (files) with
-  consumer-managed state (Linear configuration) in ways the rest of
-  Cadence carefully avoids.
-- Does this surface a `.claude/cadence/` namespacing question —
-  would future Cadence be cleaner if all its files lived under one
-  parent dir instead of scattered across `.claude/hooks/`,
-  `.claude/commands/cadence/`, and `.claude/agents/{planner,implementer,reviewer}.md`?
-
-**Why not now**: no operator has decommissioned yet (Cadence is new,
-the design-target user is the author). When the first consumer churn
-happens, this becomes important — the alternative is "ask in Slack
-which files Cadence put where."
-
-**Discussed in**: post-P9 review conversation on 2026-05-25.
 
 ---
 

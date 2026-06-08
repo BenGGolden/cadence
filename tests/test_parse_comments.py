@@ -1,4 +1,4 @@
-"""Tests for templates/hooks/parse_comments.py.
+"""Tests for templates/cadence/hooks/parse_comments.py.
 
 Comments arrive as a JSON file via --input. The script exits 0 in every
 case; errors land in the `parse_errors` field of stdout JSON. Tests are
@@ -12,7 +12,7 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPT = REPO_ROOT / "templates" / "hooks" / "parse_comments.py"
+SCRIPT = REPO_ROOT / "templates" / "cadence" / "hooks" / "parse_comments.py"
 
 
 def write_comments(tmpdir, comments):

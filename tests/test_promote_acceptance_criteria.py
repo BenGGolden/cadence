@@ -1,4 +1,4 @@
-"""Integration tests for templates/hooks/promote_acceptance_criteria.py.
+"""Integration tests for templates/cadence/hooks/promote_acceptance_criteria.py.
 
 Invoked via subprocess (matching test_route_fire.py's style) so the full
 argparse + I/O + `import parse_comments` path runs on every case. The helper
@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPT = REPO_ROOT / "templates" / "hooks" / "promote_acceptance_criteria.py"
+SCRIPT = REPO_ROOT / "templates" / "cadence" / "hooks" / "promote_acceptance_criteria.py"
 
 
 def _comment(body, t="2026-05-01T00:00:00Z", user="Bot"):

@@ -2,7 +2,7 @@
 """Decide what a Cadence fire does with an issue sitting at a gate.
 
 Caller(s):
-  - templates/hooks/route_fire.py (imported; the verdict routing of the old
+  - templates/cadence/hooks/route_fire.py (imported; the verdict routing of the old
     tick.md step 10)
 
 Pure function — no I/O, no MCP, no shell-out. A gate lives in exactly one

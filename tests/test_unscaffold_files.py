@@ -76,7 +76,7 @@ class NoForceTests(unittest.TestCase):
             self.assertTrue((root / ".claude").is_dir())
             self.assertTrue((root / ".claude/settings.json").is_file())
             # Empty Cadence dirs pruned; user-config parents kept.
-            self.assertFalse((root / ".claude/hooks").exists())
+            self.assertFalse((root / ".claude/cadence/hooks").exists())
             self.assertFalse((root / ".claude/commands").exists())
             self.assertFalse((root / ".claude/worktrees").exists())
             self.assertTrue((root / ".claude/agents").is_dir())
@@ -132,34 +132,34 @@ class IdempotentTests(unittest.TestCase):
 
 class PycacheTests(unittest.TestCase):
     def test_pycache_cleared_so_hooks_dir_prunes(self):
-        """The hook scripts generate .claude/hooks/__pycache__ at runtime; it
+        """The hook scripts generate .claude/cadence/hooks/__pycache__ at runtime; it
         must not keep the hooks dir alive after the .py files are removed."""
         with tempfile.TemporaryDirectory() as c:
             root = Path(c)
             _materialize(root)
-            pyc = root / ".claude/hooks/__pycache__"
+            pyc = root / ".claude/cadence/hooks/__pycache__"
             pyc.mkdir()
             (pyc / "_common.cpython-312.pyc").write_bytes(b"\x00")
             out = _run(c)  # no --force; hooks are plugin-owned, removed anyway
             self.assertEqual(out.returncode, 0, msg=out.stderr)
-            self.assertFalse((root / ".claude/hooks").exists(),
+            self.assertFalse((root / ".claude/cadence/hooks").exists(),
                              "hooks dir should prune once __pycache__ is cleared")
             # hooks must be reported as removed, never as left-behind.
             _, _, left = out.stdout.partition("directories left in place")
-            self.assertNotIn(".claude/hooks", left)
+            self.assertNotIn(".claude/cadence/hooks", left)
 
     def test_dry_run_with_pycache_writes_nothing(self):
         with tempfile.TemporaryDirectory() as c:
             root = Path(c)
             _materialize(root)
-            pyc = root / ".claude/hooks/__pycache__"
+            pyc = root / ".claude/cadence/hooks/__pycache__"
             pyc.mkdir()
             (pyc / "_common.cpython-312.pyc").write_bytes(b"\x00")
             before = _tree_hash(root)
             out = _run(c, "--dry-run")
             self.assertEqual(out.returncode, 0, msg=out.stderr)
             self.assertEqual(_tree_hash(root), before, "dry-run mutated tree")
-            self.assertIn(".claude/hooks", out.stdout)
+            self.assertIn(".claude/cadence/hooks", out.stdout)
 
 
 class CadenceRecursiveTests(unittest.TestCase):
