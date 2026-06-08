@@ -36,7 +36,7 @@ In practice: Stokowski encodes this as an acceptance-criteria JSON block the
 agent must mark off before it can claim completion; both it and Cadence ship a
 ticket-creation command. The Symphony spec leaves ticket quality to the author.
 
-## 2. Stage the work; don't lump it
+## 2. Split investigation, implementation, and review into separate stages
 
 One agent run from ticket all the way to a finished change is the wrong shape.
 Investigation, implementation, and review are different kinds of work — different
