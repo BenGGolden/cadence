@@ -82,16 +82,26 @@ build such gates; the Symphony spec doesn't, and is weaker for it.
 ## 5. The tracker IS the workflow
 
 State, locks, attempt history, and the audit trail can all live in the tracker
-itself rather than in a separate store. When the tracker's columns are the
-workflow states, a label is the lock, and comments are the attempt history, you
-get restart-survivability for free, legibility to humans (they look at the
-tracker, not a custom dashboard), drift reconciliation as a natural operation,
-and no infrastructure to host. Every piece of durable state should answer the
-question "where does this live in the tracker?" — if the answer is "in memory"
-or "in a sqlite file," a crash loses it and a human can't see it.
+itself rather than in a separate store. When durable state lives where the work
+already lives, you get restart-survivability for free, legibility to humans
+(they look at the tracker, not a custom dashboard), drift reconciliation as a
+natural operation, and no infrastructure to host. Every piece of durable state
+should answer the question "where does this live in the tracker?" — if the
+answer is "in memory" or "in a sqlite file," a crash loses it and a human can't
+see it.
 
-In practice: Cadence keeps all of this in Linear — columns are states, a label
-is the soft lock, tracking comments hold attempt history.
+How cleanly this maps depends on the tracker. Some state has an obvious home —
+workflow states are columns. The rest has to be mapped onto whatever primitives
+the tracker exposes, and where the tracker lacks a native mechanism the system
+improvises one. A tracker with a built-in locking or claim concept can use it
+directly; one without forces a stand-in.
+
+In practice: Cadence keeps all of this in Linear. Columns map naturally to
+workflow states, but Linear offers no native lock and no native per-attempt
+history, so Cadence improvises — a label stands in for the lock, and tracking
+comments carry attempt history. Those are workarounds for missing primitives,
+not the ideal shape of the principle; on a tracker that provided locking or
+attempt records natively, the right move would be to use those instead.
 
 ## 6. Mechanical guardrails beat agent discipline
 
