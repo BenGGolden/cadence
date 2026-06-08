@@ -204,7 +204,8 @@ A few anti-goals — the optimizations that look like improvements and aren't.
   A dashboard is a maintenance burden that pulls effort away from the
   agent-quality work that matters. Stokowski ships one; Cadence deliberately
   doesn't.
-- **An expressive workflow DSL.** A workflow DSL is the configuration language
+- **An expressive workflow DSL.** A workflow DSL (domain-specific language) is
+  the configuration language
   that defines the states, transitions, gates, and per-stage settings — the
   declarative spec that says "investigation flows to implementation, which needs
   approval before review." The temptation is to make it ever more expressive
