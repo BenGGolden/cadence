@@ -205,16 +205,16 @@ A few anti-goals — the optimizations that look like improvements and aren't.
   agent-quality work that matters. Stokowski ships one; Cadence deliberately
   doesn't.
 - **An expressive workflow DSL.** A workflow DSL (domain-specific language) is
-  the configuration language
-  that defines the states, transitions, gates, and per-stage settings — the
-  declarative spec that says "investigation flows to implementation, which needs
-  approval before review." The temptation is to make it ever more expressive
-  (conditionals, loops, custom hooks, computed fields) until it becomes a
-  programming language in its own right. The right amount is "small enough that
-  the workflow definition fits on one screen and a new contributor can read it
-  in 30 seconds." Beyond that, expressiveness in the definition starts trading
-  off against legibility for humans. The Symphony spec has no DSL and is weaker
-  for it; Stokowski has a rich one; Cadence has a small one.
+  the configuration language that defines the states, transitions, gates, and
+  per-stage settings — the declarative spec that says "investigation flows to
+  implementation, which needs approval before review." The temptation is to make
+  it ever more expressive (conditionals, loops, custom hooks, computed fields)
+  until it becomes a programming language in its own right. The right amount is
+  "small enough that the workflow definition fits on one screen and a new
+  contributor can read it in 30 seconds." Beyond that, expressiveness in the
+  definition starts trading off against legibility for humans. The Symphony spec
+  has no DSL and is weaker for it; Stokowski has a rich one; Cadence has a small
+  one.
 
 ---
 
