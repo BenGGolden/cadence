@@ -3,9 +3,8 @@
 Ideas and follow-ups that aren't currently scheduled but should not be
 lost. Pull items into a feature branch when they become priorities.
 
-The original hardening track (P1–P9) shipped and is captured in
-[CHANGELOG.md](./CHANGELOG.md); the design principles those phases
-served live in [GUIDEPOSTS.md](./GUIDEPOSTS.md).
+The design principles behind Cadence live in
+[GUIDEPOSTS.md](./GUIDEPOSTS.md).
 
 ---
 
@@ -35,38 +34,15 @@ any active work.
 - Minimum scopes (`issues:read`, `issues:write`, `comments:write`,
   `labels:write`?).
 
-**Discussed in**: conversation on 2026-05-15 about whether Linear's
-extension surface lets Cadence look less like a series of workarounds.
-The label-group recommendation (now in
-[templates/workflow.yaml](./templates/workflow.yaml)
-and [README.md](./README.md)) came out of the same conversation; this
-one is the longer-horizon companion.
-
----
-
-## Optional `merge` state between `review` and `done` — RESOLVED
-
-Shipped (Unreleased) as the opt-in **`merge_on_approve`** gate field rather
-than a new `merge` workflow state + `merger` subagent. A PR merge reads no
-code and makes no judgment, so it is not agentic work; instead the bootstrap
-runs it as a transition-coupled side-effect (read PR state, merge if open,
-advance to the terminal — escalate to `cadence-needs-human` on failure or a
-closed-unmerged PR), mirroring the AC-promotion precedent. No new state,
-subagent, or Linear column. The companion "PR still open" status warning was
-explicitly dropped (unreliable — the human may have merged manually). See
-[CHANGELOG.md](./CHANGELOG.md) and the `merge_on_approve` section in
-[README.md](./README.md).
-
 ---
 
 ## PR operations for non-GitHub hosts (GitLab / Bitbucket)
 
-**Status update**: GitHub PR operations are no longer `gh`-based. The
-bootstrap now creates/reads/merges PRs via the **GitHub MCP** connector
-(see CHANGELOG "PR operations via GitHub MCP"), and the implementer only
-`git push`es. So this item is narrowed to **non-GitHub hosts only** — a
-GitLab- or Bitbucket-hosted consumer has no equivalent connector path and
-currently gets branch-pushed-but-no-MR.
+**Scope**: GitHub PR operations run through the **GitHub MCP** connector —
+the bootstrap creates/reads/merges PRs and the implementer only `git push`es.
+This item covers **non-GitHub hosts only** — a GitLab- or Bitbucket-hosted
+consumer has no equivalent connector path and currently gets
+branch-pushed-but-no-MR.
 
 **Idea**: route the bootstrap's PR create/read/merge to a host other than
 GitHub when the consumer's remote isn't GitHub — either via that host's own
@@ -90,7 +66,7 @@ but loses platform-side context: reviewers, conversation, CI status).
   assuming GitHub.
 - `parse_comments`'s PR-URL regex generalises beyond `github.com/.../pull/N`
   to the host's MR/PR URL shape.
-- Validator rejects malformed `tools.pr_host` shapes (P1.1-style rule).
+- Validator rejects malformed `tools.pr_host` shapes (a new validator rule).
 
 **Open questions**:
 
@@ -106,9 +82,6 @@ which the MCP path now covers end-to-end. Pick this up when a
 GitLab/Bitbucket operator surfaces the gap, or when host indirection becomes
 part of a broader platforms refactor.
 
-**Discussed in**: post-P9 review conversation on 2026-05-25 —
-surfaced when checking Rule B's wording in the implementer template.
-
 ---
 
 ## Regression harness (fake Linear MCP + golden files)
@@ -120,7 +93,7 @@ that silently changes dispatch behaviour gets caught before it lands.
 
 **Why**: the current verification model is operator-run smoke tests
 against a real Linear project, one fire at a time. That worked for
-shipping the hardening phases but doesn't scale to "did the model
+the initial build but doesn't scale to "did the model
 upgrade subtly change how the Route step dispatches?" or "did the prose edit
 in step 3 break the cap walk for a candidate-state shape we don't
 hit in normal traffic?" A fake MCP that records what the bootstrap
@@ -131,7 +104,4 @@ scenario, would close that gap.
 exists, OR (b) a prose change in `tick.md` ships and silently breaks
 something in production. Not before — the cost of the harness is
 non-trivial and the bug rate doesn't currently justify it.
-
-**Discussed in**: hardening-plan "Out of scope / future work" — moved
-here on 2026-05-25 when HARDENING-PLAN.md was retired.
 
