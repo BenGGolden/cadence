@@ -91,6 +91,48 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
 - `templates/` files are examples the consumer edits and commits; `commands/`
   files are the plugin's own executable prose. Keep the boundary clean.
 
+## Releasing
+
+**Installers do not track `main`.** The plugin entry in
+`.claude-plugin/marketplace.json` pins the source to a git tag via a `url`
+source with a `ref` (currently `v0.1.0`). A commit on `main` reaches new
+installers only once the steps below bump that `ref`. The `version` in
+`.claude-plugin/plugin.json` is the *update label* — already-installed users
+are pulled forward only when it changes. **Never also set `version` in the
+marketplace entry** (plugin.json silently wins, masking it).
+
+To cut version `X.Y.Z`:
+
+1. Land all the release's changes on `main` (feature branches → PRs, as usual).
+2. In one PR: bump `version` in `.claude-plugin/plugin.json` to `X.Y.Z`, and add
+   a `## [X.Y.Z] — <date>` section to `CHANGELOG.md` with a matching
+   `[X.Y.Z]: https://github.com/BenGGolden/cadence/releases/tag/vX.Y.Z` link
+   reference. Merge it.
+3. Tag + release from the merge commit: `git tag -a vX.Y.Z -m "Cadence X.Y.Z"`,
+   `git push origin vX.Y.Z`, then `gh release create vX.Y.Z --latest` with the
+   CHANGELOG section as the notes.
+4. In a second PR (or direct push): bump `ref` in
+   `.claude-plugin/marketplace.json` to `vX.Y.Z`. This commit lands on `main`
+   *after* the tag — that is correct and expected: the marketplace catalog is
+   read from `main` HEAD, never from the tag, so the post-tag bump is what
+   actually points installers at the new code.
+
+Validate either manifest with `claude plugin validate --strict <path>` (CI
+covers `plugin.json`; `claude plugin tag --dry-run` cross-checks that
+plugin.json and the marketplace entry agree). Consumers update with
+`claude plugin marketplace update cadence` then `claude plugin update
+cadence@cadence` (restart to apply).
+
+Two gotchas, both verified empirically:
+
+- Use the **`url`** source (clones over https). The `github` source form
+  clones over **ssh** and fails for any user without GitHub SSH keys — do not
+  switch to it.
+- The install materializes at `…/cache/cadence/cadence/<version>/`, where
+  `<version>` is plugin.json's string. So the `ref` pins the *code* and
+  `version` pins the *label*: keep them in lockstep (tag `vX.Y.Z` ⇔
+  `version: X.Y.Z`), or the reported version will lie about the installed code.
+
 ## Where to look
 
 | Need | Doc |
