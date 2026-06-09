@@ -35,13 +35,6 @@ any active work.
 - Minimum scopes (`issues:read`, `issues:write`, `comments:write`,
   `labels:write`?).
 
-**Discussed in**: conversation on 2026-05-15 about whether Linear's
-extension surface lets Cadence look less like a series of workarounds.
-The label-group recommendation (now in
-[templates/workflow.yaml](./templates/workflow.yaml)
-and [README.md](./README.md)) came out of the same conversation; this
-one is the longer-horizon companion.
-
 ---
 
 ## PR operations for non-GitHub hosts (GitLab / Bitbucket)
@@ -90,9 +83,6 @@ which the MCP path now covers end-to-end. Pick this up when a
 GitLab/Bitbucket operator surfaces the gap, or when host indirection becomes
 part of a broader platforms refactor.
 
-**Discussed in**: post-P9 review conversation on 2026-05-25 —
-surfaced when checking Rule B's wording in the implementer template.
-
 ---
 
 ## Regression harness (fake Linear MCP + golden files)
@@ -115,7 +105,4 @@ scenario, would close that gap.
 exists, OR (b) a prose change in `tick.md` ships and silently breaks
 something in production. Not before — the cost of the harness is
 non-trivial and the bug rate doesn't currently justify it.
-
-**Discussed in**: hardening-plan "Out of scope / future work" — moved
-here on 2026-05-25 when HARDENING-PLAN.md was retired.
 
