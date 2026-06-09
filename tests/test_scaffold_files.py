@@ -4,7 +4,7 @@ Each test builds a fake plugin root (every SCAFFOLD_PLAN source materialised
 with distinctive, non-ASCII-containing bytes) plus a fresh consumer working
 directory, then invokes the script via subprocess with cwd set to the
 consumer dir. Byte-identity is asserted with hashlib.sha256 against the fake
-sources, so the "model patches instead of copying" regression (AC-4b) is
+sources, so the "model patches instead of copying" regression is
 caught precisely.
 
 The plan-integrity tests import SCAFFOLD_PLAN directly and assert the
@@ -176,7 +176,7 @@ class PluginOwnedOverwriteTests(unittest.TestCase):
 
 
 class ReinitByteForByteTests(unittest.TestCase):
-    """The actual bug this PR fixes (AC-4b)."""
+    """The actual bug this PR fixes."""
 
     def _scramble_all(self, consumer):
         for i, (_, dest_rel, _) in enumerate(SCAFFOLD_PLAN):

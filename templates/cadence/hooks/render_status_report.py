@@ -12,7 +12,7 @@ Failure modes eliminated:
     breakdown, concurrency cells, and a footer. The same shape every
     run; prose edits silently changed the contract callers depend on.
   - Per-state derivation drift: the workflow-state column lookup is now
-    a single read of `linear_to_workflow` from the validator (P2). The
+    a single read of `linear_to_workflow` from the validator. The
     in-flight counts feed the per-state summary AND the Concurrency
     table from one pass over the issue list.
   - Gate-verdict bucket drift: the four-way breakdown (awaiting / 👍 /

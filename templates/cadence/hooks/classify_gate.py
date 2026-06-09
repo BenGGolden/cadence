@@ -2,8 +2,8 @@
 """Decide what a Cadence fire does with an issue sitting at a gate.
 
 Caller(s):
-  - templates/cadence/hooks/route_fire.py (imported; the verdict routing of the old
-    tick.md step 10)
+  - templates/cadence/hooks/route_fire.py (imported; the fire's gate
+    verdict routing)
 
 Pure function — no I/O, no MCP, no shell-out. A gate lives in exactly one
 Linear column (its waiting queue); a human signals a verdict by adding the

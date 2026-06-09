@@ -46,13 +46,6 @@ def attempt_marker(state, attempt, t, user="Alice"):
     return _comment(body, t, user=user)
 
 
-def legacy_attempt_marker(state, run, t, user="Alice"):
-    payload = json.dumps({"state": state, "run": run, "timestamp": t})
-    body = (f"<!-- stokowski:state {payload} -->\n"
-            f"**[Stokowski]** Entering state: **{state}** (run {run})")
-    return _comment(body, t, user=user)
-
-
 def gate_rework(state, t, rework_to="implement", user="Alice"):
     payload = json.dumps({"state": state, "status": "rework",
                           "rework_to": rework_to})
@@ -189,7 +182,7 @@ class ParseCommentsTests(unittest.TestCase):
         # If the attempt marker and the PR-bearing comment are from different
         # authors, the script must NOT claim the PR as the implementer's
         # summary. Removing the author-match constraint at parse_comments.py
-        # line 197 breaks this (AC-4).
+        # line 197 breaks this.
         comments = [
             attempt_marker("implement", 1, "2026-05-26T09:00:00Z", user="Alice"),
             pr_comment("https://github.com/o/r/pull/42", "feat/foo",
@@ -250,21 +243,6 @@ class ParseCommentsTests(unittest.TestCase):
                 {"pr_url": "https://github.com/o/r/pull/123",
                  "branch": "feat/eng-7-thing"},
             )
-
-    # ---------- legacy stokowski normalisation ----------
-
-    def test_stokowski_run_normalised_to_attempt(self):
-        comments = [legacy_attempt_marker("implement", 2,
-                                          "2026-05-26T09:00:00Z")]
-        with tempfile.TemporaryDirectory() as td:
-            p = write_comments(td, comments)
-            payload = json.loads(run_parser(p).stdout)
-            self.assertEqual(payload["attempt_count"], 1)
-            ltc = payload["latest_tracking_comment"]
-            self.assertEqual(ltc["state"], "implement")
-            self.assertEqual(ltc["attempt"], 2)
-            self.assertEqual(ltc["raw_json"]["started_at"],
-                             "2026-05-26T09:00:00Z")
 
     # ---------- malformed input ----------
 

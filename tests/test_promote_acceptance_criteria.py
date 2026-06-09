@@ -46,7 +46,7 @@ def _run(comments, description):
 
 class PromoteACTests(unittest.TestCase):
 
-    # ---------- AC-1: no AC in description, proposal present ----------
+    # ---------- no AC in description, proposal present ----------
 
     def test_no_ac_appends_block_at_eof(self):
         comments = [_proposal(["POST /users returns 201",
@@ -65,7 +65,7 @@ class PromoteACTests(unittest.TestCase):
         self.assertTrue(nd.startswith("## Context"))
         self.assertLess(nd.index("## Context"), nd.index("## Acceptance"))
 
-    # ---------- AC-2: idempotent ----------
+    # ---------- idempotent ----------
 
     def test_idempotent_second_run_is_noop(self):
         comments = [_proposal(["POST /users returns 201"])]
@@ -78,7 +78,7 @@ class PromoteACTests(unittest.TestCase):
         self.assertEqual(second["added_count"], 0)
         self.assertIsNone(second["new_description"])
 
-    # ---------- AC-3: augment existing operator AC ----------
+    # ---------- augment existing operator AC ----------
 
     def test_augment_appends_only_new_items(self):
         description = (
@@ -107,7 +107,7 @@ class PromoteACTests(unittest.TestCase):
         self.assertIn("## Notes", nd)
         self.assertLess(nd.index("AC-3"), nd.index("## Notes"))
 
-    # ---------- AC-4: no proposal comment ----------
+    # ---------- no proposal comment ----------
 
     def test_no_proposal_comment_is_noop(self):
         comments = [_comment("## Plan\n\nJust a plan, no proposed AC.\n")]

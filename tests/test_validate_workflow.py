@@ -101,7 +101,7 @@ class ValidateWorkflowTests(unittest.TestCase):
             self.assertIn("evidence", payload)
             self.assertEqual(
                 sorted(e["rule"] for e in payload["evidence"]),
-                [1, 2, 3, 4, 5, 6, 7, 8, 9],
+                [1, 2, 3, 4, 5, 6, 7, 8],
             )
             for e in payload["evidence"]:
                 self.assertIn("title", e)
@@ -293,7 +293,7 @@ class ValidateWorkflowTests(unittest.TestCase):
                              "FAIL")
 
     # ---------- rule 6: max_in_flight ----------
-    # AC-3: removing _rule6_max_in_flight from main() must break these.
+    # Removing _rule6_max_in_flight from main() must break these.
 
     def test_rule6_pass_when_no_caps(self):
         with tempfile.TemporaryDirectory() as td:
@@ -385,27 +385,27 @@ class ValidateWorkflowTests(unittest.TestCase):
             self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 7)["result"],
                              "FAIL")
 
-    # ---------- linear_to_workflow reverse map (P2 determinism) ----------
-    # AC-1/2/3: tick.md step 6 and status.md step 2 both consume this map.
+    # ---------- linear_to_workflow reverse map ----------
+    # tick.md step 6 and status.md step 2 both consume this map.
 
     def test_linear_to_workflow_default_workflow_shape(self):
         with tempfile.TemporaryDirectory() as td:
             r = run_validator(td, _valid_workflow())
             self.assertEqual(r.returncode, 0, msg=r.stderr)
             mapping = json.loads(r.stdout)["linear_to_workflow"]
-            # AC-1: agent state's linear_state.
+            # agent state's linear_state.
             self.assertEqual(
                 mapping["Implementing"],
                 {"kind": "state", "workflow_state": "implement",
                  "linear_state_type": "agent"},
             )
-            # AC-2: pickup column.
+            # pickup column.
             self.assertEqual(
                 mapping["Todo"],
                 {"kind": "pickup", "workflow_state": None,
                  "linear_state_type": None},
             )
-            # AC-3: gate's waiting column.
+            # gate's waiting column.
             self.assertEqual(
                 mapping["Plan Review"],
                 {"kind": "gate_waiting", "workflow_state": "plan_review",
@@ -474,7 +474,7 @@ class ValidateWorkflowTests(unittest.TestCase):
                 sorted(payload["workflow_linear_states"]),
             )
 
-    # ---------- raw config pass-through (P2 determinism) ----------
+    # ---------- raw config pass-through ----------
     # The validator emits the raw `linear`, `label`, `limits` blocks so
     # dispatch prose reads them from the script's JSON instead of doing
     # its own Read of workflow.yaml. Without this, the LLM caches the
@@ -537,55 +537,27 @@ class ValidateWorkflowTests(unittest.TestCase):
             payload = json.loads(r.stdout)
             self.assertEqual(payload["label"], {})
 
-    # ---------- rule 8: legacy gate keys ----------
+    # ---------- rule 8: merge_on_approve ----------
 
-    def test_rule8_pass(self):
+    def test_rule8_pass_when_absent(self):
         with tempfile.TemporaryDirectory() as td:
             r = run_validator(td, _valid_workflow(), evidence=True)
-            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 8)["result"],
-                             "PASS")
-
-    def test_rule8_fail_approved_linear_state(self):
-        wf = _valid_workflow()
-        wf["states"]["plan_review"]["approved_linear_state"] = "Approved"
-        with tempfile.TemporaryDirectory() as td:
-            r = run_validator(td, wf, evidence=True)
-            self.assertEqual(r.returncode, 2)
             ev = _rule(json.loads(r.stdout)["evidence"], 8)
-            self.assertEqual(ev["result"], "FAIL")
-            self.assertIn("approved_linear_state", ev["failure"])
-
-    def test_rule8_fail_rework_linear_state(self):
-        wf = _valid_workflow()
-        wf["states"]["plan_review"]["rework_linear_state"] = "Rework"
-        with tempfile.TemporaryDirectory() as td:
-            r = run_validator(td, wf, evidence=True)
-            self.assertEqual(r.returncode, 2)
-            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 8)["result"],
-                             "FAIL")
-
-
-    # ---------- rule 9: merge_on_approve ----------
-
-    def test_rule9_pass_when_absent(self):
-        with tempfile.TemporaryDirectory() as td:
-            r = run_validator(td, _valid_workflow(), evidence=True)
-            ev = _rule(json.loads(r.stdout)["evidence"], 9)
             self.assertEqual(ev["result"], "PASS")
             self.assertEqual(ev["title"], "merge_on_approve type and scope")
             self.assertIn("(no states declare merge_on_approve)", ev["lines"])
 
-    def test_rule9_pass_on_terminal_targeted_gate(self):
+    def test_rule8_pass_on_terminal_targeted_gate(self):
         wf = _valid_workflow()
         wf["states"]["plan_review"]["on_approve"] = "done"
         wf["states"]["plan_review"]["merge_on_approve"] = True
         with tempfile.TemporaryDirectory() as td:
             r = run_validator(td, wf, evidence=True)
             self.assertEqual(r.returncode, 0, msg=r.stderr)
-            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 9)["result"],
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 8)["result"],
                              "PASS")
 
-    def test_rule9_pass_with_merge_method(self):
+    def test_rule8_pass_with_merge_method(self):
         wf = _valid_workflow()
         wf["states"]["plan_review"]["on_approve"] = "done"
         wf["states"]["plan_review"]["merge_on_approve"] = True
@@ -593,42 +565,42 @@ class ValidateWorkflowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             r = run_validator(td, wf, evidence=True)
             self.assertEqual(r.returncode, 0, msg=r.stderr)
-            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 9)["result"],
+            self.assertEqual(_rule(json.loads(r.stdout)["evidence"], 8)["result"],
                              "PASS")
 
-    def test_rule9_fail_non_boolean(self):
+    def test_rule8_fail_non_boolean(self):
         wf = _valid_workflow()
         wf["states"]["plan_review"]["on_approve"] = "done"
         wf["states"]["plan_review"]["merge_on_approve"] = "yes"
         with tempfile.TemporaryDirectory() as td:
             r = run_validator(td, wf, evidence=True)
             self.assertEqual(r.returncode, 2)
-            ev = _rule(json.loads(r.stdout)["evidence"], 9)
+            ev = _rule(json.loads(r.stdout)["evidence"], 8)
             self.assertEqual(ev["result"], "FAIL")
             self.assertIn("boolean", ev["failure"])
 
-    def test_rule9_fail_on_agent_state(self):
+    def test_rule8_fail_on_agent_state(self):
         wf = _valid_workflow()
         wf["states"]["implement"]["merge_on_approve"] = True
         with tempfile.TemporaryDirectory() as td:
             r = run_validator(td, wf, evidence=True)
             self.assertEqual(r.returncode, 2)
-            ev = _rule(json.loads(r.stdout)["evidence"], 9)
+            ev = _rule(json.loads(r.stdout)["evidence"], 8)
             self.assertEqual(ev["result"], "FAIL")
             self.assertIn("type: gate", ev["failure"])
 
-    def test_rule9_fail_non_terminal_on_approve(self):
+    def test_rule8_fail_non_terminal_on_approve(self):
         wf = _valid_workflow()
         # plan_review.on_approve defaults to `implement` (an agent state).
         wf["states"]["plan_review"]["merge_on_approve"] = True
         with tempfile.TemporaryDirectory() as td:
             r = run_validator(td, wf, evidence=True)
             self.assertEqual(r.returncode, 2)
-            ev = _rule(json.loads(r.stdout)["evidence"], 9)
+            ev = _rule(json.loads(r.stdout)["evidence"], 8)
             self.assertEqual(ev["result"], "FAIL")
             self.assertIn("terminal", ev["failure"])
 
-    def test_rule9_fail_invalid_merge_method(self):
+    def test_rule8_fail_invalid_merge_method(self):
         wf = _valid_workflow()
         wf["states"]["plan_review"]["on_approve"] = "done"
         wf["states"]["plan_review"]["merge_on_approve"] = True
@@ -636,32 +608,18 @@ class ValidateWorkflowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             r = run_validator(td, wf, evidence=True)
             self.assertEqual(r.returncode, 2)
-            ev = _rule(json.loads(r.stdout)["evidence"], 9)
+            ev = _rule(json.loads(r.stdout)["evidence"], 8)
             self.assertEqual(ev["result"], "FAIL")
             self.assertIn("merge_method", ev["failure"])
 
-    def test_rule9_fail_merge_method_without_merge_on_approve(self):
+    def test_rule8_fail_merge_method_without_merge_on_approve(self):
         wf = _valid_workflow()
         wf["states"]["plan_review"]["merge_method"] = "squash"
         with tempfile.TemporaryDirectory() as td:
             r = run_validator(td, wf, evidence=True)
             self.assertEqual(r.returncode, 2)
-            ev = _rule(json.loads(r.stdout)["evidence"], 9)
+            ev = _rule(json.loads(r.stdout)["evidence"], 8)
             self.assertEqual(ev["result"], "FAIL")
-            self.assertIn("merge_method", ev["failure"])
-
-    def test_rule9_reject_legacy_merge_args(self):
-        # The pre-MCP `gh`-flag field is rejected with a migration message.
-        wf = _valid_workflow()
-        wf["states"]["plan_review"]["on_approve"] = "done"
-        wf["states"]["plan_review"]["merge_on_approve"] = True
-        wf["states"]["plan_review"]["merge_args"] = "--squash"
-        with tempfile.TemporaryDirectory() as td:
-            r = run_validator(td, wf, evidence=True)
-            self.assertEqual(r.returncode, 2)
-            ev = _rule(json.loads(r.stdout)["evidence"], 9)
-            self.assertEqual(ev["result"], "FAIL")
-            self.assertIn("merge_args", ev["failure"])
             self.assertIn("merge_method", ev["failure"])
 
 

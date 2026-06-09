@@ -36,10 +36,7 @@ Invocation arguments (verbatim, may be empty): `$ARGUMENTS`
   - `<!-- cadence:state {...JSON...} -->`     workflow-state attempt marker or failure record
   - `<!-- cadence:gate {...JSON...} -->`      gate transition record
   - `<!-- cadence:reconcile {...JSON...} -->` drift reconciliation note
-  - The same prefixes with `stokowski:` instead of `cadence:` are accepted as
-    **legacy**. When parsing legacy JSON, treat the field `run` as `attempt`
-    and the field `timestamp` as `started_at`. All other semantics are identical.
-- **Attempt marker**: a `cadence:state` (or legacy `stokowski:state`) tracking
+- **Attempt marker**: a `cadence:state` tracking
   comment whose JSON has **no** `status` field. Emitted by step 7 at the start
   of every attempt. The Route step (step 6) counts these.
 - **Failure record**: a `cadence:state` tracking comment whose JSON includes
@@ -145,9 +142,7 @@ to `.claude/agents/cadence/{name}.md` on disk; `linear.pickup_state` non-empty;
 any `max_in_flight` value is a positive integer (>= 1) and appears only
 on `type: agent` or `type: gate` states (Rule 6 — terminals rejected);
 any `adversarial_context` field is a boolean and appears only on
-`type: agent` states (Rule 7); no gate state carries the legacy
-`approved_linear_state` / `rework_linear_state` keys — those were removed
-in P4 and the validator rejects them with a Rule 8 failure).
+`type: agent` states (Rule 7)).
 
 - If the exit code is **non-zero**, print the script's stderr verbatim and
   exit. **Do not write to Linear.** (Exit 1 means the YAML was missing or
@@ -175,8 +170,8 @@ Linear column name keyed to an entry of the shape
 — and a `workflow_linear_states` array. You do **not** need to hold either
 in memory: the deterministic helpers that consume them re-derive both by
 re-validating `.claude/workflow.yaml` internally (passed `--workflow-path`) —
-the reverse map by the Route step's `route_fire.py` (matched-state lookup, old
-step 8) and the states array by step 3's `filter_candidates.py --plan`.
+the reverse map by the Route step's `route_fire.py` (the matched-state lookup)
+and the states array by step 3's `filter_candidates.py --plan`.
 Re-deriving them in prose would just risk drift from the script's view.
 
 ---
@@ -287,13 +282,13 @@ Otherwise, leave the Linear state untouched.
 
 Step 6 is a single cohesive decision — *"given where this issue sits and
 its history, what should this fire do to it?"* — computed deterministically by
-`route_fire.py`. It subsumes the four decisions the prose used to spell out:
-the matched-state lookup and unmapped-column release (old step 8), the drift
-check (old step 9), the gate verdict routing (old step 10: waiting / approve /
-rework, both-labels→rework, `max_rework` escalation), and the attempt-cap
-check against the **resolved** target (old step 11). The bootstrap gathers the
-inputs, runs the router **once**, and executes the plan it returns. The
-bootstrap remains the sole Linear writer; the router only decides.
+`route_fire.py`. It folds four routing decisions into one pass: the
+matched-state lookup and unmapped-column release, the drift check, the gate
+verdict routing (waiting / approve / rework, both-labels→rework, `max_rework`
+escalation), and the attempt-cap check against the **resolved** target. The
+bootstrap gathers the inputs, runs the router **once**, and executes the plan
+it returns. The bootstrap remains the sole Linear writer; the router only
+decides.
 
 ### Gather (MCP reads)
 
@@ -712,10 +707,3 @@ All JSON in tracking comments must be valid JSON. Strings must escape `"`, `\`,
 and control characters. Quoted user content (rework comments, error messages)
 must not break the surrounding tracking-comment JSON; if in doubt, replace
 problem characters in the `error` field with spaces.
-
-### Legacy compatibility
-
-When parsing or counting comments, accept both `cadence:` and `stokowski:`
-prefixes. When **emitting** new comments, always use `cadence:` and the field
-names `attempt` and `started_at`. Never rewrite or migrate existing legacy
-comments — they stand as historical record.

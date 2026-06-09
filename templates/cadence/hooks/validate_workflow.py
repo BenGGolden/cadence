@@ -14,9 +14,7 @@ Failure mode eliminated:
   could gloss as "passed" without showing its work. This script makes the
   checks deterministic and emits structured per-rule evidence.
 
-Rules implemented in this script: 1, 2, 3, 4, 5, 6, 7, 8, 9. Rule numbers
-are not ship-order — they reflect the hardening-plan phase that added
-each rule.
+Rules implemented in this script: 1 through 8.
 
 CLI:
   python validate_workflow.py [--workflow-path PATH] [--evidence]
@@ -42,15 +40,11 @@ from pathlib import Path
 
 from _common import die, ensure_cadence_dir, load_workflow
 
-LEGACY_GATE_KEYS = ("approved_linear_state", "rework_linear_state")
-
 
 def _collect_linear_states(states, pickup):
     """Yield (value, "<path>") for every workflow Linear column.
 
-    Covers `linear.pickup_state` plus each state's `linear_state`. The
-    legacy per-gate `approved_linear_state` / `rework_linear_state` fields
-    were removed in P4 (rule 8 rejects them).
+    Covers `linear.pickup_state` plus each state's `linear_state`.
     """
     if isinstance(pickup, str) and pickup:
         yield str(pickup), "linear.pickup_state"
@@ -191,7 +185,7 @@ def _rule6_max_in_flight(states):
     candidate's happy-path downstream and drops it if any state on that
     path (agent or gate) is over-cap. Verdict-bearing gate candidates
     are exempt from their own gate's cap because acting on a verdict
-    drains the queue (P8.2)."""
+    drains the queue."""
     lines = []
     failures = []
     for name, body in states.items():
@@ -230,7 +224,7 @@ def _rule7_adversarial_context(states):
     """`adversarial_context`, where present, must be a boolean and may only
     appear on `type: agent` states. The flag controls how the bootstrap
     composes the Lifecycle Context for a subagent invocation (tick.md
-    Step 8); gates and terminals invoke no subagent (P5.4a)."""
+    Step 8); gates and terminals invoke no subagent."""
     lines = []
     failures = []
     for name, body in states.items():
@@ -262,41 +256,10 @@ def _rule7_adversarial_context(states):
     }
 
 
-def _rule8_legacy_gate_keys(states):
-    """Reject the pre-P4 per-gate columns. Gates now signal verdicts via the
-    cadence_approve / cadence_rework labels — the two legacy keys exist only
-    as an upgrade-time diagnostic."""
-    lines = []
-    failures = []
-    for name, body in states.items():
-        if not isinstance(body, dict) or body.get("type") != "gate":
-            continue
-        for key in LEGACY_GATE_KEYS:
-            if key in body:
-                line = f"states.{name}.{key} -> PRESENT (legacy)"
-                lines.append(line)
-                failures.append(
-                    f"states.{name}.{key} is no longer supported (removed in P4). "
-                    "Gates now signal verdicts via the cadence_approve / cadence_rework "
-                    "labels. See CHANGELOG \"Upgrading to label-based gates\"."
-                )
-            else:
-                lines.append(f"states.{name}.{key} -> absent")
-    if not lines:
-        lines.append("(no gate states defined)")
-    return {
-        "rule": 8,
-        "title": "Legacy gate keys",
-        "lines": lines,
-        "result": "PASS" if not failures else "FAIL",
-        "failure": None if not failures else " ".join(failures),
-    }
-
-
 MERGE_METHODS = ("merge", "squash", "rebase")
 
 
-def _rule9_merge_on_approve(states):
+def _rule8_merge_on_approve(states):
     """`merge_on_approve`, where present, must be a boolean and may only appear
     on `type: gate` states. When `true`, the gate's `on_approve` target must
     resolve to a `type: terminal` state — Cadence merges the PR then advances
@@ -304,8 +267,7 @@ def _rule9_merge_on_approve(states):
     deliberate non-goal (the merge logic lives only in the router's terminal
     branch). `merge_method`, where present, must be one of `merge` / `squash` /
     `rebase` (GitHub MCP's `merge_pull_request` takes a method, not flags) and
-    only on a gate that sets `merge_on_approve: true`. The pre-MCP `merge_args`
-    key (raw CLI merge flags) is rejected with a migration message."""
+    only on a gate that sets `merge_on_approve: true`."""
     lines = []
     failures = []
     for name, body in states.items():
@@ -313,8 +275,7 @@ def _rule9_merge_on_approve(states):
             continue
         has_moa = "merge_on_approve" in body
         has_method = "merge_method" in body
-        has_legacy_args = "merge_args" in body
-        if not has_moa and not has_method and not has_legacy_args:
+        if not has_moa and not has_method:
             continue
         stype = body.get("type")
         moa = body.get("merge_on_approve")
@@ -344,13 +305,6 @@ def _rule9_merge_on_approve(states):
                         f"not `terminal` (merge_on_approve requires a terminal "
                         f"on_approve target)"
                     )
-        if has_legacy_args:
-            lines.append(f"states.{name}.merge_args -> PRESENT (legacy)")
-            failures.append(
-                f"states.{name}.merge_args is no longer supported — the `gh` "
-                f"backend was removed; PR ops now run via GitHub MCP. Use "
-                f"`merge_method` (one of {', '.join(MERGE_METHODS)}) instead."
-            )
         if has_method:
             method = body.get("merge_method")
             lines.append(f"states.{name}.merge_method -> {method!r}")
@@ -367,7 +321,7 @@ def _rule9_merge_on_approve(states):
     if not lines:
         lines.append("(no states declare merge_on_approve)")
     return {
-        "rule": 9,
+        "rule": 8,
         "title": "merge_on_approve type and scope",
         "lines": lines,
         "result": "PASS" if not failures else "FAIL",
@@ -377,7 +331,7 @@ def _rule9_merge_on_approve(states):
 
 def _build_linear_states_set(states, pickup):
     """Ordered set: pickup, then each state's linear_state. Mirrors
-    tick.md step 2. Per-gate approved/rework columns are gone (P4)."""
+    tick.md step 2."""
     ordered = []
     seen = set()
 
@@ -469,8 +423,7 @@ def validate(workflow_path=None):
         _rule5_pickup_state(linear),
         _rule6_max_in_flight(states),
         _rule7_adversarial_context(states),
-        _rule8_legacy_gate_keys(states),
-        _rule9_merge_on_approve(states),
+        _rule8_merge_on_approve(states),
     ]
 
     valid = not any(ev["result"] == "FAIL" for ev in evidence)

@@ -7,7 +7,7 @@ Caller(s):
   - commands/tick.md Failure path (failure record)
   - templates/cadence/hooks/route_fire.py (imported; build_gate / build_reconcile
     produce the gate rework / gate escalation / reconcile comment bodies the
-    router embeds in its plan — the old tick.md steps 9 / 10c.2 / 10c.4)
+    router embeds in its plan)
   - commands/sweep.md step 5 (stale-lock sweep comment)
 
 Failure mode eliminated:

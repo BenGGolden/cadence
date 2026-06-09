@@ -8,9 +8,8 @@ Failure modes eliminated:
   - Per-state scanning in prose: step 3 used to iterate the validator's
     `states` map looking for `max_in_flight` keys to decide which per-state
     queries to fire. Plan mode emits the list once.
-  - Bounded reachability walk drift: P8.2 shipped a correctness fix
-    specifically because the walk was prose. The walk now runs
-    deterministically here.
+  - Bounded reachability walk drift: when the walk lived in prose it was
+    a correctness hazard. The walk now runs deterministically here.
   - Empty-candidates message drift: the `(caps reached for: <names>)`
     suffix was prose. The script renders the canonical message.
 

@@ -8,7 +8,7 @@ updated_at ordering, title truncation, the threshold-0 and large-threshold
 edge cases, and CLI error paths.
 
 One byte-identical fixture comparison (the broad-stroke acceptance
-criterion AC-2) guards against any future edit to the renderer that
+criterion) guards against any future edit to the renderer that
 changes the visible report shape.
 """
 import json
@@ -60,7 +60,7 @@ def _classification(stderr):
 class FixtureByteIdentityTests(unittest.TestCase):
 
     def test_mixed_byte_identical(self):
-        """AC-2: 2 stale + 1 fresh, both tables populated, sorted by
+        """2 stale + 1 fresh, both tables populated, sorted by
         updated_at ascending."""
         payload = _payload(locked_issues=[
             # Provide in non-sorted order to also assert the sort.
@@ -245,7 +245,7 @@ class TitleTruncationTests(unittest.TestCase):
 class ThresholdEdgeCaseTests(unittest.TestCase):
 
     def test_threshold_zero_all_stale(self):
-        """AC-3: cutoff = now, so every issue with updated_at <= now is
+        """Cutoff = now, so every issue with updated_at <= now is
         stale."""
         payload = _payload(threshold_minutes=0,
                            locked_issues=[
@@ -263,7 +263,7 @@ class ThresholdEdgeCaseTests(unittest.TestCase):
             self.assertIn("Threshold: **0** minutes", r.stdout)
 
     def test_threshold_huge_none_stale(self):
-        """AC-3: threshold 99999 → cutoff far in the past → nothing stale."""
+        """Threshold 99999 → cutoff far in the past → nothing stale."""
         payload = _payload(threshold_minutes=99999,
                            locked_issues=[
                                _issue("ENG-1",

@@ -31,7 +31,7 @@ def _default_validator_output(project_slug=None, caps=None,
 
     caps is {state_name: int} to attach max_in_flight to states.
     on_rework is {gate_name: target} to override the default
-    plan_review/human_review on_rework targets (handy for the AC-5
+    plan_review/human_review on_rework targets (handy for the
     rework-walk case).
     """
     caps = caps or {}
@@ -160,7 +160,7 @@ class PlanModeTests(unittest.TestCase):
                               "implement": "Implementing"})
 
     def test_default_workflow_in_flight_queries_match_max_in_flight_states(self):
-        """AC-1: every state with max_in_flight surfaces, each with its
+        """Every state with max_in_flight surfaces, each with its
         correct linear_state, and no others."""
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
@@ -179,7 +179,7 @@ class PlanModeTests(unittest.TestCase):
             self.assertEqual(len(entries), 2)
 
     def test_project_slug_absent_is_json_null(self):
-        """AC-2: pickup_query.project_slug is JSON null (not empty string)
+        """pickup_query.project_slug is JSON null (not empty string)
         when the config omits linear.project_slug."""
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
@@ -419,7 +419,7 @@ class FilterModeSortAndCapTests(unittest.TestCase):
             self.assertEqual(out["ordered_identifiers"], ["ENG-A", "ENG-B"])
 
     def test_stable_sort_on_total_ties_across_repeated_runs(self):
-        """AC-6: two candidates with identical priority and createdAt
+        """Two candidates with identical priority and createdAt
         appear in input order across 10 runs."""
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
@@ -437,8 +437,8 @@ class FilterModeSortAndCapTests(unittest.TestCase):
                 self.assertEqual(out["ordered_identifiers"],
                                  ["ENG-FIRST", "ENG-SECOND"])
 
-    def test_ac3_todo_blocked_by_plan_review_cap(self):
-        """AC-3: default workflow + one Todo candidate + plan_review at cap
+    def test_todo_blocked_by_plan_review_cap(self):
+        """Default workflow + one Todo candidate + plan_review at cap
         → empty ordered list, plan_review reported as blocker, diagnostic
         message includes the parenthetical."""
         with tempfile.TemporaryDirectory() as td:
@@ -455,8 +455,8 @@ class FilterModeSortAndCapTests(unittest.TestCase):
                              "No eligible issues.\n"
                              "(caps reached for: plan_review)")
 
-    def test_ac4_drain_exemption_at_own_gate(self):
-        """AC-4: verdict-bearing candidate at human_review with
+    def test_drain_exemption_at_own_gate(self):
+        """Verdict-bearing candidate at human_review with
         cadence_approve, human_review at cap → candidate IS in
         ordered_identifiers (drain exemption)."""
         with tempfile.TemporaryDirectory() as td:
@@ -470,8 +470,8 @@ class FilterModeSortAndCapTests(unittest.TestCase):
             self.assertEqual(out["ordered_identifiers"], ["ENG-1"])
             self.assertEqual(out["over_cap_states_that_blocked"], [])
 
-    def test_ac5_rework_walk_blocked_by_downstream_human_review_cap(self):
-        """AC-5: plan_review on_rework: implement (custom). Candidate at
+    def test_rework_walk_blocked_by_downstream_human_review_cap(self):
+        """plan_review on_rework: implement (custom). Candidate at
         plan_review with cadence_rework → walk = implement → agent_review
         → human_review. human_review at cap → candidate dropped,
         human_review in blocker list."""

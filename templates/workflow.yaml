@@ -12,9 +12,6 @@
 #   - Every `next`, `on_approve`, `on_rework` target must reference a
 #     defined state.
 #   - Every state.subagent must resolve to .claude/agents/cadence/{name}.md.
-#   - No gate state may carry the legacy `approved_linear_state` or
-#     `rework_linear_state` keys (removed in P4 — gates now signal
-#     verdicts via the cadence_approve / cadence_rework labels).
 #   - Any `max_in_flight` value must be a positive integer (>= 1) and
 #     may only appear on `type: agent` or `type: gate` states (rejected
 #     on terminals). Agent caps throttle parallel subagent runs at the
@@ -22,9 +19,7 @@
 #     dropping pickups whose happy-path downstream feeds the gate.
 #   - `merge_on_approve`, where set, must be a boolean on a gate whose
 #     `on_approve` is a terminal state; `merge_method`, where set, must be
-#     one of merge / squash / rebase on such a gate (Rule 9). The pre-MCP
-#     `merge_args` key (raw `gh` flags) is rejected — PR ops now run via
-#     GitHub MCP.
+#     one of merge / squash / rebase on such a gate (Rule 8).
 
 linear:
   # Required. Your Linear team key (e.g. "ENG", "PROD"). Used by the
@@ -168,7 +163,7 @@ states:
     type: gate
     # The single Linear column this gate uses — the waiting queue. Must
     # exist as a column on your Linear board and be unique across the
-    # whole workflow config. Gate signalling is label-based since P4.
+    # whole workflow config. Gate signalling is label-based.
     linear_state: "In Review"
     # A human signals their verdict by adding label.cadence_approve or
     # label.cadence_rework to the issue while it sits in "In Review".

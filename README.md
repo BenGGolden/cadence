@@ -5,7 +5,8 @@ Issues flow through a state machine you define; subagents do the work;
 humans approve at gates; PRs land. No long-running daemon — each tick is
 one shot, fired by `/schedule` or `/loop`.
 
-Cadence is a reusable, packaged replacement for the per-project
+Cadence is a reusable, packaged take on the multi-agent supervisor pattern,
+inspired by the per-project
 [Stokowski](https://github.com/Sugar-Coffee/stokowski) supervisor. Consuming
 projects install the plugin, run `/cadence:init`, edit one YAML
 file and three subagent prompts, point a scheduled routine at
@@ -658,22 +659,6 @@ itself is never removed.
 
 `/cadence:uninstall` is a local-only command — unlike `/cadence:tick`, it is
 not scaffolded for `/schedule` routines to call.
-
----
-
-## Migration from Stokowski
-
-See [MIGRATION.md](./MIGRATION.md). The short version:
-
-1. Audit your Linear board — Cadence requires one column per workflow
-   stage; Stokowski allowed many-to-one. Add the missing columns.
-2. Rename `tracker:` → `linear:` in workflow.yaml; flatten the
-   transitions block.
-3. Move prompt files to `.claude/agents/cadence/cadence-*.md` with subagent frontmatter.
-4. Move the global prompt to `.claude/prompts/global.md`.
-5. Existing `<!-- stokowski:state ... -->` comments are parsed
-   transparently — no rewrite needed for attempt history.
-6. Pick `/schedule` or `/loop` and stop the daemon.
 
 ---
 
