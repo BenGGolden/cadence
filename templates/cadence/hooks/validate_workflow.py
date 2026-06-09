@@ -14,9 +14,7 @@ Failure mode eliminated:
   could gloss as "passed" without showing its work. This script makes the
   checks deterministic and emits structured per-rule evidence.
 
-Rules implemented in this script: 1, 2, 3, 4, 5, 6, 7, 8, 9. Rule numbers
-are not ship-order — they reflect the hardening-plan phase that added
-each rule.
+Rules implemented in this script: 1 through 8.
 
 CLI:
   python validate_workflow.py [--workflow-path PATH] [--evidence]
