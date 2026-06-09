@@ -2,8 +2,9 @@
 
 Invoked via subprocess so the full argparse + I/O + import path (parse_comments
 / classify_drift / classify_gate / emit_tracking_comment formatters) runs on
-every case. This is the decision-parity matrix for the old tick.md steps 8–11:
-each branch of the prose asserts the router emits the matching plan.
+every case. This is the decision-parity matrix for the four routing decisions
+(matched-state lookup, drift, gate verdict, attempt cap): each branch asserts
+the router emits the matching plan.
 
 The fixture builds a validator-output-shaped dict directly (matching the JSON
 validate_workflow.py prints) so the matrix can vary gate targets, caps, and
@@ -83,14 +84,6 @@ def _attempt_marker(state, attempt, t, user="Alice"):
     payload = json.dumps({"state": state, "attempt": attempt, "started_at": t})
     body = (f"<!-- cadence:state {payload} -->\n"
             f"**[Cadence]** Entering state: **{state}** (attempt {attempt})")
-    return {"id": f"c-{t}", "body": body, "createdAt": t,
-            "user": {"displayName": user}}
-
-
-def _legacy_attempt_marker(state, run, t, user="Alice"):
-    payload = json.dumps({"state": state, "run": run, "timestamp": t})
-    body = (f"<!-- stokowski:state {payload} -->\n"
-            f"**[Stokowski]** Entering state: **{state}** (run {run})")
     return {"id": f"c-{t}", "body": body, "createdAt": t,
             "user": {"displayName": user}}
 
@@ -472,20 +465,6 @@ class RouteFireTests(unittest.TestCase):
                 _types(plan["exit_plan"]),
                 ["remove_label", "post_comment", "move_state",
                  "post_comment", "add_label", "remove_label"])
-
-    # ---------- legacy compatibility ----------
-
-    def test_legacy_stokowski_routes_identically(self):
-        with tempfile.TemporaryDirectory() as td:
-            td = Path(td)
-            legacy = [
-                _legacy_attempt_marker("implement", 1, "2026-05-01T00:00:00Z"),
-                _legacy_attempt_marker("implement", 2, "2026-05-02T00:00:00Z"),
-            ]
-            r = _run(td, _validator_output(), "Implementing", legacy)
-            plan = json.loads(r.stdout)
-            self.assertEqual(plan["attempt"], 3)
-            self.assertTrue(plan["invoke_subagent"])
 
     # ---------- labels via JSON file ----------
 

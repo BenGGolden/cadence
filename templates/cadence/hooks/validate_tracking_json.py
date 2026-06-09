@@ -2,7 +2,7 @@
 """Cadence PreToolUse hook: validate tracking-comment JSON before Linear write.
 
 Fires on Linear comment-create tool calls. If the comment body is a Cadence
-tracking comment (starts with `<!-- cadence:` or `<!-- stokowski:`), the embedded
+tracking comment (starts with `<!-- cadence:`), the embedded
 JSON object is extracted and parsed. If parsing fails, the tool call is blocked
 with a clear diagnostic.
 
@@ -52,7 +52,7 @@ import re
 import sys
 from pathlib import Path
 
-CADENCE_PREFIX_RE = re.compile(r"^\s*<!--\s*(cadence|stokowski):", re.IGNORECASE)
+CADENCE_PREFIX_RE = re.compile(r"^\s*<!--\s*cadence:", re.IGNORECASE)
 
 
 def main():
@@ -74,7 +74,7 @@ def main():
     if not CADENCE_PREFIX_RE.match(body):
         sys.exit(0)
 
-    kind_match = re.match(r"^\s*<!--\s*((?:cadence|stokowski):\S+)", body, re.IGNORECASE)
+    kind_match = re.match(r"^\s*<!--\s*(cadence:\S+)", body, re.IGNORECASE)
     kind = kind_match.group(1) if kind_match else "<unknown>"
 
     start = body.find("{")

@@ -88,8 +88,7 @@ a local `/loop`.
 
 - `unittest` suite covering the runtime helpers and init-time scripts, run in
   CI alongside plugin-manifest schema and command-frontmatter validation.
-- `README.md` (operational shape), `GUIDEPOSTS.md` (design principles),
-  `MIGRATION.md` (Stokowski → Cadence), and `scripts/README.md`
-  (helper-script contract).
+- `README.md` (operational shape), `GUIDEPOSTS.md` (design principles), and
+  `scripts/README.md` (helper-script contract).
 - Installable via `/plugin` from the bundled `marketplace.json`, or from a
   local checkout with `--plugin-dir`.

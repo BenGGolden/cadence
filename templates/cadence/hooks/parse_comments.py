@@ -5,23 +5,19 @@ Caller(s):
   - templates/cadence/hooks/route_fire.py (imported; `parse_comment_list` runs once
     per fire — the latest tracking comment for the drift check, attempt_count
     for the resolved target, and rework_count / rework_context for a gate).
-    This replaces the old per-step CLI calls in tick.md steps 9 / 10c / 11.
+    The Route step calls it once instead of the several inline CLI calls the
+    routing prose used to make per fire.
   - commands/tick.md step 8 (latest_implementer_summary — PR URL / branch
     for the adversarial-context Lifecycle Context) — reads route_fire.py's
     forwarded `parse_comments_output`, not a fresh CLI invocation.
   - commands/status.md (per-issue attempt count / last state — CLI)
 
 Failure modes eliminated:
-  - "Counting errors": LLM bookkeeping in tick.md steps 10c.1 and 11 ("count
+  - "Counting errors": LLM bookkeeping in dispatch prose ("count
     prior attempt markers" / "count prior rework comments") drifts under
     context pressure. This script counts deterministically.
   - "JSON parsing errors": reading tracking-comment JSON back out of Linear
     comments in prose is fragile; this does it once, in code.
-
-Legacy compatibility:
-  Both `<!-- cadence:` and `<!-- stokowski:` prefixes are accepted. When
-  parsing a stokowski: payload, `run` is treated as `attempt` and
-  `timestamp` as `started_at`. Legacy comments are read, never rewritten.
 
 CLI:
   python parse_comments.py --input PATH --target-state STATE [--gate-name STATE]
@@ -86,10 +82,10 @@ def _is_bot(comment):
 
 
 def _is_cadence_comment(body):
-    """True for any Cadence- or Stokowski-generated comment (state/gate/
-    reconcile/sweep). Used to exclude bot comments from rework_context."""
+    """True for any Cadence-generated comment (state/gate/reconcile/sweep).
+    Used to exclude bot comments from rework_context."""
     s = body.lstrip()
-    return s.startswith("<!-- cadence:") or s.startswith("<!-- stokowski:")
+    return s.startswith("<!-- cadence:")
 
 
 def _extract_json_block(s):
@@ -133,7 +129,7 @@ def _classify(body):
     s = body.lstrip()
     kind = None
     for k in TRACKING_KINDS:
-        if s.startswith(f"<!-- cadence:{k}") or s.startswith(f"<!-- stokowski:{k}"):
+        if s.startswith(f"<!-- cadence:{k}"):
             kind = k
             break
     if kind is None:
@@ -149,11 +145,6 @@ def _classify(body):
     if not isinstance(payload, dict):
         return kind, None, "tracking-comment JSON is not an object"
 
-    # Legacy stokowski normalisation.
-    if "run" in payload and "attempt" not in payload:
-        payload["attempt"] = payload["run"]
-    if "timestamp" in payload and "started_at" not in payload:
-        payload["started_at"] = payload["timestamp"]
     return kind, payload, None
 
 
@@ -175,8 +166,8 @@ def _find_implementer_summary(norm):
     summary, or nulls if none is found.
 
     An implementer summary is a non-tracking comment that (a) contains a
-    GitHub PR URL and (b) immediately follows a `cadence:state` /
-    `stokowski:state` attempt marker for the `implement` state posted by
+    GitHub PR URL and (b) immediately follows a `cadence:state` attempt
+    marker for the `implement` state posted by
     the same author (the bootstrap posts the attempt marker in step 7 and
     the implementer's returned summary in step 10, back to back). Scanned
     newest-first; the first match wins.
@@ -282,7 +273,7 @@ def parse_comment_list(comments, target_state, gate_name=None,
                 rework_count += 1
 
     # rework_context: comments after the most recent tracking comment, that
-    # are not themselves Cadence/Stokowski comments, oldest-first, best-effort
+    # are not themselves Cadence comments, oldest-first, best-effort
     # human-only.
     rework_context = []
     if latest_tracking_idx >= 0:

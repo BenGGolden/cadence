@@ -19,7 +19,7 @@ any time, from anywhere, with no side effects.
 - **Linear state**: a Linear board column. Workflow states declare their
   `linear_state`. A gate declares only its waiting `linear_state` —
   verdicts are signalled by the `cadence_approve` / `cadence_rework`
-  labels (P4), not by additional columns.
+  labels, not by additional columns.
 - **Workflow Linear states**: the set of every `linear_state` plus
   `linear.pickup_state`. The same set `/cadence:tick` step 2 builds.
   Issues sitting in any of these columns are "in the workflow" for
@@ -29,10 +29,9 @@ any time, from anywhere, with no side effects.
   `/cadence:tick` fire will act on it. The summary highlights pending
   verdict labels so the human can see what is queued up.
 - **Tracking comment**: a Linear comment whose body begins with
-  `<!-- cadence:state`, `<!-- cadence:gate`, `<!-- cadence:reconcile`, or
-  the legacy `<!-- stokowski:state` / `<!-- stokowski:gate` prefixes.
-- **Attempt marker**: a `cadence:state` (or legacy `stokowski:state`)
-  comment whose JSON has **no** `status` field. This is what
+  `<!-- cadence:state`, `<!-- cadence:gate`, or `<!-- cadence:reconcile`.
+- **Attempt marker**: a `cadence:state` comment whose JSON has **no**
+  `status` field. This is what
   `/cadence:tick`'s Route step (step 6) counts.
 - **Failure record**: a `cadence:state` comment whose JSON includes
   `"status": "failed"`. Emitted on a subagent exception. **Not** an attempt
@@ -145,7 +144,7 @@ For **each** issue from step 3:
    and `latest_tracking_comment.kind` is `null`. If `parse_errors` is
    non-empty, note it for the **Config warnings** section.
 
-The script counts only `cadence:state` / legacy `stokowski:state` attempt
+The script counts only `cadence:state` attempt
 markers (failure records and gate / reconcile / sweep comments do not count
 toward `attempt_count`).
 

@@ -2,8 +2,8 @@
 """Decide what one Cadence /cadence:tick fire should do to its locked issue.
 
 Caller:
-  - commands/tick.md "Route" step (replaces the model-executed branching that
-    used to live in steps 8–11).
+  - commands/tick.md "Route" step (replaces the model-executed routing
+    branches that used to run inline in dispatch prose).
 
 This is the *decision core* of a fire, extracted out of dispatch prose into a
 pure, testable orchestrator (GUIDEPOSTS "Prefer deterministic code to agent
@@ -17,8 +17,8 @@ executes every action.
 It wires three pure helpers:
   - parse_comments.parse_comment_list  — comment history → structured facts
                                          (run exactly once per fire here).
-  - classify_drift.classify_drift      — the old step-9 drift branch.
-  - classify_gate.classify_gate        — the old step-10 gate verdict routing.
+  - classify_drift.classify_drift      — the drift branch.
+  - classify_gate.classify_gate        — the gate verdict routing.
 And imports emit_tracking_comment's formatters so the plan carries finished
 tracking-comment bodies (reconcile / gate rework / gate escalation), never
 re-templated inline.
@@ -117,8 +117,8 @@ def _invoke_plan(matched, target, attempt, pre_actions, subagent, rework,
         "pre_actions": pre_actions,
         "invoke_subagent": True,
         "subagent": subagent,
-        # The full parse_comments result. The old step-9 prose wrote this to
-        # a file for step 8's compose_lifecycle_context (rework_context +
+        # The full parse_comments result. The routing prose used to write this
+        # to a file for step 8's compose_lifecycle_context (rework_context +
         # latest_implementer_summary.pr_url). The router parsed exactly once;
         # it hands the result on so step 8 needs no second parse.
         "parse_comments_output": parse_output,
@@ -203,7 +203,7 @@ def route(config, linear_state, comments, present_labels):
     def label_name(key):
         return labels.get(key)
 
-    # --- Step 8: matched workflow state ------------------------------------
+    # --- Lookup: matched workflow state ------------------------------------
     entry = ltw.get(linear_state)
     matched_state = entry.get("workflow_state") if isinstance(entry, dict) else None
     if entry is None or matched_state is None:
@@ -235,7 +235,7 @@ def route(config, linear_state, comments, present_labels):
     else:
         prelim_target = matched_state
 
-    # --- Step 9 + 11 data: parse the comment history exactly once ----------
+    # --- Drift + cap data: parse the comment history exactly once ----------
     parsed = parse_comments.parse_comment_list(
         comments, prelim_target, gate_name=gate_name)
     latest_state = (parsed.get("latest_tracking_comment") or {}).get("state")
@@ -246,7 +246,7 @@ def route(config, linear_state, comments, present_labels):
     is_rework = False
     is_gate_approve = False
 
-    # --- Step 9: drift check ----------------------------------------------
+    # --- Drift check -------------------------------------------------------
     drift = classify_drift.classify_drift(
         latest_state, matched_state, linear_state, states)
     if drift["drift"]:
@@ -254,7 +254,7 @@ def route(config, linear_state, comments, present_labels):
         actions.append(_post_comment(_reconcile_body(
             ra["observed_linear_state"], ra["expected_state"], ra["reason"])))
 
-    # --- Step 10: gate handling -------------------------------------------
+    # --- Gate handling -----------------------------------------------------
     if is_gate:
         gp = classify_gate.classify_gate(
             approve_present, rework_present, matched_body, rework_count)
@@ -325,7 +325,7 @@ def route(config, linear_state, comments, present_labels):
     else:
         target_state = matched_state
 
-    # --- Step 11: attempt cap (for the RESOLVED target) -------------------
+    # --- Attempt cap (for the RESOLVED target) -----------------------------
     max_attempts = limits.get("max_attempts_per_issue")
     cap_defined = isinstance(max_attempts, int) and not isinstance(max_attempts, bool)
     if cap_defined and attempt_count >= max_attempts:

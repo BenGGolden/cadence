@@ -1,7 +1,7 @@
 """Tests for templates/cadence/hooks/classify_drift.py.
 
 The drift decision is a pure function imported directly. Covers the ordered
-branch the old tick.md step-9 prose specified: null latest, Match,
+branch it applies, first match wins: null latest, Match,
 forward-progression-via-`next`, and drift-otherwise. The CLI path is smoke-
 tested via subprocess so the argparse + JSON-emit wiring stays exercised.
 """

@@ -2,11 +2,11 @@
 """Decide whether a Cadence fire is picking up an issue that drifted.
 
 Caller(s):
-  - templates/cadence/hooks/route_fire.py (imported; the drift sub-decision of the
-    old tick.md step 9)
+  - templates/cadence/hooks/route_fire.py (imported; the fire's drift
+    sub-decision)
 
-Pure function — no I/O, no MCP, no shell-out. Mirrors the ordered branch the
-step-9 prose specified, first match wins:
+Pure function — no I/O, no MCP, no shell-out. Applies an ordered branch,
+first match wins:
 
   1. `latest_tracking_comment.state` is null  → no drift (brand-new issue, or
      the latest tracking comment is a reconcile, which carries no `state`).

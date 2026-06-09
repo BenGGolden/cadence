@@ -38,7 +38,7 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
   `filter_candidates.py`, `render_status_report.py`,
   `render_sweep_report.py`, `promote_acceptance_criteria.py`).
   `route_fire.py` is the tick.md routing
-  orchestrator (the old steps 8–11 decision core) — it imports
+  orchestrator (the fire's routing decision core) — it imports
   `parse_comments`, `classify_drift`, `classify_gate`, and
   `emit_tracking_comment`'s formatters to emit one routing plan; the
   bootstrap still executes every Linear write. All are always
@@ -60,7 +60,7 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
 - `.github/workflows/validate.yml` — CI: manifest schema + command frontmatter.
 - Root docs: `README.md` (operational shape), `GUIDEPOSTS.md` (design
   principles / the *why*), `CHANGELOG.md` (what shipped, in order),
-  `BACKLOG.md` (ideas / deferred work), `MIGRATION.md` (Stokowski → Cadence).
+  `BACKLOG.md` (ideas / deferred work).
 
 ## Load-bearing invariants — do not break these
 

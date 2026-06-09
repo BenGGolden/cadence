@@ -661,22 +661,6 @@ not scaffolded for `/schedule` routines to call.
 
 ---
 
-## Migration from Stokowski
-
-See [MIGRATION.md](./MIGRATION.md). The short version:
-
-1. Audit your Linear board — Cadence requires one column per workflow
-   stage; Stokowski allowed many-to-one. Add the missing columns.
-2. Rename `tracker:` → `linear:` in workflow.yaml; flatten the
-   transitions block.
-3. Move prompt files to `.claude/agents/cadence/cadence-*.md` with subagent frontmatter.
-4. Move the global prompt to `.claude/prompts/global.md`.
-5. Existing `<!-- stokowski:state ... -->` comments are parsed
-   transparently — no rewrite needed for attempt history.
-6. Pick `/schedule` or `/loop` and stop the daemon.
-
----
-
 ## Non-goals
 
 - A long-running daemon. Each fire is one shot.
