@@ -4,7 +4,7 @@ All notable changes to Cadence are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] — 2026-06-08
+## [0.1.0] — 2026-06-09
 
 First public release. Cadence is a Claude Code plugin that turns a Linear
 board into a multi-agent workflow runner: issues flow through a state machine,
@@ -92,3 +92,5 @@ a local `/loop`.
   `scripts/README.md` (helper-script contract).
 - Installable via `/plugin` from the bundled `marketplace.json`, or from a
   local checkout with `--plugin-dir`.
+
+[0.1.0]: https://github.com/BenGGolden/cadence/releases/tag/v0.1.0
