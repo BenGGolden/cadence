@@ -3,9 +3,8 @@
 Ideas and follow-ups that aren't currently scheduled but should not be
 lost. Pull items into a feature branch when they become priorities.
 
-The original hardening track (P1–P9) shipped and is captured in
-[CHANGELOG.md](./CHANGELOG.md); the design principles those phases
-served live in [GUIDEPOSTS.md](./GUIDEPOSTS.md).
+The design principles behind Cadence live in
+[GUIDEPOSTS.md](./GUIDEPOSTS.md).
 
 ---
 
@@ -67,7 +66,7 @@ but loses platform-side context: reviewers, conversation, CI status).
   assuming GitHub.
 - `parse_comments`'s PR-URL regex generalises beyond `github.com/.../pull/N`
   to the host's MR/PR URL shape.
-- Validator rejects malformed `tools.pr_host` shapes (P1.1-style rule).
+- Validator rejects malformed `tools.pr_host` shapes (a new validator rule).
 
 **Open questions**:
 
@@ -94,7 +93,7 @@ that silently changes dispatch behaviour gets caught before it lands.
 
 **Why**: the current verification model is operator-run smoke tests
 against a real Linear project, one fire at a time. That worked for
-shipping the hardening phases but doesn't scale to "did the model
+the initial build but doesn't scale to "did the model
 upgrade subtly change how the Route step dispatches?" or "did the prose edit
 in step 3 break the cap walk for a candidate-state shape we don't
 hit in normal traffic?" A fake MCP that records what the bootstrap
