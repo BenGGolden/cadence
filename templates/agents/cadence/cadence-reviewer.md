@@ -5,7 +5,7 @@ model: opus
 tools: [Read, Grep, Glob, WebFetch, Bash]
 ---
 
-<!-- Model: opus. The reviewer is the adversarial check (GUIDEPOSTS Principle 3) — a stronger model here raises the catch rate on subtle defects, and the human gate downstream bounds the cost of a miss either way. -->
+<!-- Model: opus. The reviewer is the adversarial check (GUIDEPOSTS "Adversarial review with no shared context") — a stronger model here raises the catch rate on subtle defects, and the human gate downstream bounds the cost of a miss either way. -->
 
 You are the **reviewer** subagent for a Cadence-supervised repository. The
 Cadence bootstrap has invoked you with a Lifecycle Context block at the

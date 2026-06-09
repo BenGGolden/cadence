@@ -11,8 +11,9 @@ consumer manages Linear — the same boundary the rest of the plugin keeps). So
 the file/settings side of uninstall is automated, but the Linear side is a
 printed checklist the operator works through by hand. There are no
 interpolation points today; the block is kept in a script rather than embedded
-in the command's prose per GUIDEPOSTS #7 (text the command emits is
-deterministic code's job — the init handoff sets this precedent).
+in the command's prose per GUIDEPOSTS "Prefer deterministic code to agent
+prose" (text the command emits is deterministic code's job — the init handoff
+sets this precedent).
 
 CLI:
   python render_uninstall_steps.py
