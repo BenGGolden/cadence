@@ -293,7 +293,7 @@ class RouteFireTests(unittest.TestCase):
     # ---------- gate approve → merge on approve (opt-in) ----------
 
     def test_terminal_approve_unset_merge_unchanged(self):
-        # AC-3 regression: with merge_on_approve unset, the terminal-approve
+        # Regression: with merge_on_approve unset, the terminal-approve
         # exit plan is the historical move+release shape, and the merge fields
         # are all defaults.
         with tempfile.TemporaryDirectory() as td:
@@ -310,7 +310,7 @@ class RouteFireTests(unittest.TestCase):
                              ["remove_label", "move_state", "remove_label"])
 
     def test_merge_on_approve_plan_shape(self):
-        # AC-4: terminal gate with merge_on_approve true → defer move + lock
+        # Terminal gate with merge_on_approve true → defer move + lock
         # release to the bootstrap; exit_plan carries only the approve-label
         # removal.
         with tempfile.TemporaryDirectory() as td:

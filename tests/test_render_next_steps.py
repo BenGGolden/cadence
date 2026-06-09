@@ -1,7 +1,7 @@
 """Tests for scripts/render_next_steps.py.
 
 Two byte-identical fixture comparisons cover the broad-stroke acceptance
-criteria (AC-3 success path, AC-4 detection-failure path) — these guard
+criteria (success path, detection-failure path) — these guard
 against any future edit to the renderer that changes the visible
 operator handoff. Surrounding tests exercise the bool-flag parsing, the
 indentation of multi-line permissions blocks, and the omit-vs-include

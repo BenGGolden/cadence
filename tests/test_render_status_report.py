@@ -8,7 +8,7 @@ Config warnings (validator FAIL evidence + degraded fetches), and
 priority+updatedAt sorting.
 
 Three byte-identical fixture comparisons cover the broad-stroke acceptance
-criteria (AC-1, AC-2, AC-3) — these guard against any future edit to the
+criteria — these guard against any future edit to the
 renderer that changes the visible report shape.
 
 The validator-output dict is built directly in-test rather than running
@@ -226,16 +226,16 @@ class FixtureByteIdentityTests(unittest.TestCase):
                              msg=f"output drifted from {fixture_name}")
 
     def test_default_full_byte_identical(self):
-        """AC-1: default workflow + one issue per state fixture."""
+        """Default workflow + one issue per state fixture."""
         self._assert_matches_fixture(_default_full_payload(),
                                      "default_full.md")
 
     def test_empty_byte_identical(self):
-        """AC-2: empty issue set → sentinel line, no Concurrency section."""
+        """Empty issue set → sentinel line, no Concurrency section."""
         self._assert_matches_fixture(_empty_payload(), "empty.md")
 
     def test_concurrency_byte_identical(self):
-        """AC-3: one at-cap state + one over-cap state."""
+        """One at-cap state + one over-cap state."""
         self._assert_matches_fixture(_concurrency_payload(),
                                      "concurrency.md")
 

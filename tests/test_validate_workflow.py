@@ -293,7 +293,7 @@ class ValidateWorkflowTests(unittest.TestCase):
                              "FAIL")
 
     # ---------- rule 6: max_in_flight ----------
-    # AC-3: removing _rule6_max_in_flight from main() must break these.
+    # Removing _rule6_max_in_flight from main() must break these.
 
     def test_rule6_pass_when_no_caps(self):
         with tempfile.TemporaryDirectory() as td:
@@ -386,26 +386,26 @@ class ValidateWorkflowTests(unittest.TestCase):
                              "FAIL")
 
     # ---------- linear_to_workflow reverse map ----------
-    # AC-1/2/3: tick.md step 6 and status.md step 2 both consume this map.
+    # tick.md step 6 and status.md step 2 both consume this map.
 
     def test_linear_to_workflow_default_workflow_shape(self):
         with tempfile.TemporaryDirectory() as td:
             r = run_validator(td, _valid_workflow())
             self.assertEqual(r.returncode, 0, msg=r.stderr)
             mapping = json.loads(r.stdout)["linear_to_workflow"]
-            # AC-1: agent state's linear_state.
+            # agent state's linear_state.
             self.assertEqual(
                 mapping["Implementing"],
                 {"kind": "state", "workflow_state": "implement",
                  "linear_state_type": "agent"},
             )
-            # AC-2: pickup column.
+            # pickup column.
             self.assertEqual(
                 mapping["Todo"],
                 {"kind": "pickup", "workflow_state": None,
                  "linear_state_type": None},
             )
-            # AC-3: gate's waiting column.
+            # gate's waiting column.
             self.assertEqual(
                 mapping["Plan Review"],
                 {"kind": "gate_waiting", "workflow_state": "plan_review",

@@ -182,7 +182,7 @@ class ParseCommentsTests(unittest.TestCase):
         # If the attempt marker and the PR-bearing comment are from different
         # authors, the script must NOT claim the PR as the implementer's
         # summary. Removing the author-match constraint at parse_comments.py
-        # line 197 breaks this (AC-4).
+        # line 197 breaks this.
         comments = [
             attempt_marker("implement", 1, "2026-05-26T09:00:00Z", user="Alice"),
             pr_comment("https://github.com/o/r/pull/42", "feat/foo",
