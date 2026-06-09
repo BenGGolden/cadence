@@ -5,7 +5,8 @@ Issues flow through a state machine you define; subagents do the work;
 humans approve at gates; PRs land. No long-running daemon — each tick is
 one shot, fired by `/schedule` or `/loop`.
 
-Cadence is a reusable, packaged replacement for the per-project
+Cadence is a reusable, packaged take on the multi-agent supervisor pattern,
+inspired by the per-project
 [Stokowski](https://github.com/Sugar-Coffee/stokowski) supervisor. Consuming
 projects install the plugin, run `/cadence:init`, edit one YAML
 file and three subagent prompts, point a scheduled routine at
