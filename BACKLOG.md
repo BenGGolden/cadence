@@ -44,29 +44,13 @@ one is the longer-horizon companion.
 
 ---
 
-## Optional `merge` state between `review` and `done` — RESOLVED
-
-Shipped (Unreleased) as the opt-in **`merge_on_approve`** gate field rather
-than a new `merge` workflow state + `merger` subagent. A PR merge reads no
-code and makes no judgment, so it is not agentic work; instead the bootstrap
-runs it as a transition-coupled side-effect (read PR state, merge if open,
-advance to the terminal — escalate to `cadence-needs-human` on failure or a
-closed-unmerged PR), mirroring the AC-promotion precedent. No new state,
-subagent, or Linear column. The companion "PR still open" status warning was
-explicitly dropped (unreliable — the human may have merged manually). See
-[CHANGELOG.md](./CHANGELOG.md) and the `merge_on_approve` section in
-[README.md](./README.md).
-
----
-
 ## PR operations for non-GitHub hosts (GitLab / Bitbucket)
 
-**Status update**: GitHub PR operations are no longer `gh`-based. The
-bootstrap now creates/reads/merges PRs via the **GitHub MCP** connector
-(see CHANGELOG "PR operations via GitHub MCP"), and the implementer only
-`git push`es. So this item is narrowed to **non-GitHub hosts only** — a
-GitLab- or Bitbucket-hosted consumer has no equivalent connector path and
-currently gets branch-pushed-but-no-MR.
+**Scope**: GitHub PR operations run through the **GitHub MCP** connector —
+the bootstrap creates/reads/merges PRs and the implementer only `git push`es.
+This item covers **non-GitHub hosts only** — a GitLab- or Bitbucket-hosted
+consumer has no equivalent connector path and currently gets
+branch-pushed-but-no-MR.
 
 **Idea**: route the bootstrap's PR create/read/merge to a host other than
 GitHub when the consumer's remote isn't GitHub — either via that host's own

@@ -408,18 +408,17 @@ If your MCP server uses a namespace whose prefix does **not** contain
 shipped regex assumes `linear` appears somewhere in the server name.
 
 Leave every other write/delete tool on Ask (or off) — `create_attachment`,
-`delete_comment`, `create_issue_label` (labels are created up front per SMOKE
-prereqs, not by the plugin), `save_document`, `save_project`, and any other
+`delete_comment`, `create_issue_label` (labels are created up front during
+setup, not by the plugin), `save_document`, `save_project`, and any other
 workspace-wide mutation. Keeping these on Ask means a hallucinated call or
 future prose change fails closed instead of silently mutating Linear.
 
 ### Environment variables
 
-**None.** Cadence sets no environment variables. Earlier versions needed
-`GH_TOKEN` (and a `GH_REPO`) for the implementer's `gh` CLI; PR operations now
-run via the GitHub connector's MCP tools and `git` push, both authenticated by
-the **bound GitHub repository** — so there is no token or repo variable to set
-in either mode.
+**None.** Cadence sets no environment variables — no `GH_TOKEN`, no `GH_REPO`.
+PR operations run via the GitHub connector's MCP tools and `git` push, both
+authenticated by the **bound GitHub repository**, so there is no token or repo
+variable to set in either mode.
 
 ---
 
