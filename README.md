@@ -12,6 +12,13 @@ projects install the plugin, run `/cadence:init`, edit one YAML
 file and three subagent prompts, point a scheduled routine at
 `/cadence:tick`, and watch Linear.
 
+> **Status: 0.1.0 — early.** I run Cadence on my own projects; it has had
+> little testing beyond that. Expect rough edges and **breaking changes
+> before 1.0** — the `workflow.yaml` shape, command surface, and scaffolded
+> layout may all shift. Try it, and please
+> [file issues](https://github.com/BenGGolden/cadence/issues) — bug reports
+> from a second operator are exactly what 0.x needs.
+
 ---
 
 ## What it does
