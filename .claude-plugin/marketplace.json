@@ -11,7 +11,11 @@
   "plugins": [
     {
       "name": "cadence",
-      "source": "./"
+      "source": {
+        "source": "url",
+        "url": "https://github.com/BenGGolden/cadence.git",
+        "ref": "v0.1.0"
+      }
     }
   ]
 }
