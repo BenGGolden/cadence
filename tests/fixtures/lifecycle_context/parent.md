@@ -2,36 +2,38 @@
 
 ## Lifecycle Context
 
-- **Issue:** EXAMPLE-1 — Hypothetical entry-state issue
-- **URL:** https://linear.app/example/issue/EXAMPLE-1
-- **State:** plan
+- **Issue:** ENG-42 — Wire up new dashboard widget
+- **URL:** https://linear.app/eng/issue/ENG-42
+- **State:** implement
 - **Attempt:** 1
-- **Priority:** 3 (Medium)
-- **Branch (Linear suggested):** example/example-1-hypothetical-entry-state-issue
+- **Priority:** 2 (High)
+- **Branch (Linear suggested):** eng/eng-42-wire-up-dashboard-widget
 - **Base branch:** main
-- **Labels:** (none)
+- **Labels:** frontend, P1
 
 ### Description
 
-No description provided.
+Add the widget. Plot foo vs bar.
+
+## Acceptance Criteria
+- [ ] **AC-1** Widget renders
+- [ ] **AC-2** Tests cover empty state
 
 ### Parent Context
 
-This issue belongs to the parent issue **EXAMPLE-9 — Hypothetical epic this issue belongs to**. The shared spec
+This issue belongs to the parent issue **ENG-1 — Dashboard revamp epic**. The shared spec
 below is inherited from that parent — it frames the epic this work is
 part of. It is **not** the task itself; your task is described above.
 
-Shared spec for the epic. Every sub-issue inherits this context
-automatically, so it lives once on the parent instead of being
-repeated on each ticket.
+Shared spec for the dashboard revamp.
 
 ## Shared Acceptance Criteria
 - [ ] All widgets use the shared theme tokens.
+- [ ] Empty states follow the common pattern.
 
 ### Transitions
 
-- On success → **plan_review** (Linear: "Plan Review")
-- Gate downstream: human will see this in Linear column "Plan Review" and decide approve/rework.
+- On success → **agent_review** (Linear: "Reviewing")
 
 ### When Done
 

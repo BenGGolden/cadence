@@ -4,6 +4,17 @@ All notable changes to Cadence are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Subagent prompts now inherit a parent issue's description as a **Parent
+  Context** section (rendered after Description, before Transitions, in both
+  the default and adversarial variants), so an epic's shared spec lives once
+  on the parent issue instead of being repeated on every sub-issue. Best-effort
+  and always-on: when an issue has no parent, nothing changes. The inherited
+  body is capped (default 4000 chars) to keep it from dominating the prompt.
+
 ## [0.1.0] — 2026-06-09
 
 First public release. Cadence is a Claude Code plugin that turns a Linear

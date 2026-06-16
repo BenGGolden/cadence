@@ -88,6 +88,19 @@ def _default_issue():
     }
 
 
+def _default_parent():
+    return {
+        # This connector returns the identifier under `id` (no separate
+        # `identifier` field); the render helper reads `identifier or id`.
+        "id": "ENG-1",
+        "title": "Dashboard revamp epic",
+        "description": ("Shared spec for the dashboard revamp.\n\n"
+                        "## Shared Acceptance Criteria\n"
+                        "- [ ] All widgets use the shared theme tokens.\n"
+                        "- [ ] Empty states follow the common pattern."),
+    }
+
+
 def _parse_output(rework_context=None, pr_url=None):
     return {
         "latest_tracking_comment": {
@@ -111,7 +124,8 @@ def _write(path, obj):
 
 def run_compose(tmpdir, *, config, issue=None, target_state=None, attempt=None,
                 parse_output=None, rework=False, dry_run=False,
-                global_prompt_path=None, default_branch=None, extra_args=()):
+                global_prompt_path=None, default_branch=None, parent=None,
+                parent_max_chars=None, extra_args=()):
     tmpdir = Path(tmpdir)
     cfg_path = tmpdir / "config.json"
     _write(cfg_path, config)
@@ -129,6 +143,12 @@ def run_compose(tmpdir, *, config, issue=None, target_state=None, attempt=None,
             "--attempt", str(attempt),
             "--parse-comments-output", str(parse_path),
         ]
+    if parent is not None:
+        parent_path = tmpdir / "parent.json"
+        _write(parent_path, parent)
+        args += ["--parent", str(parent_path)]
+    if parent_max_chars is not None:
+        args += ["--parent-max-chars", str(parent_max_chars)]
     if rework:
         args.append("--rework")
     if global_prompt_path is not None:
@@ -287,6 +307,106 @@ class ComposeLifecycleContextTests(unittest.TestCase):
                             rework=False)
             self.assertEqual(r.returncode, 0, msg=r.stderr)
             self.assertNotIn("### Rework Context", r.stdout)
+
+    # ---------- parent context ----------
+
+    def test_parent_present_renders_section_matches_fixture(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_compose(td, config=_default_config(),
+                            issue=_default_issue(),
+                            target_state="implement", attempt=1,
+                            parse_output=_parse_output(),
+                            parent=_default_parent())
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            expected = (FIXTURES / "parent.md").read_text(encoding="utf-8")
+            self.assertEqual(r.stdout, expected)
+
+    def test_parent_absent_omits_section(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_compose(td, config=_default_config(),
+                            issue=_default_issue(),
+                            target_state="implement", attempt=1,
+                            parse_output=_parse_output())
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertNotIn("### Parent Context", r.stdout)
+
+    def test_parent_empty_description_omits_section(self):
+        for desc in ("", "   \n\t  "):
+            parent = _default_parent()
+            parent["description"] = desc
+            with tempfile.TemporaryDirectory() as td:
+                r = run_compose(td, config=_default_config(),
+                                issue=_default_issue(),
+                                target_state="implement", attempt=1,
+                                parse_output=_parse_output(),
+                                parent=parent)
+                self.assertEqual(r.returncode, 0, msg=r.stderr)
+                self.assertNotIn("### Parent Context", r.stdout)
+
+    def test_parent_section_placed_between_description_and_transitions(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_compose(td, config=_default_config(),
+                            issue=_default_issue(),
+                            target_state="implement", attempt=1,
+                            parse_output=_parse_output(),
+                            parent=_default_parent())
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            desc_i = r.stdout.index("### Description")
+            parent_i = r.stdout.index("### Parent Context")
+            trans_i = r.stdout.index("### Transitions")
+            self.assertLess(desc_i, parent_i)
+            self.assertLess(parent_i, trans_i)
+
+    def test_parent_rendered_in_adversarial_variant(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = run_compose(td, config=_default_config(),
+                            issue=_default_issue(),
+                            target_state="agent_review", attempt=1,
+                            parse_output=_parse_output(),
+                            parent=_default_parent())
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertIn("### Parent Context", r.stdout)
+            self.assertIn("**Branch (under review):**", r.stdout)
+
+    def test_parent_coexists_with_rework(self):
+        rework = [{"body": "fix it", "author": "Alice",
+                   "createdAt": "2026-05-27T10:00:00Z"}]
+        with tempfile.TemporaryDirectory() as td:
+            r = run_compose(td, config=_default_config(),
+                            issue=_default_issue(),
+                            target_state="implement", attempt=2,
+                            parse_output=_parse_output(rework_context=rework),
+                            rework=True, parent=_default_parent())
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertIn("### Parent Context", r.stdout)
+            self.assertIn("### Rework Context", r.stdout)
+
+    def test_parent_description_truncated_at_max_chars(self):
+        parent = _default_parent()
+        parent["description"] = "x" * 10_000
+        with tempfile.TemporaryDirectory() as td:
+            r = run_compose(td, config=_default_config(),
+                            issue=_default_issue(),
+                            target_state="implement", attempt=1,
+                            parse_output=_parse_output(),
+                            parent=parent, parent_max_chars=100)
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertIn("_(parent description truncated)_", r.stdout)
+            # Body trimmed to the cap, not the full 10k.
+            self.assertNotIn("x" * 200, r.stdout)
+
+    def test_parent_max_chars_zero_no_truncation(self):
+        parent = _default_parent()
+        parent["description"] = "y" * 10_000
+        with tempfile.TemporaryDirectory() as td:
+            r = run_compose(td, config=_default_config(),
+                            issue=_default_issue(),
+                            target_state="implement", attempt=1,
+                            parse_output=_parse_output(),
+                            parent=parent, parent_max_chars=0)
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertNotIn("_(parent description truncated)_", r.stdout)
+            self.assertIn("y" * 10_000, r.stdout)
 
     # ---------- branch derivation ----------
 
