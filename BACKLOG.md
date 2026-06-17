@@ -112,6 +112,107 @@ mutable, unreviewed — a prompt-injection surface).
 
 ---
 
+## Interactive epic decomposition (roadmap → epic → reviewable-PR steps)
+
+**Status**: spitballed, not designed. This entry captures a discussion, not a
+decision. Builds directly on the shipped Parent Context feature (0.2.0) — the
+children created here are exactly the sub-issues that inherit the epic's
+description as Parent Context.
+
+**The workflow we're serving**: a human builds a high-level roadmap with a
+Claude; each roadmap item is effectively an **epic**; planning an item in
+detail produces a series of **steps**; each step is one unit of work. We want
+that epic → steps breakdown to be easy, and the steps to flow through Cadence
+normally.
+
+**Core idea**: an **interactive** epic-planning command (run *with* the
+operator, outside a tick — initial planning is naturally hands-on) that:
+
+- creates the **parent** (epic) issue if it doesn't already exist,
+- creates the **sub-issues** (steps) as children, each with acceptance criteria
+  validated to the same bar [commands/create-ticket.md](./commands/create-ticket.md)
+  enforces,
+- **writes to Linear** and drops the work into `pickup_state` so it's
+  immediately eligible — unlike create-ticket today, which only emits
+  paste-ready Markdown.
+
+The human is the gate by construction (they're present, judging the breakdown),
+which keeps this on the right side of the "humans gate where machines can't
+judge" / no-autonomy-creep guideposts.
+
+**Decomposition criterion — reviewable PR seams, not context size**: each
+Cadence issue is one branch → one PR (reused on rework), so the binding
+constraint on "too big for one shot" is **human PR reviewability**, not the
+context window. (Runaway *cost* is already handled separately by the per-run
+spend ceiling; don't conflate the two.) So decomposition means *split the work
+along the seams where it becomes independently-mergeable, independently-
+reviewable PRs* — each step = one coherent diff. That's reasoning a planner can
+articulate ("auth refactor + migration + UI wiring → three reviewable chunks")
+rather than a magic threshold.
+
+**Ordering falls out of one-PR-per-step**: those PRs usually have an order (the
+migration merges before the UI that needs it). So decomposition produces a
+**dependency-ordered** set, not N independent children — and Cadence already
+honours this: the pickup filter skips candidates whose `blockers` are
+unresolved workflow states
+([filter_candidates.py](./templates/cadence/hooks/filter_candidates.py) lines
+~284–289). The command sets up blocker links between children; the existing tick
+machinery feeds them through in order.
+
+The spine that emerges, all from pieces already built or half-built: **decompose
+along reviewable-PR seams → children carry order via blockers → children carry
+shared spec via Parent Context.**
+
+**Companion idea — planner flags oversized issues**: rather than requiring the
+operator to pre-decide "this is an epic," let the **planner subagent detect**
+that an issue would produce more than one reviewable PR and *recommend*
+decomposition. Mechanics that keep it honest:
+
+- The planner **returns** the recommendation (per single-writer); the bootstrap
+  escalates it — e.g. a `cadence-needs-decomposition` label + comment, mirroring
+  the needs-human escalation.
+- It's a **routing decision, not a failure** — it must NOT burn an attempt
+  count (keep failure records distinct from attempt markers).
+- The operator still decides: proceed as a one-shot anyway, or run the
+  interactive decompose command on it.
+
+This makes epics arise two ways, both feeding the *same* interactive command:
+(1) operator knows up front, (2) planner catches it mid-flow. When a flagged
+task is decomposed, its existing ACs/context become the **epic's description**,
+inherited by the children.
+
+**The create-ticket naming smell**: this raises "why doesn't
+`/cadence:create-ticket` actually create a ticket?" There's no *principled*
+reason — the sole-Linear-writer invariant is scoped to the tick lifecycle, not
+operator-invoked commands (init writes too). The original paste-only choice was
+pragmatic: no hard MCP-write dependency, let Linear's New-Issue form supply
+team/project/state defaults, duplicate safety. None are blockers now —
+`workflow.yaml` already carries team / project / `pickup_state`. Candidate
+evolution: create-ticket gains a "create for real" mode (paste-only as
+fallback), and single-ticket vs epic+children may want to be **one authoring
+surface with a flag**, not two commands.
+
+**Open questions / decisions**:
+
+- One unified authoring command (ticket *or* epic+children) vs two? And does it
+  write to Linear or keep create-ticket's paste-only stance (lean: write)?
+- **What happens to the epic after decomposition?** It's a container now and
+  must not be picked up for *implementation*. Needs an exclude-from-pickup
+  signal — which is the same "ignore label" idea raised separately (a
+  `cadence-ignore`-style label mirroring the `cadence_needs_human` exclusion in
+  the pickup filter). These two want to be designed together.
+- How does the planner estimate eventual PR size before implementation? Light
+  investigation + model judgment (files touched, independent concerns), human
+  as the gate for false positives — resist a deterministic threshold script.
+- Depth: mirror the depth-1 decision — do epic → steps (one level of children)
+  and leave roadmap → epic as a project/doc concern, at least to start.
+
+**Why not now**: spitballing stage; no spec, no decision. Pick this up by first
+capturing the chosen shape, then specing the one authoring command before any
+code.
+
+---
+
 ## Regression harness (fake Linear MCP + golden files)
 
 **Idea**: a fake-MCP fixture + golden-file comparison + CI step running
