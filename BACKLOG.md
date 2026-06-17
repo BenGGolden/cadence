@@ -84,6 +84,34 @@ part of a broader platforms refactor.
 
 ---
 
+## Ancestor-walk for inherited issue context (beyond depth 1)
+
+**Status**: single-parent (depth 1) **landed** — a fired issue with a parent
+now inherits the parent's description as a Parent Context section in the
+subagent prompt (see [compose_lifecycle_context.py](./templates/cadence/hooks/compose_lifecycle_context.py)
+and [commands/tick.md](./commands/tick.md) step 8). This item is the remaining
+extension.
+
+**Idea**: walk more than one level up the parent chain, inheriting context from
+grandparents and higher ancestors, not just the immediate parent.
+
+**Shape sketch**:
+
+- A configurable `ancestor_context_depth` knob (default 1, preserving today's
+  behaviour) plus a total size budget across all inherited sources.
+- Nearest-ancestor-closest rendering (the immediate parent rendered last /
+  nearest the task), with a cycle guard.
+- Per-section size budgeting so one large ancestor can't crowd out the rest.
+
+**Why not now**: the actionable feature spec lives on the immediate parent;
+higher ancestors trend toward roadmap/status prose, add sequential MCP
+round-trips per level, and widen the silent-drift surface. Make depth a config
+knob only if a real multi-level need appears. Pulling a Linear **project**
+description as context was considered and rejected (human status prose,
+mutable, unreviewed — a prompt-injection surface).
+
+---
+
 ## Regression harness (fake Linear MCP + golden files)
 
 **Idea**: a fake-MCP fixture + golden-file comparison + CI step running

@@ -491,6 +491,24 @@ If the router's plan set `rework: true` (this fire entered via a gate
 **rework** route), append `--rework` so the script includes the Rework
 Context section.
 
+**Parent context (best-effort).** Inspect the locked `issue` for a
+`parentId` field. The Linear MCP `get_issue` sets `parentId` to the parent's
+identifier string (e.g. `"TEST-6"`) **only when a parent exists** — the field
+is absent on parentless issues, and it does **not** carry the parent's
+description. So:
+
+- If `issue` has no `parentId` (or it's empty) → do not pass `--parent`.
+- If `issue.parentId` is set → call the Linear MCP **`get_issue`** with
+  `id = issue.parentId`, Write whatever object it returns **verbatim** to
+  `.cadence/parent.json` (call it `parentJsonPath`), and append
+  `--parent <parentJsonPath>`. Do **not** inspect the returned object or judge
+  whether it's "usable" — the script decides whether to render (it emits
+  nothing when the parent's description is missing or empty).
+
+This fetch is **best-effort and non-fatal.** If the `get_issue` call itself
+errors, log nothing to Linear and proceed **without** `--parent`. Shared
+context must never block or fail a fire.
+
 The script reads:
 - The config, by re-validating `.claude/workflow.yaml` internally
   (`--workflow-path`) — `states[<targetState>]` for `adversarial_context` /
@@ -504,6 +522,9 @@ The script reads:
   `rework_context` (the human comments rendered when `--rework` is
   passed) and `latest_implementer_summary.pr_url` (rendered as the
   **PR:** line in the adversarial-context variant).
+- The parent issue object (`parentJsonPath`, written above) when the issue
+  has a parent — `identifier` / `title` / `description`, rendered as the
+  **Parent Context** section. Omitted when the issue has no parent.
 - `.claude/prompts/global.md` if it exists — appended verbatim after two
   blank lines.
 
