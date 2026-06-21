@@ -202,12 +202,15 @@ left untouched and the re-running planner re-proposes per the feedback.
 To draft well-formed tickets faster *locally*, run `/cadence:create-ticket`
 in your Claude Code session. It walks you through the template at
 `.claude/ticket-template.md`, validates each AC against a vagueness
-heuristic, and emits a paste-ready Markdown blob you drop into Linear's
-"New Issue" form. The command does not touch Linear directly — keeping
-local sessions free of any Linear MCP requirement — and does not invoke
-any subagent. It's now an optional shortcut, not a precondition: a ticket
-created from Linear's UI or imported from another tracker still gets
-planned, with the planner supplying any missing AC for you to approve.
+heuristic, and — after a confirmation preview — **creates the issue
+directly in Linear** in the workflow's pickup state, so it's eligible for
+the next tick. When it can't write to Linear (no usable `workflow.yaml`,
+missing team / pickup-state config, you decline, or no Linear MCP write verb
+is available), it falls back to emitting a paste-ready Markdown blob you drop
+into Linear's "New Issue" form. It does not invoke any subagent. It's an
+optional shortcut, not a precondition: a ticket created from Linear's UI or
+imported from another tracker still gets planned, with the planner supplying
+any missing AC for you to approve.
 
 ### Mode B — Local (`/loop`)
 
