@@ -12,13 +12,14 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
 
 ## Repo map
 
-- `commands/` — the six slash commands (`tick`, `init`, `sweep`, `status`,
-  `create-ticket`, `uninstall`). Each `.md` is **dispatch prose the harness
-  executes**, not documentation. `tick.md`, `sweep.md`, and `status.md` are
-  also copied to the consumer's `.claude/commands/cadence/` at init so
+- `commands/` — the seven slash commands (`tick`, `init`, `sweep`, `status`,
+  `create-ticket`, `plan-epic`, `uninstall`). Each `.md` is **dispatch prose the
+  harness executes**, not documentation. `tick.md`, `sweep.md`, and `status.md`
+  are also copied to the consumer's `.claude/commands/cadence/` at init so
   `/schedule` cloud routines can dispatch them without resolving a plugin root.
-  `uninstall.md` (`/cadence:uninstall`) reverses init — it is plugin-only and
-  *not* scaffolded, since it's a deliberate local operation.
+  `plan-epic.md` (`/cadence:plan-epic`, the interactive epic decomposer) and
+  `uninstall.md` (`/cadence:uninstall`, reverses init) are plugin-only and *not*
+  scaffolded — like `create-ticket.md`, they're deliberate local operations.
 - `templates/` — **mirror of the consumer's `.claude/` tree.** Everything
   here is copied 1:1 to the same relative path under `.claude/` by
   `/cadence:init`: `workflow.yaml`, `prompts/global.md`, `ticket-template.md`,

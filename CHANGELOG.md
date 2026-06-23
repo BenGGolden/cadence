@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- New **`/cadence:plan-epic`**: interactively decompose an epic into ordered
+  sub-issues in Linear. It creates or identifies the parent epic in a
+  **non-workflow state** (so the epic is never picked up as a task), files the
+  children in the workflow's pickup state under the epic, and sets `blockedBy`
+  links only where a step must merge before another — so unblocked steps flow
+  first on the next `/cadence:tick`. Each child's acceptance criteria are
+  validated to the same bar `/cadence:create-ticket` enforces, and every child
+  inherits the epic's description as its Parent Context (0.2.0). All Linear
+  writes happen only after a single confirmation preview. Plugin-only,
+  invokes no subagent, and requires no new permission (`save_issue` is already
+  in the consumer's pre-allowed set).
+
 ### Changed
 
 - `/cadence:create-ticket` now **creates the issue directly in Linear** (in

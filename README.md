@@ -71,9 +71,9 @@ This copies the plugin into `~/.claude/plugins/` — no `--plugin-dir` flag on
 every launch. See the [plugin marketplaces docs][marketplaces] for managing and
 updating marketplaces.
 
-Once loaded, the six slash commands appear under the `cadence:` namespace:
+Once loaded, the seven slash commands appear under the `cadence:` namespace:
 `/cadence:tick`, `/cadence:init`, `/cadence:sweep`, `/cadence:status`,
-`/cadence:create-ticket`, `/cadence:uninstall`.
+`/cadence:create-ticket`, `/cadence:plan-epic`, `/cadence:uninstall`.
 
 [marketplaces]: https://code.claude.com/docs/en/plugin-marketplaces
 
@@ -211,6 +211,20 @@ into Linear's "New Issue" form. It does not invoke any subagent. It's an
 optional shortcut, not a precondition: a ticket created from Linear's UI or
 imported from another tracker still gets planned, with the planner supplying
 any missing AC for you to approve.
+
+To break a larger piece of work into a sequence of reviewable PRs, run
+`/cadence:plan-epic` *locally*. It interactively decomposes an **epic** into
+ordered sub-issues: it creates or identifies the parent epic in a **non-workflow
+state** (so the epic is never picked up as a task), validates each child's
+acceptance criteria against the same vagueness heuristic, and — after a single
+confirmation preview — **writes everything to Linear** in one shot. The children
+land in the workflow's pickup state under the epic, with `blockedBy` links only
+where a step must merge before another, so the unblocked steps flow first on the
+next tick. Each child inherits the epic's description as its **Parent Context**,
+so the shared spec lives once on the parent instead of being repeated on every
+sub-issue. Point it at an existing backlog issue (`/cadence:plan-epic ENG-12`)
+to add children to it, or run it with no argument (or `-`) to create a brand-new
+epic. Like `/cadence:create-ticket`, it invokes no subagent.
 
 ### Mode B — Local (`/loop`)
 
