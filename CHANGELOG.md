@@ -4,6 +4,19 @@ All notable changes to Cadence are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- `/cadence:create-ticket` now **creates the issue directly in Linear** (in
+  the workflow's pickup state, under the configured team/project) after a
+  confirmation preview, so a drafted ticket is immediately eligible for the
+  next `/cadence:tick`. It falls back to the previous paste-ready Markdown
+  output when Linear can't be written — no usable `workflow.yaml`, missing
+  team / pickup-state config, the operator declines, or no Linear MCP write
+  verb is available. No new permission is required (`save_issue` is already in
+  the consumer's pre-allowed set).
+
 ## [0.2.0] — 2026-06-16
 
 ### Added
