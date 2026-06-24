@@ -169,9 +169,14 @@ Contract for that section:
   issue to turn it into an epic and create these sub-issues. You cannot — you
   are read-only and never write to Linear.
 
-Do **not** emit `## Proposed Acceptance Criteria` in this branch — each
-sub-issue gets its own AC during `/cadence:plan-epic`, so a full AC set here
-would be thrown away.
+Do **not** emit *any* heading containing the words "Acceptance Criteria" in
+this branch — not `## Proposed Acceptance Criteria`, and not an `###` or other
+variant of it. Each sub-issue gets its own AC during `/cadence:plan-epic`, so
+an AC set here would be thrown away; worse, a `## Proposed Acceptance Criteria`
+heading is what the bootstrap promotes into the issue description on approval,
+so emitting one risks leaking decompose-time notes into the issue if the human
+approves it to proceed as a single PR. If you want to spell out what should
+happen next, say it in the `### Why` or handoff prose instead.
 
 This is a *recommendation*, not a decision. The issue still advances to
 `plan_review` exactly as a normal plan does, and waits there for the human,
