@@ -48,6 +48,26 @@ returned summary verbatim as a comment.
    prerequisite, contradiction), say so explicitly in your summary so the
    bootstrap records the failure and a human can intervene.
 
+## Is this one reviewable PR?
+
+Before you write a plan, judge whether the issue can land as **one
+human-reviewable PR**. Each Cadence issue becomes **one branch → one PR**
+(reused on rework) that a human reviews. The binding limit on issue size is
+therefore **whether a reviewer can read the resulting diff well in one
+sitting** — *not* the context window or token budget. Runaway cost is handled
+separately by the per-run budget; do not invoke it here.
+
+This is a **judgment call, not a threshold.** Weigh the breadth of files and
+subsystems the work touches, the number of *independent* concerns it bundles,
+and whether it naturally splits into separately-mergeable chunks (e.g.
+migration → API → UI). Resist inventing a numeric rule — there is no
+file-count or line-count cutoff.
+
+Default to trusting the issue's sizing: **most issues are appropriately
+sized.** Only flag decomposition when the work *clearly* spans more than one
+reviewable PR. When it does, take the decompose branch in "What to return"
+below instead of producing a full plan.
+
 ## Acceptance-criteria handling
 
 Cadence's quality bar still applies — but it now governs what you
@@ -114,6 +134,53 @@ Include the trailing `## Proposed Acceptance Criteria` section **only** when
 you are proposing AC (the description has no valid AC, or you found a gap to
 augment — see "Acceptance-criteria handling" above). When the description's
 AC are already complete, omit the section entirely.
+
+### When the issue is too big for one PR
+
+If you judged above that the issue **clearly spans more than one reviewable
+PR**, do *not* produce the plan structure above — a full implementation plan
+would be wasted, because the work is going to be split. Instead make your
+summary's primary content a `## Recommendation: Decompose` section:
+
+```
+## Recommendation: Decompose
+
+This issue should be split into separate issues **before** implementation.
+
+### Proposed sub-issues
+1. <one-line title> — <one-sentence scope>
+2. <one-line title> — <one-sentence scope> (depends on #1)
+3. ...
+
+### Why
+Brief reason it exceeds one reviewable PR — the seams you found (the
+independent concerns / mergeable chunks that make it more than one diff).
+```
+
+Contract for that section:
+
+- State plainly that the issue should be split before implementation.
+- List the **proposed sub-issues** — each a one-line title plus a
+  one-sentence scope — in **dependency order** where order matters, calling
+  out which steps depend on which. These become the children and `blockedBy`
+  links in `/cadence:plan-epic`.
+- Briefly say *why* it exceeds one reviewable PR (the seams you found).
+- Close with the handoff: a human can run **`/cadence:plan-epic`** on this
+  issue to turn it into an epic and create these sub-issues. You cannot — you
+  are read-only and never write to Linear.
+
+Do **not** emit *any* heading containing the words "Acceptance Criteria" in
+this branch — not `## Proposed Acceptance Criteria`, and not an `###` or other
+variant of it. Each sub-issue gets its own AC during `/cadence:plan-epic`, so
+an AC set here would be thrown away; worse, a `## Proposed Acceptance Criteria`
+heading is what the bootstrap promotes into the issue description on approval,
+so emitting one risks leaking decompose-time notes into the issue if the human
+approves it to proceed as a single PR. If you want to spell out what should
+happen next, say it in the `### Why` or handoff prose instead.
+
+This is a *recommendation*, not a decision. The issue still advances to
+`plan_review` exactly as a normal plan does, and waits there for the human,
+who either approves it (proceed as a single PR anyway) or decomposes it.
 
 If this is a **rework run** (the Lifecycle Context will say so), open the
 summary with a short paragraph naming what changed in the plan versus the

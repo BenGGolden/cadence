@@ -8,6 +8,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- The **planner** now recognises issues too large to land as a single
+  human-reviewable PR and, instead of a one-shot plan, returns a
+  `## Recommendation: Decompose` section with a proposed sub-issue breakdown in
+  dependency order. The issue still advances to `plan_review` and waits for a
+  human, who can run `/cadence:plan-epic` on it to create the sub-issues. The
+  planner stays read-only — it recommends; the human decides at the gate.
 - New **`/cadence:plan-epic`**: interactively decompose an epic into ordered
   sub-issues in Linear. It creates or identifies the parent epic in a
   **non-workflow state** (so the epic is never picked up as a task), files the
