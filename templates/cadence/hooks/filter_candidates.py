@@ -45,14 +45,18 @@ Examples for the default workflow
 
 Input shapes (filter mode):
   --candidates  JSON array; each element is an MCP issue with these
-                fields (extras are ignored):
-                  identifier              str
-                  current_linear_state    str
+                fields (extras are ignored). The Linear MCP's native
+                field names are accepted alongside the canonical ones, so
+                the bootstrap can pass issues through without rewriting:
+                  identifier / id         str (human key, e.g. ENG-3)
+                  current_linear_state    str (or native `status`)
                   labels                  list (of names or {"name": ...}
                                           dicts; the GraphQL
                                           {"nodes": [...]} shape is also
                                           tolerated)
-                  priority                int | null
+                  priority                int | null (or the native
+                                          {"value": int, "name": str}
+                                          object)
                   createdAt               ISO 8601 str
                   blockers                optional list of blocker
                                           Linear-state strings
@@ -112,7 +116,13 @@ def _priority_rank(p):
 
     Linear priority numbers: 1=Urgent, 2=High, 3=Medium, 4=Low,
     0=No priority. Per tick.md step 3, null and "No priority" sort last.
+
+    Accepts either the bare int or the Linear MCP's native object shape
+    `{"value": <int>, "name": "High"}`, so the bootstrap can pass the
+    MCP issue through without rewriting the priority field.
     """
+    if isinstance(p, dict):
+        p = p.get("value")
     if isinstance(p, bool) or p is None:
         return float("inf")
     if isinstance(p, int):
@@ -123,6 +133,31 @@ def _priority_rank(p):
 def _created_at_key(c):
     v = c.get("createdAt") or c.get("created_at") or ""
     return v if isinstance(v, str) else ""
+
+
+def _column(c):
+    """The issue's current Linear column name.
+
+    Prefers Cadence's canonical `current_linear_state`; falls back to the
+    Linear MCP's native `status` so the bootstrap can pass the MCP issue
+    through unrewritten.
+    """
+    v = c.get("current_linear_state")
+    if not (isinstance(v, str) and v):
+        v = c.get("status")
+    return v if isinstance(v, str) else None
+
+
+def _identifier(c):
+    """The issue's human key (e.g. ENG-3).
+
+    Prefers `identifier`; falls back to the MCP's native `id`, which in
+    the Linear MCP `list_issues`/`get_issue` payload holds the human key.
+    """
+    v = c.get("identifier")
+    if not (isinstance(v, str) and v):
+        v = c.get("id")
+    return v if isinstance(v, str) else None
 
 
 def _build_plan(config):
@@ -175,7 +210,7 @@ def _effective_target(candidate, *, pickup_state, entry_state, states,
                       gate_by_linear, state_by_linear,
                       label_approve, label_rework):
     """Return (target_state_name | None, drain_exempt_gate | None)."""
-    col = candidate.get("current_linear_state")
+    col = _column(candidate)
     label_set = set(_label_names(candidate.get("labels")))
     has_approve = bool(label_approve) and label_approve in label_set
     has_rework = bool(label_rework) and label_rework in label_set
@@ -264,7 +299,7 @@ def _filter(config, candidates, in_flight_counts):
     for c in candidates:
         if not isinstance(c, dict):
             continue
-        col = c.get("current_linear_state")
+        col = _column(c)
         if not isinstance(col, str) or col not in workflow_linear_states:
             continue
         # Terminal-column issues have no useful work for any subagent.
@@ -319,7 +354,7 @@ def _filter(config, candidates, in_flight_counts):
                     blocked_seen.add(b)
                     blocked_states.append(b)
             continue
-        ident = c.get("identifier")
+        ident = _identifier(c)
         if isinstance(ident, str) and ident:
             ordered.append(ident)
 

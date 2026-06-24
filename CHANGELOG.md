@@ -37,6 +37,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   verb is available. No new permission is required (`save_issue` is already in
   the consumer's pre-allowed set).
 
+### Fixed
+
+- `/cadence:tick` no longer forces the bootstrap to hand-translate Linear MCP
+  fields when writing `candidates.json`. `filter_candidates.py` now accepts the
+  MCP's native field names directly — `id` for the human key, `status` for the
+  column, and the `{"value": int, "name": str}` priority object — alongside the
+  canonical `identifier` / `current_linear_state` / int `priority`, and step 3
+  gives the bootstrap an exact literal example to copy. Previously the prose
+  named fields the MCP doesn't return, so the bootstrap reconstructed the schema
+  from memory and could transcribe a field wrong (a wasted round-trip when
+  caught; a silently mis-sorted or dropped candidate when not).
+
 ## [0.2.0] — 2026-06-16
 
 ### Added

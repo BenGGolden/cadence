@@ -648,6 +648,100 @@ class FilterModeMiscTests(unittest.TestCase):
             self.assertEqual(out["ordered_identifiers"], [])
 
 
+class NativeMcpShapeTests(unittest.TestCase):
+    """The Linear MCP `list_issues`/`get_issue` payload names the human
+    key `id`, the column `status`, and priority as a
+    `{"value": int, "name": str}` object. The bootstrap passes those
+    through unrewritten (tick.md step 3), so the script must accept them
+    alongside the canonical `identifier` / `current_linear_state` / int
+    `priority`. These guard that tolerance — the exact shape the bootstrap
+    mis-transcribed before the example + accessor fallbacks landed.
+    """
+
+    def _run_filter(self, td, wf, candidates, in_flight):
+        cfg = td / "cfg.json"
+        cand = td / "candidates.json"
+        infl = td / "in_flight.json"
+        _write_json(cfg, wf)
+        _write_json(cand, candidates)
+        _write_json(infl, in_flight)
+        return _run(["--workflow-config", str(cfg),
+                     "--candidates", str(cand),
+                     "--in-flight", str(infl)], td)
+
+    def test_native_id_status_priority_object_passed_through(self):
+        """A verbatim MCP issue (id / status / priority object) is picked
+        up exactly like the canonical shape would be."""
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            cands = [{
+                "id": "ENG-3",
+                "status": "Todo",
+                "labels": [],
+                "priority": {"value": 2, "name": "High"},
+                "createdAt": "2026-06-24T01:03:36.037Z",
+            }]
+            r = self._run_filter(td, _default_validator_output(), cands, {})
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            out = json.loads(r.stdout)
+            self.assertEqual(out["ordered_identifiers"], ["ENG-3"])
+
+    def test_native_priority_object_sorts_like_int(self):
+        """priority objects order high-first identically to bare ints."""
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            cands = [
+                {"id": "ENG-LOW", "status": "Todo", "labels": [],
+                 "priority": {"value": 4, "name": "Low"},
+                 "createdAt": "2026-05-01T00:00:00Z"},
+                {"id": "ENG-URG", "status": "Todo", "labels": [],
+                 "priority": {"value": 1, "name": "Urgent"},
+                 "createdAt": "2026-05-01T00:00:00Z"},
+                {"id": "ENG-MED", "status": "Todo", "labels": [],
+                 "priority": {"value": 3, "name": "Medium"},
+                 "createdAt": "2026-05-01T00:00:00Z"},
+            ]
+            r = self._run_filter(td, _default_validator_output(), cands, {})
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            out = json.loads(r.stdout)
+            self.assertEqual(out["ordered_identifiers"],
+                             ["ENG-URG", "ENG-MED", "ENG-LOW"])
+
+    def test_native_no_priority_object_sorts_last(self):
+        """`{"value": 0, "name": "No priority"}` sorts last, like int 0 —
+        this is the exact value the bootstrap wrote in the report."""
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            cands = [
+                {"id": "ENG-NONE", "status": "Todo", "labels": [],
+                 "priority": {"value": 0, "name": "No priority"},
+                 "createdAt": "2026-05-01T00:00:00Z"},
+                {"id": "ENG-MED", "status": "Todo", "labels": [],
+                 "priority": {"value": 3, "name": "Medium"},
+                 "createdAt": "2026-05-02T00:00:00Z"},
+            ]
+            r = self._run_filter(td, _default_validator_output(), cands, {})
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            out = json.loads(r.stdout)
+            self.assertEqual(out["ordered_identifiers"], ["ENG-MED", "ENG-NONE"])
+
+    def test_canonical_names_win_over_native_when_both_present(self):
+        """If an issue carries both the canonical and native key/column,
+        the canonical value is authoritative."""
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            cands = [{
+                "identifier": "ENG-CANON", "id": "ENG-NATIVE",
+                "current_linear_state": "Todo", "status": "Done",
+                "labels": [], "priority": 2,
+                "createdAt": "2026-05-01T00:00:00Z",
+            }]
+            r = self._run_filter(td, _default_validator_output(), cands, {})
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            out = json.loads(r.stdout)
+            self.assertEqual(out["ordered_identifiers"], ["ENG-CANON"])
+
+
 class CliErrorTests(unittest.TestCase):
 
     def test_missing_workflow_config_arg(self):
