@@ -212,12 +212,16 @@ MCP queries the script tells it to and feed the results back in.
      the operator notices and fixes the config, rather than being
      papered over by an improvised fallback.
 
-   Ask the MCP for each issue's `identifier`, `current_linear_state` (the
-   Linear column name), `labels`, `priority`, `createdAt`, and — if the
-   MCP exposes them — its blocker issues' Linear states (as a list of
-   strings on a `blockers` field; absent if the MCP does not surface
-   this, in which case the blocker filter is skipped per the script's
-   contract).
+   You need each issue's human key (the MCP's `id`, e.g. `ENG-3`), its
+   current Linear column name (the MCP's `status`), `labels`, `priority`,
+   `createdAt`, and — if the MCP exposes them — its blocker issues'
+   Linear states (as a list of strings on a `blockers` field; absent if
+   the MCP does not surface this, in which case the blocker filter is
+   skipped per the script's contract). Do **not** rename or reshape the
+   MCP's fields when you write them in step 4: the script accepts the
+   Linear MCP's native names directly (`id`, `status`, and the
+   `{"value": …}` priority object), so a verbatim pass-through is correct
+   and a hand-translation only risks transcribing a field wrong.
 
 3. **Run the per-state in-flight queries.** For each entry in
    `in_flight_queries`, query the Linear MCP for issues in
@@ -232,8 +236,27 @@ MCP queries the script tells it to and feed the results back in.
 
 4. **Hand the results back to the script.** Write the pickup-query
    results as a JSON array to `.cadence/candidates.json` (call it
-   `candidatesPath`) using the Write tool. Write `inFlightCounts` to
-   `.cadence/in-flight.json` (call it `inFlightPath`). Invoke Bash:
+   `candidatesPath`) using the Write tool — one slim object per issue,
+   carrying the MCP fields through unrenamed. Extra MCP fields (`title`,
+   `url`, …) are ignored by the script; omit them to keep the file small.
+   The shape is exactly:
+
+   ```json
+   [
+     {
+       "id": "ENG-3",
+       "status": "Todo",
+       "labels": [],
+       "priority": {"value": 0, "name": "No priority"},
+       "createdAt": "2026-06-24T01:03:36.037Z"
+     }
+   ]
+   ```
+
+   Add a `"blockers": ["Implementing", …]` field only when the MCP
+   surfaced blocker states for that issue (step 2). Then write
+   `inFlightCounts` to `.cadence/in-flight.json` (call it `inFlightPath`).
+   Invoke Bash:
    `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/filter_candidates.py --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml" --candidates <candidatesPath> --in-flight <inFlightPath>`
    Parse the JSON on stdout.
 
