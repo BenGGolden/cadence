@@ -100,29 +100,54 @@ Trim `$ARGUMENTS` of surrounding whitespace.
   Read their reply, trim it, and use that as the summary. If they reply
   with an empty string, re-prompt until you have something.
 
+Either way, the echoed `Summary: <value>` is the first candidate the operator
+confirms or corrects. Once you have a summary, it names the code you read at the
+start of Step 3 to ground the rest of the interview.
+
 ## Step 3 — Walk the operator through each template section
 
 Ask the questions below in order. After each answer, validate per the
 section's rules; surface any failures back to the operator and let them
 revise before moving on to the next section.
 
+Before you start asking, **read the code this ticket will touch** — the files,
+functions, or modules the summary points at — so you interview from the
+codebase, not from a blank page. Two disciplines apply throughout this step:
+
+- **Propose a candidate; don't ask open-ended.** Wherever the summary and the
+  code you just read give you enough signal, draft a candidate answer and ask
+  the operator to confirm or revise it, rather than posing a blank question. A
+  concrete draft they can correct is faster and sharper than an open prompt.
+  Fall back to the open question only when the code gives you too little to
+  draft from.
+- **One focused question at a time.** When a genuine gap remains — a missing
+  edge case, an unhandled error path, an unstated constraint — ask about that
+  one thing and wait for the answer before moving on. Don't batch several
+  unknowns into a single wall of questions.
+
+You are still Cadence's front door — you *may* ask the operator questions (that
+is the point of this command) — but ground every question in what the code
+already tells you.
+
 ### 3a — Context
 
-Ask:
-
-```
-What is the current behaviour? What needs to change and why?
-```
-
-Read the operator's answer. Rephrase it into a short paragraph (one or
-two sentences) in your own words, then ask:
+From the summary and the code you just read, **draft a candidate context
+paragraph** — the current behaviour and what needs to change — and offer it for
+confirmation:
 
 ```
 Captured as:
 
-  <rephrased paragraph>
+  <candidate paragraph>
 
 Confirm or revise? (reply "ok" to accept, or paste the revised text.)
+```
+
+If the code gives you too little to draft from, fall back to asking
+open-ended, then rephrase the reply into the same confirm prompt:
+
+```
+What is the current behaviour? What needs to change and why?
 ```
 
 If the operator replies with anything other than `ok` (case-insensitive),
@@ -131,10 +156,31 @@ to 3b.
 
 ### 3b — Acceptance Criteria
 
-Ask:
+From the context and the code you read, **propose a starter set of acceptance
+criteria** — concrete observable outcomes you can infer — and ask the operator
+to confirm, cut, or add to them, rather than asking for a blank list:
+
+```
+Proposed acceptance criteria:
+
+  - <candidate AC 1>
+  - <candidate AC 2>
+
+Confirm, edit, or add to these? (one per line.)
+```
+
+If the code gives you nothing to infer from, ask open-ended instead:
 
 ```
 What are the independently verifiable outcomes? Give one per line.
+```
+
+When the summary, the code, or the operator's answers imply an untested gap — a
+missing edge case, an unhandled error path, an unstated constraint — probe it
+**one focused question at a time** rather than batching:
+
+```
+What should happen when <specific gap, e.g. the email is already taken>?
 ```
 
 Read the operator's reply and split it into items by line, dropping blank
