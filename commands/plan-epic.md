@@ -114,15 +114,28 @@ Trim `$ARGUMENTS` of surrounding whitespace.
   context (append or edit), preserving the operator's existing content. Capture
   the final description. Leaving it unchanged is allowed.
 
-## Step E — Decompose into sub-issues
+## Step E — Decompose into sub-issues (vertical slices)
 
-- Elicit the steps. If the epic carries a planner `## Recommendation: Decompose`
+Frame **each child as a vertical, tracer-bullet slice** — a thin cut that
+delivers observable end-to-end behavior on its own (input → logic → output), not
+a horizontal layer ("all the models", "all the UI", "the backend"). A slice
+should be demonstrable and independently reviewable; a horizontal layer usually
+isn't. **Each slice = one reviewable PR.**
+
+One exception is allowed: if the epic needs groundwork before any feature slice
+lands, the **first child may be a prefactoring slice** — a pure refactor that
+changes no observable behavior (its acceptance criteria assert that existing
+behavior and tests stay unchanged). Use it only when the groundwork is real;
+don't invent scaffolding work.
+
+- Elicit the slices. If the epic carries a planner `## Recommendation: Decompose`
   breakdown (existing-epic mode), seed the list from it and let the operator
-  edit. Otherwise ask the operator to enumerate the steps. **Each step = one
-  reviewable PR.**
-- For each step, gather a child ticket matching the template: a title plus
+  edit. Otherwise ask the operator to enumerate the slices.
+- For each slice, gather a child ticket matching the template: a title plus
   `## Context` / `## Acceptance Criteria` / `## Out of scope` / `## Notes /
-  pointers`.
+  pointers`. Keep each child **behavior-framed** — it inherits the epic's spec
+  as Parent Context and the planner adds file-level detail per-ticket later, so
+  **do not put file paths in child bodies**.
 - **Validate each child's acceptance criteria** against these rules (the same
   bar `/cadence:create-ticket` enforces):
   1. **Non-empty after trimming.**
@@ -137,15 +150,24 @@ Trim `$ARGUMENTS` of surrounding whitespace.
   tighten it rather than silently rejecting. Every child needs **at least one**
   passing acceptance criterion before you continue.
 
-## Step F — Ordering / dependencies
+## Step F — Granularity + dependency quiz
 
-- Determine dependencies between steps. Set blockers **only** where a step must
-  merge before another (e.g. a migration before the UI that depends on it).
-- If the ordering isn't clear from the epic/steps, **ask the operator** which
-  steps depend on which. Default to **no** blockers when there is no real
-  dependency.
-- Build an **acyclic** dependency graph (edge A→B = "A blocks B"). If the
-  operator's answers would create a cycle, surface it and ask them to resolve it.
+Run an explicit two-part quiz over the slices before setting any blockers:
+
+- **Granularity.** For each slice, ask: is it independently reviewable as one
+  PR, and does it deliver observable behavior on its own? If a slice is really a
+  horizontal layer or too big to review in one pass, split it; if two slices
+  can't stand alone apart, merge them. (The prefactoring slice from Step E is
+  exempt from the observable-behavior test — its "behavior" is that nothing
+  changed.)
+- **Dependencies.** Determine which slices block which. Set blockers **only**
+  where one slice must merge before another (e.g. a migration, or the
+  prefactoring slice, before the slices that build on it). If the ordering isn't
+  clear from the epic/slices, **ask the operator** which slices depend on which.
+  Default to **no** blockers when there is no real dependency.
+
+Build an **acyclic** dependency graph (edge A→B = "A blocks B"). If the
+operator's answers would create a cycle, surface it and ask them to resolve it.
 
 ## Step G — Preview and confirm (the gate before any write)
 
@@ -153,8 +175,9 @@ Print a single preview:
 
 - **Epic:** existing `<IDENT>` (plus any state move), or `NEW: "<title>" → state
   <state>`, followed by its new/updated description.
-- **The ordered children:** for each, its title + acceptance criteria, and any
-  blocker edges.
+- **The ordered children (vertical slices):** for each, its title + acceptance
+  criteria + a one-line note on the end-to-end behavior it delivers (or, for the
+  prefactoring slice, "refactor — no behavior change"), and any blocker edges.
 - **A summary line:**
 
   ```
