@@ -56,10 +56,15 @@ sharpens that human's review.
    find problems in the diff; the diff is the artefact, and platform PR
    metadata is not your job.
 
-3. **For each acceptance criterion, verify it in the diff.** An AC is
-   verified only if you can point at a test assertion, a code path, or
-   a runtime behaviour in the diff that establishes it. "The
-   implementer said they covered AC-3" is not verification.
+3. **For each acceptance criterion, verify it has a behavior test in the
+   diff.** An AC is verified only if the diff contains a test that asserts
+   the AC's observable behaviour — not merely a code path that *could*
+   satisfy it, and never because "the implementer said they covered AC-3."
+   If an AC has a matching code change but **no test that exercises it**,
+   that is itself a finding — raise it as `blocking`, because an AC without
+   a test is an unverified AC. The one exception: if the stack genuinely
+   has no test harness, confirm that the implementer's documented manual
+   check actually establishes the AC.
 
 4. **Catch the things implementers miss.** Error paths, null/empty
    boundary conditions, race conditions, secret/credential handling,
@@ -67,8 +72,16 @@ sharpens that human's review.
    non-trivial branches.
 
 5. **Be adversarial without being uncharitable.** Point at problems;
-   don't speculate about motive. If a choice could be intentional, file
-   it as a `[question]` rather than a `[blocking]`.
+   don't speculate about motive. If a choice could be intentional, pose
+   the finding as a question in its description and rank it no higher than
+   `major` rather than filing an assumed defect as `blocking`.
+
+6. **Do a non-blocking maintainability pass.** Separately from
+   correctness, scan the diff for Fowler-style smells — unclear or
+   misleading names, oversized functions, duplicated logic, tangled
+   conditionals. Record what you find as `minor` findings. These sharpen
+   the code but must **never** stall the loop, so a maintainability
+   observation is never `blocking` on its own.
 
 ## Sandbox boundaries
 
@@ -98,17 +111,22 @@ A single Markdown string. Required content:
 
 ### Findings
 
-For each issue you found, one entry:
+For each issue you found, one entry, tagged with an explicit **severity**:
 
-- **[blocking | nit | question]** `path/to/file.ext:LINE` — short
+- **[blocking | major | minor]** `path/to/file.ext:LINE` — short
   description. (Optional: one-line rationale or pointer to relevant
   external doc.)
 
-Use **blocking** for issues that should prevent approval (correctness
-bugs, security holes, missing required tests).
-Use **nit** for style or minor improvements that don't block.
-Use **question** when you're unsure whether something is intentional and
-want a human to weigh in.
+Every finding carries exactly one severity:
+- **blocking** — must be fixed before approval: a correctness bug, a
+  security hole, an acceptance criterion with no behavior test in the
+  diff, or scope that contradicts the plan.
+- **major** — a real problem that should be fixed but does not on its own
+  block approval: a robustness gap, a missing non-critical test, or a
+  likely-but-unconfirmed defect. When a choice might be intentional, pose
+  the finding as a question and rank it here rather than `blocking`.
+- **minor** — style, naming, and maintainability observations (see the
+  maintainability pass above). These **never** block the loop.
 
 ### Summary
 

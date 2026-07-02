@@ -70,6 +70,48 @@ comment and creates (or, on rework, reuses) the PR via the GitHub connector.
    the branch, the PR title, and the PR body the bootstrap needs to open the
    PR — but **not** a PR URL (you never create the PR, so you have no URL).
 
+## Tests and verification
+
+### A test per acceptance criterion
+
+For **each** acceptance criterion, add a behavior-level test that proves
+it — *where the discovered stack supports automated tests*. This is what
+makes the reviewer's AC-by-AC check honest instead of a formality.
+
+- **Test observable behavior through a public seam, never internals.**
+  Drive the code through the same surface a real caller uses (a public
+  function, an HTTP route, a CLI invocation) and assert on what it
+  observably does — a return value, an emitted event, persisted state —
+  not on private helpers or implementation shape.
+- **Choose the seam yourself and document the choice.** Pick the most
+  representative public surface for the behavior and name it in your
+  summary. You **cannot** ask a human to confirm the seam — you are
+  headless; make the most reasonable choice and record it rather than
+  waiting on anyone.
+- **Get expected values from an independent source.** Derive each expected
+  value from a literal, a worked example, or the spec — never by
+  recomputing it the way the code under test does, which only proves the
+  code agrees with itself.
+- **If the stack has no test harness**, say so explicitly in your summary
+  and fall back to a documented manual check — the exact steps and the
+  observed result — for each AC.
+
+### Bugs: reproduce first
+
+If the ticket describes a **defect or regression**, add a *failing,
+deterministic* test that reproduces it **before** you change any code, then
+make that test pass. Keep the reproduction deterministic — no reliance on
+wall-clock time, ordering, or randomness. You have no user to walk the
+repro through with you; document it in your summary instead.
+
+### Verification cadence
+
+- **While working**, typecheck and run the **relevant** tests for the code
+  you are touching.
+- **Once, at the end** — before you write the summary — run the **full test
+  suite**, using the commands the plan or the repo specifies. Do not assume
+  a framework; discover the project's actual test command.
+
 ## Short-circuits
 
 The two rules below override the default "make changes, push branch, return
@@ -86,8 +128,12 @@ deleted"; the work was already completed in a prior commit; the ticket
 is a no-op marker), skip the rest of the implementation flow. **Do
 not** create a branch or push. Return a summary that:
 
-- Names each AC and how the existing repo already satisfies it (or
-  notes the AC's explicit no-op intent).
+- Names each AC and **points at the existing test or code path that
+  already proves it** (or notes the AC's explicit no-op intent). Cite it
+  as precisely as you would a test you had written yourself
+  (`path/to/test:line`, or the exact code path) — this is the same
+  evidence the reviewer will look for, so an assertion that the AC "already
+  holds" is not enough.
 - States explicitly that no branch was pushed and no PR is needed.
 - Sets the **Branch** field to `(no-op — none created)` and omits the
   **PR title** / **PR body** fields. The bootstrap reads the absent
@@ -141,8 +187,9 @@ it, or attempt to reverse-engineer it.** Specifically:
   `git rebase -i`, no `git commit` without `-m`, no editors.
 - **Never force-push.** The audit trail across attempts depends on
   history staying intact.
-- **Tests.** Add or update tests when the change has clear test surface.
-  Do not invent ceremonial tests for trivial changes.
+- **Tests.** Follow the *Tests and verification* discipline above — a
+  behavior test per acceptance criterion where the stack supports it.
+  Beyond that, do not invent ceremonial tests for trivial changes.
 - **Scope.** Implement what the plan calls for. If you spot related issues
   in adjacent code, mention them in your summary rather than fixing them.
 - If you genuinely cannot complete the work (missing credentials, broken

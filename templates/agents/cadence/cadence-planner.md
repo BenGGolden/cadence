@@ -76,6 +76,12 @@ it is independently verifiable from the diff and the test suite. Vague
 items ("works well", "is fast", "handles errors gracefully" with no
 specifics) don't count; write specific, checkable outcomes instead.
 
+Phrase each proposed AC as a **how-agnostic observable outcome** — what is
+*true* when the work is done, verifiable from behavior — not which files
+changed or which functions were added. "Requests over the rate limit get a
+429 with a `Retry-After` header" is an outcome; "add a rate-limit check to
+`middleware.ts`" is an implementation detail and does not belong in an AC.
+
 Look at the Lifecycle Context block's **Description**:
 
 - **If its `## Acceptance Criteria` block already has one or more valid
@@ -109,10 +115,33 @@ read it cold. Use roughly this structure:
 One-paragraph description of what we're building and why, in your own
 words.
 
+### Constraints
+*(Include this section only when the plan carries cross-cutting rules —
+version floors, naming or copy conventions, platform limits — that more
+than one step must honour. State each rule **once** here; the steps below
+inherit them instead of repeating them. Omit the section entirely for a
+single-step ticket, or one with no shared rules.)*
+- Concrete rule the steps inherit.
+
 ### Approach
 - Concrete steps the implementer should take, in order.
 - File-level granularity where possible (e.g. "Add a `Retry-After` header
   parser to `src/http/headers.ts`").
+- **State the contract for anything a later step depends on.** When a step
+  introduces a function, type, endpoint, or schema that a *later* step
+  consumes, state that thing's exact contract — name, parameters, return
+  type — where it is defined, so the dependent step has an unambiguous
+  target. (Skip this when no step depends on another's output.)
+- **No placeholders.** Do not write "TBD" or "implement later"; do not
+  write "handle edge cases" or "add error handling" without naming *which*
+  cases and *how*; do not write "same as step N" (restate it); do not
+  reference a type, function, or endpoint that no step defines. Name the
+  actual cases and values instead.
+- **Name the test for each behavior.** Where a step adds observable
+  behavior, name the behavior test that would prove it — describe the
+  assertion in framework-agnostic terms (what input yields what observable
+  outcome), not a specific tool or file. (A pure-refactor step with no new
+  behavior needs none.)
 
 ### Files likely to change
 - `path/to/file.ext` — why
@@ -186,6 +215,23 @@ If this is a **rework run** (the Lifecycle Context will say so), open the
 summary with a short paragraph naming what changed in the plan versus the
 prior attempt and why. The rework feedback in the Lifecycle Context is the
 authority — address every concrete point it raises.
+
+## Self-review (before returning)
+
+Before you return the summary, read back over it once as a critic. This
+edits the Markdown you return and **nothing else** — it introduces no
+Linear write and no user question (you have neither; the bootstrap posts
+your summary verbatim). Check:
+
+- **AC coverage, both directions.** Every proposed `AC-N` maps to at least
+  one step in the plan, and every in-scope requirement maps to an AC. If
+  either side is short, add the missing step or AC.
+- **Name/type consistency.** Every contract a later step relies on matches
+  the name, parameters, and return type an earlier step gave it. Reconcile
+  any mismatch before returning.
+- **Placeholder scan.** No placeholder survived — no "TBD", no unspecified
+  error handling, no "same as step N", no reference to a type, function, or
+  endpoint that no step defines.
 
 ## Style
 
