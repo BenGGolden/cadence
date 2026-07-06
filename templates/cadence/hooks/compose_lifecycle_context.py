@@ -26,6 +26,7 @@ CLI:
     --parse-comments-output <parseCommentsOutputPath>
     [--rework]
     [--parent <parentJsonPath>]
+    [--parent-warn-chars <int>]
     [--parent-max-chars <int>]
     [--global-prompt-path .claude/prompts/global.md]
     [--default-branch main]
@@ -34,12 +35,17 @@ CLI:
 Stdout: the full subagent user prompt (Lifecycle Context block + two blank
 lines + globalPrompt, when present). When the issue has a parent, the block
 carries a Parent Context section (after Description, before Transitions)
-holding the parent issue's inherited description. Pass it as the Agent tool's
+holding the parent issue's inherited description **in full** — it is never
+truncated. Over the soft budget (--parent-warn-chars) it emits a
+CADENCE_WARNING on stderr and still inherits in full; over the hard ceiling
+(--parent-max-chars) it fails the fire (exit 2). Pass it as the Agent tool's
 `prompt`.
 
 Exit codes:
   0  success
   1  bad / missing required input
+  2  intended shared context could not be assembled
+     (parent description over the hard ceiling)
 """
 
 import argparse
@@ -63,10 +69,16 @@ if hasattr(sys.stdout, "buffer"):
 DEFAULT_GLOBAL_PROMPT_PATH = Path(".claude/prompts/global.md")
 DEFAULT_BASE_BRANCH = "main"
 
-# Parent Context: cap the inherited parent description so a large epic body
-# can't dominate the subagent prompt. 0 disables the cap.
-DEFAULT_PARENT_MAX_CHARS = 4000
-PARENT_TRUNCATION_MARKER = "_(parent description truncated)_"
+# Parent Context size policy. The inherited parent (epic) description is shared
+# spec, not decoration — so we never silently truncate it. Instead:
+#   > PARENT_WARN_CHARS : inherit in full, but emit a CADENCE_WARNING the
+#                         bootstrap surfaces. 0 disables the warning.
+#   > PARENT_MAX_CHARS  : fail the fire (exit 2) — a pathologically large epic
+#                         body is an authoring error a human must fix, not
+#                         something to inherit-and-degrade. 0 disables the cap.
+# Edit these in place to tune for your repo.
+PARENT_WARN_CHARS = 4000
+PARENT_MAX_CHARS = 16000
 
 # Linear priority numeric → label. Linear's API uses 0..4.
 PRIORITY_LABELS = {
@@ -230,7 +242,7 @@ def _render_rework_section(target_state, rework_comments):
     return f"{header}\n\n" + "\n\n".join(chunks)
 
 
-def _render_parent_section(parent, max_chars):
+def _render_parent_section(parent):
     if not isinstance(parent, dict):
         return ""
     description = parent.get("description")
@@ -245,9 +257,6 @@ def _render_parent_section(parent, max_chars):
         label = title
     else:
         label = "parent issue"
-    body = description
-    if isinstance(max_chars, int) and max_chars > 0 and len(body) > max_chars:
-        body = body[:max_chars].rstrip() + "\n\n" + PARENT_TRUNCATION_MARKER
     return (
         "### Parent Context\n"
         "\n"
@@ -255,8 +264,42 @@ def _render_parent_section(parent, max_chars):
         "below is inherited from that parent — it frames the epic this work is\n"
         "part of. It is **not** the task itself; your task is described above.\n"
         "\n"
-        f"{body}"
+        f"{description}"
     )
+
+
+def _classify_parent_size(parent, warn_chars, max_chars):
+    """Classify the inherited parent description by size.
+
+    Returns (status, message), status in {"ok", "warn", "fail"}. Only a real
+    (non-empty string) description counts — an absent or empty parent
+    description is "ok" (nothing was intended to be inherited).
+    """
+    if not isinstance(parent, dict):
+        return ("ok", "")
+    description = parent.get("description")
+    if not isinstance(description, str) or not description.strip():
+        return ("ok", "")
+    n = len(description)
+    label = parent.get("identifier") or parent.get("id") or "the parent issue"
+    if isinstance(max_chars, int) and max_chars > 0 and n > max_chars:
+        return ("fail",
+                f"parent context for {label} is {n} chars, over the "
+                f"{max_chars}-char hard ceiling. The epic description is shared "
+                f"spec inherited by every sub-issue; an oversized body is an "
+                f"authoring error. Move project-wide rules to "
+                f".claude/prompts/global.md, per-step detail into the sub-issues, "
+                f"and end-to-end verification into its own final sub-issue, then "
+                f"retry. (Tune PARENT_MAX_CHARS in compose_lifecycle_context.py; "
+                f"0 disables this ceiling.)")
+    if isinstance(warn_chars, int) and warn_chars > 0 and n > warn_chars:
+        return ("warn",
+                f"parent context for {label} is {n} chars, over the "
+                f"{warn_chars}-char soft budget. Inheriting it in full, but "
+                f"consider moving project-wide rules to .claude/prompts/global.md "
+                f"and per-step detail into the sub-issues so the epic description "
+                f"stays focused on genuinely shared spec.")
+    return ("ok", "")
 
 
 FOOTER = (
@@ -283,7 +326,7 @@ def _render_description(value):
 
 def compose_block(*, issue, target_state, attempt, next_name, next_type,
                   next_linear, adversarial, rework, rework_comments,
-                  branch, base_branch, pr_url, parent, parent_max_chars):
+                  branch, base_branch, pr_url, parent):
     parts = []
     parts.append("<!-- AUTO-GENERATED BY CADENCE — DO NOT EDIT -->")
     parts.append("")
@@ -310,7 +353,7 @@ def compose_block(*, issue, target_state, attempt, next_name, next_type,
     parts.append("")
     parts.append(_render_description(issue.get("description")))
     parts.append("")
-    parent_section = _render_parent_section(parent, parent_max_chars)
+    parent_section = _render_parent_section(parent)
     if parent_section:
         parts.append(parent_section)
         parts.append("")
@@ -360,11 +403,16 @@ def main():
                     help="Path to a JSON file with the parent issue's MCP "
                          "object. Optional; omitted when the issue has no "
                          "parent. Renders the Parent Context section.")
+    ap.add_argument("--parent-warn-chars", type=int,
+                    default=PARENT_WARN_CHARS,
+                    help=f"Warn (non-fatal, CADENCE_WARNING on stderr) when the "
+                         f"inherited parent description exceeds this many chars "
+                         f"(default: {PARENT_WARN_CHARS}; 0 disables).")
     ap.add_argument("--parent-max-chars", type=int,
-                    default=DEFAULT_PARENT_MAX_CHARS,
-                    help=f"Truncate the inherited parent description to this "
-                         f"many chars (default: {DEFAULT_PARENT_MAX_CHARS}; "
-                         f"0 disables truncation).")
+                    default=PARENT_MAX_CHARS,
+                    help=f"Fail the fire (exit 2) when the inherited parent "
+                         f"description exceeds this many chars "
+                         f"(default: {PARENT_MAX_CHARS}; 0 disables).")
     ap.add_argument("--global-prompt-path", default=None,
                     help=f"Path to the global prompt (default: "
                          f"{DEFAULT_GLOBAL_PROMPT_PATH}).")
@@ -441,6 +489,13 @@ def main():
             team_key = team
     branch = _derive_branch(issue, team_key)
 
+    status, size_msg = _classify_parent_size(
+        parent, args.parent_warn_chars, args.parent_max_chars)
+    if status == "fail":
+        die("Cadence: " + size_msg, 2)
+    elif status == "warn":
+        sys.stderr.write("CADENCE_WARNING: Cadence: " + size_msg + "\n")
+
     block = compose_block(
         issue=issue,
         target_state=target_state,
@@ -455,7 +510,6 @@ def main():
         base_branch=args.default_branch,
         pr_url=pr_url,
         parent=parent,
-        parent_max_chars=args.parent_max_chars,
     )
 
     global_prompt = _read_global_prompt(args.global_prompt_path)

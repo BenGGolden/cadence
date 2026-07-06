@@ -125,7 +125,7 @@ def _write(path, obj):
 def run_compose(tmpdir, *, config, issue=None, target_state=None, attempt=None,
                 parse_output=None, rework=False, dry_run=False,
                 global_prompt_path=None, default_branch=None, parent=None,
-                parent_max_chars=None, extra_args=()):
+                parent_warn_chars=None, parent_max_chars=None, extra_args=()):
     tmpdir = Path(tmpdir)
     cfg_path = tmpdir / "config.json"
     _write(cfg_path, config)
@@ -147,6 +147,8 @@ def run_compose(tmpdir, *, config, issue=None, target_state=None, attempt=None,
         parent_path = tmpdir / "parent.json"
         _write(parent_path, parent)
         args += ["--parent", str(parent_path)]
+    if parent_warn_chars is not None:
+        args += ["--parent-warn-chars", str(parent_warn_chars)]
     if parent_max_chars is not None:
         args += ["--parent-max-chars", str(parent_max_chars)]
     if rework:
@@ -381,32 +383,60 @@ class ComposeLifecycleContextTests(unittest.TestCase):
             self.assertIn("### Parent Context", r.stdout)
             self.assertIn("### Rework Context", r.stdout)
 
-    def test_parent_description_truncated_at_max_chars(self):
+    def test_parent_over_warn_under_ceiling_warns_and_inherits_full(self):
         parent = _default_parent()
-        parent["description"] = "x" * 10_000
+        parent["description"] = "x" * 5_000
+        with tempfile.TemporaryDirectory() as td:
+            r = run_compose(td, config=_default_config(),
+                            issue=_default_issue(),
+                            target_state="implement", attempt=1,
+                            parse_output=_parse_output(),
+                            parent=parent,
+                            parent_warn_chars=100, parent_max_chars=0)
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertIn("CADENCE_WARNING", r.stderr)
+            self.assertIn("x" * 5_000, r.stdout)          # full text, not cut
+            self.assertNotIn("truncated", r.stdout)
+
+    def test_parent_over_ceiling_fails_fire(self):
+        parent = _default_parent()
+        parent["description"] = "y" * 5_000
         with tempfile.TemporaryDirectory() as td:
             r = run_compose(td, config=_default_config(),
                             issue=_default_issue(),
                             target_state="implement", attempt=1,
                             parse_output=_parse_output(),
                             parent=parent, parent_max_chars=100)
-            self.assertEqual(r.returncode, 0, msg=r.stderr)
-            self.assertIn("_(parent description truncated)_", r.stdout)
-            # Body trimmed to the cap, not the full 10k.
-            self.assertNotIn("x" * 200, r.stdout)
+            self.assertEqual(r.returncode, 2, msg=r.stderr)
+            self.assertIn("hard ceiling", r.stderr)
+            self.assertNotIn("### Parent Context", r.stdout)
 
-    def test_parent_max_chars_zero_no_truncation(self):
+    def test_parent_under_warn_silent(self):
         parent = _default_parent()
-        parent["description"] = "y" * 10_000
+        parent["description"] = "z" * 50
         with tempfile.TemporaryDirectory() as td:
             r = run_compose(td, config=_default_config(),
                             issue=_default_issue(),
                             target_state="implement", attempt=1,
                             parse_output=_parse_output(),
-                            parent=parent, parent_max_chars=0)
+                            parent=parent)
             self.assertEqual(r.returncode, 0, msg=r.stderr)
-            self.assertNotIn("_(parent description truncated)_", r.stdout)
-            self.assertIn("y" * 10_000, r.stdout)
+            self.assertNotIn("CADENCE_WARNING", r.stderr)
+            self.assertIn("z" * 50, r.stdout)
+
+    def test_parent_thresholds_zero_disabled(self):
+        parent = _default_parent()
+        parent["description"] = "w" * 50_000
+        with tempfile.TemporaryDirectory() as td:
+            r = run_compose(td, config=_default_config(),
+                            issue=_default_issue(),
+                            target_state="implement", attempt=1,
+                            parse_output=_parse_output(),
+                            parent=parent,
+                            parent_warn_chars=0, parent_max_chars=0)
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertNotIn("CADENCE_WARNING", r.stderr)
+            self.assertIn("w" * 50_000, r.stdout)
 
     # ---------- branch derivation ----------
 

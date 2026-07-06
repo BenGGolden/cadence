@@ -99,6 +99,20 @@ Trim `$ARGUMENTS` of surrounding whitespace.
   Parent Context: an overview/context paragraph plus any shared acceptance
   criteria or constraints that apply across **all** steps. This is deliberately
   the *shared* spec — not a single task's acceptance criteria.
+- **Keep it focused — it is inherited in full by every child, never truncated.**
+  Once the description is drafted, gauge its size and advise the operator
+  (guidance, not a hard block):
+  - If it runs long (roughly over **4000 chars**, the compose script's soft
+    budget), suggest trimming: move **project-wide** rules to
+    `.claude/prompts/global.md` (written once, applied everywhere), push
+    **per-step** detail down into the child slices (each vertical slice already
+    carries its own acceptance criteria), and give **end-to-end verification**
+    its own final child. What's left is the genuinely shared, phase-specific
+    residue.
+  - If it is very large (roughly over **16000 chars**, the hard ceiling), warn
+    strongly: **every fire that inherits this parent will fail** until the body
+    is trimmed below the ceiling. Both thresholds are constants
+    (`PARENT_WARN_CHARS` / `PARENT_MAX_CHARS`) in `compose_lifecycle_context.py`.
 - Choose the epic's Linear **state**:
   - Default to the team's backlog/default (a non-workflow column). Optionally
     call the Linear MCP **`list_issue_statuses`** verb (team = `linear.team`) to
