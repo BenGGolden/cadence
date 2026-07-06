@@ -514,23 +514,33 @@ If the router's plan set `rework: true` (this fire entered via a gate
 **rework** route), append `--rework` so the script includes the Rework
 Context section.
 
-**Parent context (best-effort).** Inspect the locked `issue` for a
-`parentId` field. The Linear MCP `get_issue` sets `parentId` to the parent's
-identifier string (e.g. `"TEST-6"`) **only when a parent exists** — the field
-is absent on parentless issues, and it does **not** carry the parent's
-description. So:
+**Parent context (load-bearing — fail if it can't be assembled).** Inspect the
+locked `issue` for a `parentId` field. The Linear MCP `get_issue` sets
+`parentId` to the parent's identifier string (e.g. `"TEST-6"`) **only when a
+parent exists** — the field is absent on parentless issues, and it does **not**
+carry the parent's description. So:
 
-- If `issue` has no `parentId` (or it's empty) → do not pass `--parent`.
+- If `issue` has no `parentId` (or it's empty) → do not pass `--parent`. This is
+  a **legitimate absence** (the issue has no parent); proceed normally.
 - If `issue.parentId` is set → call the Linear MCP **`get_issue`** with
-  `id = issue.parentId`, Write whatever object it returns **verbatim** to
-  `.cadence/parent.json` (call it `parentJsonPath`), and append
+  `id = issue.parentId`. On success, Write whatever object it returns
+  **verbatim** to `.cadence/parent.json` (call it `parentJsonPath`) and append
   `--parent <parentJsonPath>`. Do **not** inspect the returned object or judge
   whether it's "usable" — the script decides whether to render (it emits
   nothing when the parent's description is missing or empty).
+- **If the `get_issue` call errors → fail the fire.** The parent description is
+  shared spec every sub-issue inherits; do **not** proceed without `--parent`.
+  Build a failure record via Bash
+  `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --status failed --error "could not load parent context for <parentId>: <error>" --subagent <subagent>`,
+  post its stdout as a Linear comment verbatim, remove the `label.cadence_active`
+  label, and **exit** — the same mechanics as the Failure path below.
 
-This fetch is **best-effort and non-fatal.** If the `get_issue` call itself
-errors, log nothing to Linear and proceed **without** `--parent`. Shared
-context must never block or fail a fire.
+**A fire runs with its full intended context, or it fails.** Context that is
+legitimately absent by configuration (no parent, no global prompt, empty parent
+description) is not missing — proceed. Context that should be assembled but
+can't (parent fetch errored, an installed context file is unreadable, the parent
+body exceeds the hard ceiling) fails the fire with a clear message. The agent
+never runs on a silently-partial spec; the next tick or a human resolves it.
 
 The script reads:
 - The config, by re-validating `.claude/workflow.yaml` internally
@@ -547,7 +557,10 @@ The script reads:
   **PR:** line in the adversarial-context variant).
 - The parent issue object (`parentJsonPath`, written above) when the issue
   has a parent — `identifier` / `title` / `description`, rendered as the
-  **Parent Context** section. Omitted when the issue has no parent.
+  **Parent Context** section, inherited **in full** (never truncated). Over the
+  soft budget the script warns (non-fatal); over the hard ceiling the fire
+  fails. Both thresholds are constants in `compose_lifecycle_context.py`.
+  Omitted when the issue has no parent.
 - `.claude/prompts/global.md` if it exists — appended verbatim after two
   blank lines.
 
@@ -556,6 +569,20 @@ variants of the Lifecycle Context block (the latter strips
 implementer-narrative content and adds **Branch (under review)** / **Base
 branch** / optional **PR:** lines), the rework-section rendering
 (including the zero-comments fallback), and the global-prompt append.
+
+**Handle the compose result** before using stdout:
+
+- **Non-zero exit** (exit 2 = the parent body exceeds the hard ceiling; exit 1 =
+  bad input) → fail the fire. Take the script's **stderr** as the error string,
+  build a failure record via Bash
+  `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/emit_tracking_comment.py --kind state --state <targetState> --attempt <attempt> --status failed --error "<stderr>" --subagent <subagent>`,
+  post its stdout as a Linear comment verbatim, remove the `label.cadence_active`
+  label, and **exit** — the same mechanics as the Failure path below. Do **not**
+  advance Linear state.
+- **Exit 0 with a `CADENCE_WARNING:` line on stderr** (the parent body is over
+  the soft budget) → capture that line as `contextWarning` and proceed normally.
+  It is already in the run log via stderr; step 10 prepends it to the posted
+  summary so it also surfaces in Linear.
 
 **Stdout is the full subagent user prompt.** Pass it as the Agent tool's
 `prompt` parameter in step 9.
@@ -637,6 +664,10 @@ this fire created or reused a PR) as a Linear comment on the issue,
 **verbatim**. Do not add a tracking-comment prefix; this is a plain
 work-product comment intended for human readers.
 
+If step 8 captured a `contextWarning` (a `CADENCE_WARNING:` line, e.g. an
+over-soft-budget parent description), prepend it as a single italicized line
+above the summary before posting, so the operator sees it in Linear.
+
 If `subagentSummary` is empty or whitespace, post:
 > **[Cadence]** Subagent **<subagent>** returned no summary at attempt <attempt>.
 
@@ -712,6 +743,12 @@ Exit. Do not loop. Do not pick up another issue.
   the outcome.
 
 ### Failure path (subagent throws / returns unusable)
+
+This same failure-record → label-removal → exit mechanic also covers **step-8
+context-assembly failures** — a parent `get_issue` fetch that errors, or the
+compose script exiting non-zero (exit 2 = oversized parent body, exit 1 = bad
+input). Those paths build the failure record and exit exactly as below, using
+the compose stderr (or the fetch error) as the error string.
 
 If the Agent invocation in step 9 raises an exception:
 

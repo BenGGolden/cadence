@@ -98,7 +98,10 @@ grandparents and higher ancestors, not just the immediate parent.
 **Shape sketch**:
 
 - A configurable `ancestor_context_depth` knob (default 1, preserving today's
-  behaviour) plus a total size budget across all inherited sources.
+  behaviour) plus a total size budget across all inherited sources. (Per-source
+  warn/fail on the immediate parent already exists — `PARENT_WARN_CHARS` /
+  `PARENT_MAX_CHARS` in `compose_lifecycle_context.py`; the *total* budget across
+  all inherited sources remains the open piece here.)
 - Nearest-ancestor-closest rendering (the immediate parent rendered last /
   nearest the task), with a cycle guard.
 - Per-section size budgeting so one large ancestor can't crowd out the rest.

@@ -69,6 +69,14 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
   change, not a doc edit. Step ordering and wording are behavior.
 - **The bootstrap is the sole Linear writer.** Subagents read code, make
   changes, and return a Markdown string; the bootstrap posts it verbatim.
+- **A fire runs with its full intended context, or it fails.** Context that is
+  legitimately absent by configuration (no parent, no global prompt, empty
+  parent description) is not missing — proceed. Context that should be assembled
+  but can't (parent fetch errored, an installed context file is unreadable, the
+  parent body exceeds the hard ceiling) fails the fire with a clear message; the
+  agent never runs on a silently-partial spec. This **replaces** any older
+  "shared context must never block or fail a fire" rule — parent context is
+  load-bearing shared spec, inherited in full and never silently truncated.
 - **The bootstrap owns all GitHub PR operations, via GitHub MCP — not `gh`,
   not the subagents.** The implementer only `git push`es a branch and returns
   the PR title/body; the bootstrap creates the PR (reusing the open PR on

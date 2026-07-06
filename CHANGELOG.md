@@ -4,6 +4,29 @@ All notable changes to Cadence are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Parent context is now load-bearing shared spec, not decoration.** The epic
+  description a sub-issue inherits as its **Parent Context** is no longer
+  silently truncated — it is inherited **in full**. Over a **4000-char soft
+  budget** the compose step emits a non-fatal `CADENCE_WARNING` (surfaced in the
+  run log and prepended to the Linear summary) and still inherits everything;
+  over a **16000-char hard ceiling** the fire fails with an authoring-error
+  message rather than degrading. Both thresholds are constants
+  (`PARENT_WARN_CHARS` / `PARENT_MAX_CHARS`) in `compose_lifecycle_context.py`.
+- **A fire runs with its full intended context, or it fails.** A parent that
+  should load but can't (the `get_issue` fetch errors) now fails the fire
+  instead of proceeding on a silently-partial spec. Context that is legitimately
+  absent by configuration (no parent, no global prompt, empty parent
+  description) still proceeds normally. This replaces the old "shared context
+  must never block or fail a fire" rule.
+- `/cadence:plan-epic` now advises the operator at epic-authoring time to keep
+  the shared description focused (moving project-wide rules to the global prompt,
+  per-step detail into the child slices, verification into its own final child),
+  warning when the draft approaches the soft budget or the hard ceiling.
+
 ## [0.4.0] — 2026-07-06
 
 ### Changed
