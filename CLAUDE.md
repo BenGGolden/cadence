@@ -96,7 +96,7 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
 
 **Installers do not track `main`.** The plugin entry in
 `.claude-plugin/marketplace.json` pins the source to a git tag via a `url`
-source with a `ref` (currently `v0.1.0`). A commit on `main` reaches new
+source with a `ref` (currently `v0.4.0`). A commit on `main` reaches new
 installers only once the steps below bump that `ref`. The `version` in
 `.claude-plugin/plugin.json` is the *update label* — already-installed users
 are pulled forward only when it changes. **Never also set `version` in the
@@ -105,18 +105,33 @@ marketplace entry** (plugin.json silently wins, masking it).
 To cut version `X.Y.Z`:
 
 1. Land all the release's changes on `main` (feature branches → PRs, as usual).
-2. In one PR: bump `version` in `.claude-plugin/plugin.json` to `X.Y.Z`, and add
-   a `## [X.Y.Z] — <date>` section to `CHANGELOG.md` with a matching
+2. In **one PR, one commit**, bump all three together: `version` in
+   `.claude-plugin/plugin.json` to `X.Y.Z`; the `ref` in
+   `.claude-plugin/marketplace.json` to `vX.Y.Z`; and a `## [X.Y.Z] — <date>`
+   section in `CHANGELOG.md` with a matching
    `[X.Y.Z]: https://github.com/BenGGolden/cadence/releases/tag/vX.Y.Z` link
    reference. Merge it.
-3. Tag + release from the merge commit: `git tag -a vX.Y.Z -m "Cadence X.Y.Z"`,
-   `git push origin vX.Y.Z`, then `gh release create vX.Y.Z --latest` with the
-   CHANGELOG section as the notes.
-4. In a second PR (or direct push): bump `ref` in
-   `.claude-plugin/marketplace.json` to `vX.Y.Z`. This commit lands on `main`
-   *after* the tag — that is correct and expected: the marketplace catalog is
-   read from `main` HEAD, never from the tag, so the post-tag bump is what
-   actually points installers at the new code.
+3. **Immediately** tag + release from the merge commit:
+   `git tag -a vX.Y.Z -m "Cadence X.Y.Z"`, `git push origin vX.Y.Z`, then
+   `gh release create vX.Y.Z --latest` with the CHANGELOG section as the notes.
+
+Bumping the `ref` in the same commit as `version` keeps the tagged commit
+self-consistent (its `marketplace.json` points at its own tag) and keeps
+`plugin.json` and the marketplace entry in agreement at all times — which is
+exactly what `claude plugin tag` checks. CI only schema-validates
+`marketplace.json` (it never resolves the `ref`), so a ref to a not-yet-created
+tag passes CI fine.
+
+The one caveat this trades for: between the step-2 merge and the step-3 tag
+push, `main` HEAD advertises `vX.Y.Z` before that tag exists — an install in
+that window would fail to clone. Keep the window tiny by tagging immediately
+after merge (hence "immediately" above). With no install base this is moot; if
+Cadence ever grows real users and you want a zero-risk release, fall back to the
+**tag-first** ordering: bump only `version` + `CHANGELOG` in the first PR, tag +
+release from its merge commit, then bump the marketplace `ref` in a second PR
+that lands *after* the tag — so `main` never names a ref that isn't built yet.
+The cost is a transient `plugin.json` ↔ marketplace-ref disagreement between the
+two PRs.
 
 Validate either manifest with `claude plugin validate --strict <path>` (CI
 covers `plugin.json`; `claude plugin tag --dry-run` cross-checks that
