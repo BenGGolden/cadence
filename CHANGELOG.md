@@ -4,6 +4,29 @@ All notable changes to Cadence are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-07-06
+
+### Changed
+
+- The three **headless subagents** (planner / implementer / reviewer) gained
+  artifact-quality disciplines that close the acceptance-criteria loop end to
+  end. The planner states cross-cutting constraints and cross-step contracts
+  once, forbids placeholders, names a behavior test per step, and phrases
+  proposed acceptance criteria as how-agnostic observable outcomes, with a
+  pre-return self-review. The implementer writes a behavior test per AC at a
+  self-chosen public seam (reproducing bugs with a failing test first) and
+  follows an explicit verification cadence. The reviewer tags every finding
+  with a severity and now treats an AC with a code change but no test as
+  blocking. Prose-only — no deterministic Python or AC render format changed.
+- The interactive front-door commands now **interview from the code**.
+  `/cadence:create-ticket` reads the code a ticket touches before prompting,
+  proposes candidate answers to confirm or revise, and probes genuine gaps one
+  focused question at a time. `/cadence:plan-epic` frames each child as a
+  vertical, tracer-bullet slice (allowing an optional prefactoring-first
+  child), and turns dependency elicitation into an explicit granularity +
+  dependency quiz while keeping the acyclic cycle guard. Both preserve their
+  AC render format, confirm-before-write gate, and `disable-model-invocation`.
+
 ## [0.3.0] — 2026-06-23
 
 ### Added
@@ -149,6 +172,7 @@ a local `/loop`.
 - Installable via `/plugin` from the bundled `marketplace.json`, or from a
   local checkout with `--plugin-dir`.
 
+[0.4.0]: https://github.com/BenGGolden/cadence/releases/tag/v0.4.0
 [0.3.0]: https://github.com/BenGGolden/cadence/releases/tag/v0.3.0
 [0.2.0]: https://github.com/BenGGolden/cadence/releases/tag/v0.2.0
 [0.1.0]: https://github.com/BenGGolden/cadence/releases/tag/v0.1.0
