@@ -4,6 +4,21 @@ All notable changes to Cadence are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **The `merge_on_approve` PR-outcome decision is now a pure, tested helper.**
+  The five-branch outcome selection that used to run as dispatch prose inside
+  `tick.md`'s Merge-on-approve sub-phase (which comment to post, which labels to
+  change, whether to advance to the terminal) moved into a new
+  `classify_merge.py`, mirroring `classify_gate.py`. The two GitHub MCP calls
+  (`get_pull_request` / `merge_pull_request`) stay in the bootstrap, which
+  remains the sole Linear/GitHub writer and applies the helper's action list
+  verbatim. Observable behavior is unchanged (1:1 with 0.5.0); the win is that
+  the tick's most consequential branch is deterministic and unit-tested rather
+  than re-reasoned by the dispatch model on every merge fire.
+
 ## [0.5.0] — 2026-07-06
 
 ### Changed

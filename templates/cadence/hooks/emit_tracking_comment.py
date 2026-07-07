@@ -8,6 +8,9 @@ Caller(s):
   - templates/cadence/hooks/route_fire.py (imported; build_gate / build_reconcile
     produce the gate rework / gate escalation / reconcile comment bodies the
     router embeds in its plan)
+  - templates/cadence/hooks/classify_merge.py (imported; build_merge produces the
+    merged / already_merged / failed / no_pr comment bodies for the tick.md
+    merge-on-approve sub-phase)
   - commands/sweep.md step 5 (stale-lock sweep comment)
 
 Failure mode eliminated:
