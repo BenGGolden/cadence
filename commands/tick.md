@@ -402,50 +402,58 @@ it** — the bootstrap's job is to apply the plan.
   whichever names are present — they are auto-authorized in this session). The
   `owner` / `repo` / `pullNumber` arguments come from parsing `plan.pr_url`
   (`https://github.com/<owner>/<repo>/pull/<n>`). Read-before-write per Cadence
-  discipline — read PR state first, then act. In every branch below, the gate
-  name passed to `--state` is `plan.matched_state`.
+  discipline — read PR state first, then act.
 
-  1. **No PR URL.** If `plan.pr_url` is null: build the audit comment via Bash
-     `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/emit_tracking_comment.py --kind merge --status no_pr --state <plan.matched_state>`
-     and post its stdout as a Linear comment verbatim; add the
-     `label.cadence_needs_human` label; remove the `label.cadence_active`
-     label; print `exit_summary` (noting the no-PR escalation); **exit**. The
-     card stays in the gate's waiting column — it is **not** advanced to the
-     terminal.
-  2. **Read PR state.** Otherwise, parse `owner` / `repo` / `pullNumber` from
-     `plan.pr_url` and call GitHub MCP `get_pull_request`. It returns the REST
-     shape: a `state` field (`open` / `closed`) plus a `merged` boolean. If the
-     call errors or returns no usable `{state, merged}`, go straight to the
-     **escalate** branch (step 5) using the error text (or
-     "could not read PR state") as `--error`.
-  3. **`merged` is `true` (already merged — e.g. a human merged manually).**
-     Build the audit comment via
-     `emit_tracking_comment.py --kind merge --status already_merged --pr-url <plan.pr_url> --state <plan.matched_state>`
-     and post it verbatim; move the issue to `plan.merge_target_linear_state`
-     via the Linear MCP; remove the `label.cadence_active` label; print a
-     summary; **exit**.
-  4. **`merged` is `false` and `state` is `open` (mergeable).** Call GitHub MCP
-     `merge_pull_request` with the URL-derived `owner` / `repo` / `pullNumber`
-     and the merge method from `plan.merge_method` (the tool's
-     `merge_method` / `mergeMethod` parameter — one of `merge` / `squash` /
-     `rebase`).
-     - **Success:** post
-       `emit_tracking_comment.py --kind merge --status merged --pr-url <plan.pr_url> --state <plan.matched_state>`
-       verbatim; move the issue to `plan.merge_target_linear_state`; remove the
-       `label.cadence_active` label; print a summary; **exit**.
-     - **Failure** (CI red, conflicts, branch protection — the
-       `merge_pull_request` call errors or returns a non-merged result): post
-       `emit_tracking_comment.py --kind merge --status failed --error "<merge error>" --state <plan.matched_state>`
-       verbatim; add the `label.cadence_needs_human` label; remove the
-       `label.cadence_active` label; **do not** move the issue to the terminal;
-       print a summary noting the escalation; **exit**. The card stays in the
-       gate's waiting column.
-  5. **Escalate** (PR `closed` but not `merged` — an abandoned PR — or the
-     `get_pull_request` read in step 2 failed): post
-     `emit_tracking_comment.py --kind merge --status failed --error "<reason or PR-read error>" --state <plan.matched_state>`
-     verbatim; add the `label.cadence_needs_human` label; remove the
-     `label.cadence_active` label; leave the issue in the gate's waiting
-     column; print a summary noting the escalation; **exit**.
+  The **decision** at both points — which comment to post, which labels to
+  change, and whether to advance — is made by the pure helper
+  `classify_merge.py`, not by this prose. The bootstrap gathers the PR read /
+  merge result, invokes the helper, and applies the `actions` list it returns
+  **verbatim, in order**, exactly the way `exit_plan` actions are applied (the
+  action shapes are the same four documented in Step 6 Execute above,
+  `commands/tick.md:370-378`). The bootstrap does **not** select comment
+  status, choose labels, or decide whether to advance. In both invocations pass
+  `--state <plan.matched_state>` (the gate name) and
+  `--merge-target <plan.merge_target_linear_state>`, plus
+  `--workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml"`. The helper
+  is at `"${CLAUDE_PROJECT_DIR:-.}/.claude/cadence/hooks/classify_merge.py"`.
+
+  1. **No PR URL.** If `plan.pr_url` is null: invoke Bash
+     `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/classify_merge.py --phase read --pr-url "" --state <plan.matched_state> --merge-target <plan.merge_target_linear_state> --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml"`.
+     Parse the plan JSON (`{"decision", "actions"}`); apply every action in
+     `actions` in order via the Linear MCP; print `exit_summary` (noting the
+     no-PR escalation); **exit**. (The helper returns `decision: "no_pr"`,
+     whose actions post the audit comment, add `cadence_needs_human`, and
+     remove `cadence_active` — the card stays in the gate's waiting column, not
+     advanced to the terminal.)
+  2. **Otherwise — read PR state, then decide.** Parse `owner` / `repo` /
+     `pullNumber` from `plan.pr_url` and call GitHub MCP `get_pull_request`. It
+     returns the REST shape: a `state` field (`open` / `closed`) plus a
+     `merged` boolean. Write its result verbatim to `.cadence/pr-read.json`
+     (the `.cadence/` scratch convention, Step 1 above), or capture the error
+     text. Then invoke Bash `classify_merge.py --phase read` with
+     `--pr-url <plan.pr_url>`, `--pr-state-json .cadence/pr-read.json` (on a
+     successful read) **or** `--read-error "<error text>"` (on a failed read),
+     plus `--state` / `--merge-target` / `--workflow-path` as above. Parse the
+     plan JSON.
+     - If `decision` is `already_merged` or `escalate`: apply the returned
+       `actions` in order via the Linear MCP; print a summary; **exit**. (For
+       `already_merged`, one of the actions is the `move_state` that performs
+       the terminal advance; `escalate` covers both a `closed`/unmerged PR and
+       an unreadable read.)
+     - If `decision` is `attempt_merge` (actions are empty — the merge is
+       pending): call GitHub MCP `merge_pull_request` with the URL-derived
+       `owner` / `repo` / `pullNumber` and the merge method from
+       `plan.merge_method` (the tool's `merge_method` / `mergeMethod`
+       parameter — one of `merge` / `squash` / `rebase`). Write its result
+       verbatim to `.cadence/merge-result.json`, or capture the error text.
+       Then invoke Bash `classify_merge.py --phase merge` with
+       `--pr-url <plan.pr_url>`, `--merge-result-json .cadence/merge-result.json`
+       (on a successful call) **or** `--merge-error "<error text>"` (on a failed
+       call), plus `--state` / `--merge-target` / `--workflow-path` as above.
+       Apply the returned `actions` in order via the Linear MCP; print a
+       summary; **exit**. (The helper returns `merged` — whose actions advance
+       to the terminal and release the lock — or `failed`, which escalates and
+       leaves the card in the gate's waiting column.)
 
 - If `invoke_subagent` is **true**: apply every action in `pre_actions` in
   order via the Linear MCP. Then write `parse_comments_output` verbatim as

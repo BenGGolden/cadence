@@ -34,7 +34,7 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
   the rest are deterministic helpers the dispatch
   prose invokes via Bash (`validate_workflow.py`, `_common.py`,
   `parse_comments.py`, `emit_tracking_comment.py`, `classify_drift.py`,
-  `classify_gate.py`, `route_fire.py`,
+  `classify_gate.py`, `classify_merge.py`, `route_fire.py`,
   `compose_lifecycle_context.py`,
   `filter_candidates.py`, `render_status_report.py`,
   `render_sweep_report.py`, `promote_acceptance_criteria.py`).
@@ -42,7 +42,11 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
   orchestrator (the fire's routing decision core) — it imports
   `parse_comments`, `classify_drift`, `classify_gate`, and
   `emit_tracking_comment`'s formatters to emit one routing plan; the
-  bootstrap still executes every Linear write. All are always
+  bootstrap still executes every Linear write. `classify_merge.py` is the
+  parallel post-MCP classifier for tick.md's `merge_on_approve` sub-phase:
+  the bootstrap makes the two GitHub PR calls, the helper decides the
+  PR-outcome branch (merge / already-merged / escalate) and returns the
+  action list. All are always
   overwritten on init — they are plugin-owned executables, not user config.
   The canonical, count-free copy list lives in
   [`scripts/scaffold_files.py`](./scripts/scaffold_files.py)'s

@@ -23,3 +23,6 @@ __pycache__/
 *.log
 .tmp/
 .cache/
+
+# Plan execution ledgers (local resume state)
+.plan-progress/
