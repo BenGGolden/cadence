@@ -36,6 +36,9 @@ Invocation arguments (verbatim, may be empty): `$ARGUMENTS`
   - `<!-- cadence:state {...JSON...} -->`     workflow-state attempt marker or failure record
   - `<!-- cadence:gate {...JSON...} -->`      gate transition record
   - `<!-- cadence:reconcile {...JSON...} -->` drift reconciliation note
+  - `<!-- cadence:warning {...JSON...} -->`   oversized-parent-context notice
+    (informational; **not** counted as an attempt/gate/drift record, posted at
+    most once per issue — see step 8)
 - **Attempt marker**: a `cadence:state` tracking
   comment whose JSON has **no** `status` field. Emitted by step 7 at the start
   of every attempt. The Route step (step 6) counts these.
@@ -516,7 +519,7 @@ field — this comment **is** the attempt marker counted by the Route step
 Write the locked `issue` MCP object verbatim as JSON to `.cadence/issue.json`
 (call it `issueJsonPath`) using the Write tool. Then invoke Bash:
 
-`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/compose_lifecycle_context.py --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml" --issue <issueJsonPath> --target-state <targetState> --attempt <attempt> --parse-comments-output <parseCommentsOutputPath>`
+`python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/compose_lifecycle_context.py --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml" --issue <issueJsonPath> --target-state <targetState> --attempt <attempt> --parse-comments-output <parseCommentsOutputPath> --warning-file .cadence/context-warning.json`
 
 If the router's plan set `rework: true` (this fire entered via a gate
 **rework** route), append `--rework` so the script includes the Rework
@@ -566,9 +569,10 @@ The script reads:
 - The parent issue object (`parentJsonPath`, written above) when the issue
   has a parent — `identifier` / `title` / `description`, rendered as the
   **Parent Context** section, inherited **in full** (never truncated). Over the
-  soft budget the script warns (non-fatal); over the hard ceiling the fire
-  fails. Both thresholds are constants in `compose_lifecycle_context.py`.
-  Omitted when the issue has no parent.
+  soft budget the script warns (non-fatal — surfaced once per issue as a
+  `cadence:warning` comment, see below); over the hard ceiling the fire fails.
+  Both thresholds are constants in `compose_lifecycle_context.py`. Omitted when
+  the issue has no parent.
 - `.claude/prompts/global.md` if it exists — appended verbatim after two
   blank lines.
 
@@ -587,10 +591,26 @@ branch** / optional **PR:** lines), the rework-section rendering
   post its stdout as a Linear comment verbatim, remove the `label.cadence_active`
   label, and **exit** — the same mechanics as the Failure path below. Do **not**
   advance Linear state.
-- **Exit 0 with a `CADENCE_WARNING:` line on stderr** (the parent body is over
-  the soft budget) → capture that line as `contextWarning` and proceed normally.
-  It is already in the run log via stderr; step 10 prepends it to the posted
-  summary so it also surfaces in Linear.
+- **Exit 0** → proceed. The soft-budget warning (parent over the warn
+  threshold) is no longer hand-carried from stderr: on a warn the script writes
+  the guidance to `.cadence/context-warning.json`, but **only** when the issue
+  does not already carry a `cadence:warning` comment (dedup on the
+  `has_context_warning` field the router surfaced). On any other outcome it
+  clears that file. The stderr `CADENCE_WARNING:` line, if present, is just the
+  run-log signal — do **not** hand-carry it. See **Post the context-warning
+  comment** below.
+
+**Post the context-warning comment (once per issue).** After a zero-exit
+compose, check `.cadence/context-warning.json`:
+
+- If it is **absent or empty**, do nothing — either the parent is within the
+  soft budget, or this issue was already warned on an earlier fire.
+- If it is **non-empty**, build the comment by invoking Bash:
+  `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/emit_tracking_comment.py --kind warning --warning-file .cadence/context-warning.json`
+  and post its stdout as a Linear comment on the issue, **verbatim** (a
+  `<!-- cadence:warning ... -->` tracking comment). Post it **now**, before
+  invoking the subagent — it is decoupled from the subagent summary, so it
+  surfaces even if the subagent later fails or returns nothing.
 
 **Stdout is the full subagent user prompt.** Pass it as the Agent tool's
 `prompt` parameter in step 9.
@@ -670,11 +690,9 @@ When it does apply:
 Post `subagentSummary` (with the `**PR:**` line injected in step 4 above, when
 this fire created or reused a PR) as a Linear comment on the issue,
 **verbatim**. Do not add a tracking-comment prefix; this is a plain
-work-product comment intended for human readers.
-
-If step 8 captured a `contextWarning` (a `CADENCE_WARNING:` line, e.g. an
-over-soft-budget parent description), prepend it as a single italicized line
-above the summary before posting, so the operator sees it in Linear.
+work-product comment intended for human readers. (Any over-soft-budget parent
+warning was already posted as its own `cadence:warning` comment in step 8 — it
+is no longer prepended here.)
 
 If `subagentSummary` is empty or whitespace, post:
 > **[Cadence]** Subagent **<subagent>** returned no summary at attempt <attempt>.

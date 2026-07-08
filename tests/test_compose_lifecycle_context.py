@@ -101,7 +101,7 @@ def _default_parent():
     }
 
 
-def _parse_output(rework_context=None, pr_url=None):
+def _parse_output(rework_context=None, pr_url=None, has_context_warning=False):
     return {
         "latest_tracking_comment": {
             "kind": "state", "state": "implement", "attempt": 1,
@@ -114,6 +114,7 @@ def _parse_output(rework_context=None, pr_url=None):
             "pr_url": pr_url,
             "branch": "eng/eng-42-wire-up-dashboard-widget" if pr_url else None,
         },
+        "has_context_warning": has_context_warning,
         "parse_errors": [],
     }
 
@@ -437,6 +438,72 @@ class ComposeLifecycleContextTests(unittest.TestCase):
             self.assertEqual(r.returncode, 0, msg=r.stderr)
             self.assertNotIn("CADENCE_WARNING", r.stderr)
             self.assertIn("w" * 50_000, r.stdout)
+
+    # ---------- context-warning file hand-off ----------
+
+    def test_warning_file_written_on_warn(self):
+        parent = _default_parent()
+        parent["description"] = "x" * 5_000
+        with tempfile.TemporaryDirectory() as td:
+            wf = Path(td) / "context-warning.json"
+            r = run_compose(td, config=_default_config(),
+                            issue=_default_issue(),
+                            target_state="implement", attempt=1,
+                            parse_output=_parse_output(),
+                            parent=parent,
+                            parent_warn_chars=100, parent_max_chars=0,
+                            extra_args=("--warning-file", str(wf)))
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertIn("CADENCE_WARNING", r.stderr)
+            self.assertTrue(wf.is_file())
+            data = json.loads(wf.read_text(encoding="utf-8"))
+            self.assertEqual(data["parent"], "ENG-1")
+            self.assertEqual(data["chars"], 5_000)
+            self.assertIn("soft budget", data["message"])
+
+    def test_warning_file_suppressed_when_already_warned(self):
+        # Second+ fire for the same issue: has_context_warning is true, so the
+        # script still warns on stderr but writes no file (dedup → post once).
+        parent = _default_parent()
+        parent["description"] = "x" * 5_000
+        with tempfile.TemporaryDirectory() as td:
+            wf = Path(td) / "context-warning.json"
+            r = run_compose(td, config=_default_config(),
+                            issue=_default_issue(),
+                            target_state="implement", attempt=1,
+                            parse_output=_parse_output(
+                                has_context_warning=True),
+                            parent=parent,
+                            parent_warn_chars=100, parent_max_chars=0,
+                            extra_args=("--warning-file", str(wf)))
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertIn("CADENCE_WARNING", r.stderr)
+            self.assertFalse(wf.exists())
+
+    def test_warning_file_cleared_when_within_budget(self):
+        # A stale file from a prior fire must be removed when this fire raises
+        # no warning, so the bootstrap never reposts it.
+        parent = _default_parent()
+        parent["description"] = "z" * 50
+        with tempfile.TemporaryDirectory() as td:
+            wf = Path(td) / "context-warning.json"
+            wf.write_text('{"stale": true}', encoding="utf-8")
+            r = run_compose(td, config=_default_config(),
+                            issue=_default_issue(),
+                            target_state="implement", attempt=1,
+                            parse_output=_parse_output(),
+                            parent=parent,
+                            extra_args=("--warning-file", str(wf)))
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertFalse(wf.exists())
+
+    def test_warning_file_not_written_in_dry_run(self):
+        with tempfile.TemporaryDirectory() as td:
+            wf = Path(td) / "context-warning.json"
+            r = run_compose(td, config=_default_config(), dry_run=True,
+                            extra_args=("--warning-file", str(wf)))
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            self.assertFalse(wf.exists())
 
     # ---------- branch derivation ----------
 

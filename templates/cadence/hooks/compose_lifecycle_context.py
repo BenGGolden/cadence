@@ -28,6 +28,7 @@ CLI:
     [--parent <parentJsonPath>]
     [--parent-warn-chars <int>]
     [--parent-max-chars <int>]
+    [--warning-file <path>]
     [--global-prompt-path .claude/prompts/global.md]
     [--default-branch main]
     [--dry-run]
@@ -40,6 +41,14 @@ truncated. Over the soft budget (--parent-warn-chars) it emits a
 CADENCE_WARNING on stderr and still inherits in full; over the hard ceiling
 (--parent-max-chars) it fails the fire (exit 2). Pass it as the Agent tool's
 `prompt`.
+
+Soft-budget warning hand-off: on a warn, and only when the issue has no prior
+warning (`has_context_warning` in the forwarded parse-comments output is
+false), the guidance is written to --warning-file as a JSON payload
+{parent, chars, message}. The bootstrap turns that into one `cadence:warning`
+comment per issue. On any other outcome --warning-file is cleared, so a stale
+file from an earlier fire never reposts. The stderr CADENCE_WARNING is kept as
+the run-log signal. --dry-run passes no --warning-file and writes nothing.
 
 Exit codes:
   0  success
@@ -294,7 +303,7 @@ def _classify_parent_size(parent, warn_chars, max_chars):
                 f"0 disables this ceiling.)")
     if isinstance(warn_chars, int) and warn_chars > 0 and n > warn_chars:
         return ("warn",
-                f"parent context for {label} is {n} chars, over the "
+                f"Parent context for {label} is {n} chars, over the "
                 f"{warn_chars}-char soft budget. Inheriting it in full, but "
                 f"consider moving project-wide rules to .claude/prompts/global.md "
                 f"and per-step detail into the sub-issues so the epic description "
@@ -381,6 +390,37 @@ def _read_global_prompt(path):
         return ""
 
 
+def _write_warning_file(path, parent, message):
+    """Write the payload the bootstrap turns into a `cadence:warning` comment.
+
+    Called only on a soft-budget warn when the issue has no prior warning
+    (the dedup is decided in main() from has_context_warning). Non-fatal on an
+    I/O error — an advisory note is not worth failing a fire over; the stderr
+    CADENCE_WARNING still carries it in the run log."""
+    description = parent.get("description") if isinstance(parent, dict) else ""
+    if not isinstance(description, str):
+        description = ""
+    label = "the parent issue"
+    if isinstance(parent, dict):
+        label = parent.get("identifier") or parent.get("id") or label
+    payload = {"parent": label, "chars": len(description), "message": message}
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=False)
+    except OSError as e:
+        sys.stderr.write(f"CADENCE_WARNING: Cadence: could not write "
+                         f"context-warning file {path}: {e}\n")
+
+
+def _clear_warning_file(path):
+    """Remove any context-warning file a prior fire left, so the bootstrap
+    never reposts a warning this fire did not raise."""
+    try:
+        Path(path).unlink()
+    except (FileNotFoundError, OSError):
+        pass
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--workflow-config", default=None,
@@ -413,6 +453,12 @@ def main():
                     help=f"Fail the fire (exit 2) when the inherited parent "
                          f"description exceeds this many chars "
                          f"(default: {PARENT_MAX_CHARS}; 0 disables).")
+    ap.add_argument("--warning-file", default=None,
+                    help="Path to write the soft-budget context-warning "
+                         "payload to (JSON: {parent, chars, message}); the "
+                         "bootstrap posts it once per issue as a "
+                         "cadence:warning comment. Cleared when no warning is "
+                         "due. Not passed on --dry-run.")
     ap.add_argument("--global-prompt-path", default=None,
                     help=f"Path to the global prompt (default: "
                          f"{DEFAULT_GLOBAL_PROMPT_PATH}).")
@@ -440,6 +486,7 @@ def main():
         rework_comments = []
         pr_url = None
         parent = dict(DRY_RUN_PARENT)
+        already_warned = False
     else:
         missing = []
         if not args.issue:
@@ -463,6 +510,7 @@ def main():
         if not isinstance(pc_output, dict):
             die("Cadence: --parse-comments-output must be a JSON object.", 1)
         rework = args.rework
+        already_warned = bool(pc_output.get("has_context_warning"))
         rework_comments = pc_output.get("rework_context") or []
         if not isinstance(rework_comments, list):
             rework_comments = []
@@ -493,8 +541,22 @@ def main():
         parent, args.parent_warn_chars, args.parent_max_chars)
     if status == "fail":
         die("Cadence: " + size_msg, 2)
-    elif status == "warn":
+    if status == "warn":
         sys.stderr.write("CADENCE_WARNING: Cadence: " + size_msg + "\n")
+
+    # Hand the soft-budget warning to the bootstrap as a deterministic file
+    # rather than a stderr line it has to notice amid a multi-thousand-char
+    # prompt. compose owns the whole decision, so the file always reflects
+    # THIS fire: on a warn with no prior warning on the issue, write the
+    # payload (the bootstrap posts it once as a cadence:warning comment);
+    # otherwise clear any stale file an earlier fire left behind.
+    # `already_warned` (has_context_warning, from the forwarded parse-comments
+    # output) is the per-issue dedup key. Skipped on --dry-run.
+    if args.warning_file and not args.dry_run:
+        if status == "warn" and not already_warned:
+            _write_warning_file(args.warning_file, parent, size_msg)
+        else:
+            _clear_warning_file(args.warning_file)
 
     block = compose_block(
         issue=issue,
