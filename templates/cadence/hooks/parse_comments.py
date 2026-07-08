@@ -8,8 +8,10 @@ Caller(s):
     The Route step calls it once instead of the several inline CLI calls the
     routing prose used to make per fire.
   - commands/tick.md step 8 (latest_implementer_summary — PR URL / branch
-    for the adversarial-context Lifecycle Context) — reads route_fire.py's
-    forwarded `parse_comments_output`, not a fresh CLI invocation.
+    for the adversarial-context Lifecycle Context; and `has_context_warning`
+    — the per-issue dedup key for the oversized-parent context warning) —
+    reads route_fire.py's forwarded `parse_comments_output`, not a fresh CLI
+    invocation.
   - commands/status.md (per-issue attempt count / last state — CLI)
 
 Failure modes eliminated:
@@ -86,6 +88,18 @@ def _is_cadence_comment(body):
     Used to exclude bot comments from rework_context."""
     s = body.lstrip()
     return s.startswith("<!-- cadence:")
+
+
+def _is_context_warning(body):
+    """True for a Cadence context-warning note (`<!-- cadence:warning ... -->`).
+
+    Informational only — unlike state/gate/reconcile it is never counted as an
+    attempt/gate/drift record or treated as the latest-tracking boundary. Used
+    for `has_context_warning` (the per-issue dedup of the oversized-parent
+    warning) and skipped when pairing an implementer summary with its attempt
+    marker (a warning can sit between the two on the first fire that raises
+    it)."""
+    return body.lstrip().startswith("<!-- cadence:warning")
 
 
 def _extract_json_block(s):
@@ -180,7 +194,16 @@ def _find_implementer_summary(norm):
         m = GITHUB_PR_RE.search(body)
         if m is None:
             continue
-        prev = norm[idx - 1]
+        # The summary immediately follows its attempt marker — but on the
+        # first fire that raises the oversized-parent warning, a
+        # `cadence:warning` note is posted between the two. Skip it so the
+        # pairing still resolves to the marker.
+        prev_idx = idx - 1
+        while prev_idx >= 0 and _is_context_warning(norm[prev_idx]["body"]):
+            prev_idx -= 1
+        if prev_idx < 0:
+            continue
+        prev = norm[prev_idx]
         kind, payload, err = _classify(prev["body"])
         if kind != "state" or not isinstance(payload, dict):
             continue
@@ -240,6 +263,10 @@ def parse_comment_list(comments, target_state, gate_name=None,
             "is_bot": _is_bot(c),
         })
     norm.sort(key=lambda x: x["createdAt"])
+
+    # Per-issue dedup key for the oversized-parent context warning: has this
+    # issue already been warned on an earlier fire?
+    has_context_warning = any(_is_context_warning(c["body"]) for c in norm)
 
     latest_tracking = None
     latest_tracking_idx = -1
@@ -303,6 +330,7 @@ def parse_comment_list(comments, target_state, gate_name=None,
         "rework_count": rework_count,
         "rework_context": rework_context,
         "latest_implementer_summary": _find_implementer_summary(norm),
+        "has_context_warning": has_context_warning,
         "parse_errors": parse_errors,
     }
 

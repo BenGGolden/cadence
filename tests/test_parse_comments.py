@@ -60,6 +60,14 @@ def pr_comment(url, branch, t, user="Alice", is_bot=False):
     return _comment(body, t, user=user, is_bot=is_bot)
 
 
+def warning_comment(t, parent="ENG-10", chars=9481, user="Cadence"):
+    payload = json.dumps({"parent": parent, "chars": chars})
+    body = (f"<!-- cadence:warning {payload} -->\n"
+            f"**[Cadence]** Parent context for {parent} is {chars} chars, "
+            f"over the soft budget.")
+    return _comment(body, t, user=user)
+
+
 class ParseCommentsTests(unittest.TestCase):
 
     def test_empty_list(self):
@@ -161,7 +169,72 @@ class ParseCommentsTests(unittest.TestCase):
             payload = json.loads(run_parser(p).stdout)
             self.assertEqual(payload["rework_context"], [])
 
+    # ---------- has_context_warning ----------
+
+    def test_has_context_warning_false_by_default(self):
+        comments = [attempt_marker("plan", 1, "2026-05-26T09:00:00Z")]
+        with tempfile.TemporaryDirectory() as td:
+            p = write_comments(td, comments)
+            payload = json.loads(run_parser(p).stdout)
+            self.assertFalse(payload["has_context_warning"])
+
+    def test_has_context_warning_true_when_present(self):
+        comments = [
+            attempt_marker("plan", 1, "2026-05-26T09:00:00Z"),
+            warning_comment("2026-05-26T09:00:01Z"),
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            p = write_comments(td, comments)
+            payload = json.loads(run_parser(p).stdout)
+            self.assertTrue(payload["has_context_warning"])
+
+    def test_context_warning_is_not_counted_or_a_boundary(self):
+        # A warning note is informational: it must not bump attempt_count nor
+        # become the latest tracking comment.
+        comments = [
+            attempt_marker("implement", 1, "2026-05-26T09:00:00Z"),
+            warning_comment("2026-05-26T09:30:00Z"),
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            p = write_comments(td, comments)
+            payload = json.loads(run_parser(p, target_state="implement").stdout)
+            self.assertEqual(payload["attempt_count"], 1)
+            self.assertEqual(
+                payload["latest_tracking_comment"]["state"], "implement")
+
+    def test_context_warning_excluded_from_rework_context(self):
+        # It starts with `<!-- cadence:`, so it is not human rework feedback.
+        comments = [
+            gate_rework("plan_review", "2026-05-26T09:00:00Z"),
+            warning_comment("2026-05-26T10:00:00Z"),
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            p = write_comments(td, comments)
+            payload = json.loads(
+                run_parser(p, gate_name="plan_review").stdout)
+            self.assertEqual(payload["rework_context"], [])
+
     # ---------- latest_implementer_summary ----------
+
+    def test_implementer_summary_tolerates_interleaved_warning(self):
+        # On the first fire that raises the oversized-parent warning, a
+        # cadence:warning note lands between the implement attempt marker and
+        # the implementer summary. The marker→summary pairing must still hold.
+        comments = [
+            attempt_marker("implement", 1, "2026-05-26T09:00:00Z",
+                           user="Cadence"),
+            warning_comment("2026-05-26T09:00:01Z", user="Cadence"),
+            pr_comment("https://github.com/o/r/pull/42", "feat/foo",
+                       "2026-05-26T09:00:02Z", user="Cadence"),
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            p = write_comments(td, comments)
+            payload = json.loads(run_parser(p).stdout)
+            self.assertEqual(
+                payload["latest_implementer_summary"],
+                {"pr_url": "https://github.com/o/r/pull/42",
+                 "branch": "feat/foo"},
+            )
 
     def test_implementer_summary_extracted(self):
         comments = [

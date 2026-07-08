@@ -20,7 +20,8 @@ Failure mode eliminated:
   guaranteed well-formed and canonically spaced.
 
 CLI:
-  python emit_tracking_comment.py --kind {state|gate|reconcile|sweep|merge} [...]
+  python emit_tracking_comment.py
+    --kind {state|gate|reconcile|sweep|merge|warning} [...]
 
 Required args by kind:
   state      --state, plus --status OR (--attempt and --started-at)
@@ -30,12 +31,17 @@ Required args by kind:
              --threshold-minutes
   merge      --state and --status {merged|already_merged|failed|no_pr};
              --pr-url for merged/already_merged; --error for failed
+  warning    --warning-file (a JSON object {parent, chars, message} written by
+             compose_lifecycle_context.py on an oversized-parent soft-budget
+             warn). Produces an informational `cadence:warning` comment; unlike
+             the other kinds it is never counted or treated as a boundary.
 
 Stdout: the full comment body (HTML-comment marker line + visible markdown).
 Exit codes: 0 success; 1 bad / missing required input.
 """
 
 import argparse
+import io
 import json
 import sys
 
@@ -147,6 +153,31 @@ def build_merge(args):
     return _emit("merge", payload, visible)
 
 
+def build_warning(args):
+    """Informational context-warning comment (oversized inherited parent spec).
+
+    The payload is a JSON object compose_lifecycle_context.py wrote to
+    --warning-file on a soft-budget warn: {parent, chars, message}. The marker
+    carries the structured facts; the visible line is the guidance message the
+    compose step already composed (it knows the configured threshold)."""
+    if not args.warning_file:
+        die("Cadence: --warning-file is required for --kind warning.", 1)
+    try:
+        with open(args.warning_file, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError) as e:
+        die(f"Cadence: could not read --warning-file "
+            f"{args.warning_file}: {e}", 1)
+    if not isinstance(data, dict):
+        die("Cadence: --warning-file must hold a JSON object.", 1)
+    message = data.get("message")
+    if not isinstance(message, str) or not message.strip():
+        die("Cadence: --warning-file is missing a non-empty 'message'.", 1)
+    payload = {"parent": data.get("parent"), "chars": data.get("chars")}
+    visible = f"**[Cadence]** ⚠️ {message}"
+    return _emit("warning", payload, visible)
+
+
 def build_sweep(args):
     missing = [name for name, val in (
         ("--cleared-at", args.cleared_at),
@@ -188,9 +219,19 @@ def build_reconcile(args):
 
 
 def main():
+    # The warning kind's visible line carries a ⚠️; force UTF-8 so it does not
+    # crash on Windows when stdout defaults to cp1252 (matches
+    # compose_lifecycle_context.py / route_fire.py). Done here in main() — not
+    # at module level — because route_fire.py / classify_merge.py import this
+    # module for its formatters and must not have their stdout replaced.
+    if hasattr(sys.stdout, "buffer"):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8",
+                                      newline="")
+
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--kind", required=True,
-                    choices=["state", "gate", "reconcile", "sweep", "merge"])
+                    choices=["state", "gate", "reconcile", "sweep", "merge",
+                             "warning"])
     ap.add_argument("--state")
     ap.add_argument("--attempt", type=int)
     ap.add_argument("--started-at")
@@ -198,6 +239,9 @@ def main():
                                          "escalated", "merged",
                                          "already_merged", "no_pr"])
     ap.add_argument("--pr-url", help="PR URL for --kind merge.")
+    ap.add_argument("--warning-file",
+                    help="Path to the JSON payload for --kind warning "
+                         "(compose_lifecycle_context.py wrote it).")
     ap.add_argument("--error")
     ap.add_argument("--subagent", help="Subagent name for a failure record's "
                                        "visible line.")
@@ -227,6 +271,8 @@ def main():
         body = build_sweep(args)
     elif args.kind == "merge":
         body = build_merge(args)
+    elif args.kind == "warning":
+        body = build_warning(args)
     else:
         body = build_reconcile(args)
 

@@ -8,6 +8,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -17,15 +18,17 @@ SCRIPT = REPO_ROOT / "templates" / "cadence" / "hooks" / "emit_tracking_comment.
 
 # Body shape: "<!-- cadence:<prefix> {json} -->\n<visible markdown>"
 BODY_RE = re.compile(
-    r"^<!--\s+cadence:(?P<prefix>state|gate|reconcile|sweep|merge)\s+"
+    r"^<!--\s+cadence:(?P<prefix>state|gate|reconcile|sweep|merge|warning)\s+"
     r"(?P<json>\{.*?\})\s+-->\n(?P<visible>.*)$",
     re.DOTALL,
 )
 
 
 def run_emit(*args):
+    # Decode as UTF-8: the warning kind's visible line carries a ⚠️, and the
+    # script forces UTF-8 stdout regardless of the platform locale.
     return subprocess.run([sys.executable, str(SCRIPT), *args],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, encoding="utf-8")
 
 
 def parse_body(stdout):
@@ -358,6 +361,47 @@ class EmitTrackingCommentTests(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("--expected-state", r.stderr)
         self.assertIn("--reason", r.stderr)
+
+    # ---------- warning ----------
+
+    def _write_warning_file(self, td, data):
+        wf = Path(td) / "context-warning.json"
+        wf.write_text(json.dumps(data), encoding="utf-8")
+        return wf
+
+    def test_warning_from_file(self):
+        message = ("Parent context for ENG-10 is 9481 chars, over the "
+                   "4000-char soft budget. Move project-wide rules to "
+                   ".claude/prompts/global.md.")
+        with tempfile.TemporaryDirectory() as td:
+            wf = self._write_warning_file(
+                td, {"parent": "ENG-10", "chars": 9481, "message": message})
+            r = run_emit("--kind", "warning", "--warning-file", str(wf))
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            prefix, payload, visible = parse_body(r.stdout)
+            self.assertEqual(prefix, "warning")
+            self.assertEqual(payload, {"parent": "ENG-10", "chars": 9481})
+            self.assertIn("9481 chars", visible)
+            self.assertIn("⚠", visible)
+            self.assertIn("[Cadence]", visible)
+
+    def test_warning_requires_warning_file(self):
+        r = run_emit("--kind", "warning")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("warning-file", r.stderr)
+
+    def test_warning_missing_file_exits_1(self):
+        r = run_emit("--kind", "warning",
+                     "--warning-file", "no/such/file.json")
+        self.assertEqual(r.returncode, 1)
+
+    def test_warning_file_without_message_exits_1(self):
+        with tempfile.TemporaryDirectory() as td:
+            wf = self._write_warning_file(
+                td, {"parent": "ENG-10", "chars": 9481})
+            r = run_emit("--kind", "warning", "--warning-file", str(wf))
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("message", r.stderr)
 
     # ---------- emitted JSON parses cleanly ----------
 
