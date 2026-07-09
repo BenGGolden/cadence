@@ -80,6 +80,7 @@ SCAFFOLD_PLAN = (
     ("templates/cadence/hooks/parse_comments.py",              ".claude/cadence/hooks/parse_comments.py",              "plugin-owned"),
     ("templates/cadence/hooks/promote_acceptance_criteria.py", ".claude/cadence/hooks/promote_acceptance_criteria.py", "plugin-owned"),
     ("templates/cadence/hooks/emit_tracking_comment.py",       ".claude/cadence/hooks/emit_tracking_comment.py",       "plugin-owned"),
+    ("templates/cadence/hooks/extract_findings.py",            ".claude/cadence/hooks/extract_findings.py",            "plugin-owned"),
     ("templates/cadence/hooks/classify_drift.py",              ".claude/cadence/hooks/classify_drift.py",              "plugin-owned"),
     ("templates/cadence/hooks/classify_gate.py",               ".claude/cadence/hooks/classify_gate.py",               "plugin-owned"),
     ("templates/cadence/hooks/classify_merge.py",              ".claude/cadence/hooks/classify_merge.py",              "plugin-owned"),
