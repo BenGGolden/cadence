@@ -326,6 +326,127 @@ class FilterModeBasicsTests(unittest.TestCase):
             out = json.loads(r.stdout)
             self.assertEqual(out["ordered_identifiers"], ["ENG-1"])
 
+    def test_blocker_in_done_is_resolved(self):
+        """A blocker sitting in the terminal (Done) column is resolved: a
+        completed prerequisite no longer holds the candidate. (Regression
+        for the Done-still-blocks bug — fails on the pre-fix code.)"""
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            cands = [_candidate("ENG-1", column="Todo", blockers=["Done"])]
+            r = self._run_filter(td, _default_validator_output(), cands, {})
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            out = json.loads(r.stdout)
+            self.assertEqual(out["ordered_identifiers"], ["ENG-1"])
+            self.assertEqual(out["prereq_blocked"], [])
+
+    def test_blocker_in_active_state_still_blocks(self):
+        """A blocker in an active (non-terminal) workflow column still
+        holds the candidate — the terminal exclusion did not over-broaden."""
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            cands = [_candidate("ENG-1", column="Todo",
+                                blockers=["Implementing"])]
+            r = self._run_filter(td, _default_validator_output(), cands, {})
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            out = json.loads(r.stdout)
+            self.assertEqual(out["ordered_identifiers"], [])
+
+    def test_blocker_mixed_done_and_active_still_blocks(self):
+        """One live (active) blocker suffices to hold the candidate even
+        when another blocker is already Done."""
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            cands = [_candidate("ENG-1", column="Todo",
+                                blockers=["Done", "Implementing"])]
+            r = self._run_filter(td, _default_validator_output(), cands, {})
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            out = json.loads(r.stdout)
+            self.assertEqual(out["ordered_identifiers"], [])
+            self.assertEqual(out["prereq_blocked"][0]["waiting_on"],
+                             ["Implementing"])
+
+    def test_blocker_all_done_multiple_resolves(self):
+        """Multiple blockers, all Done => every prerequisite is resolved
+        and the candidate is eligible."""
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            cands = [_candidate("ENG-1", column="Todo",
+                                blockers=["Done", "Done"])]
+            r = self._run_filter(td, _default_validator_output(), cands, {})
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            out = json.loads(r.stdout)
+            self.assertEqual(out["ordered_identifiers"], ["ENG-1"])
+
+    def test_blocker_foreign_column_resolves(self):
+        """A blocker in a non-workflow/foreign column (e.g. Cancelled) is
+        treated as resolved (unchanged behavior, explicitly retained)."""
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            cands = [_candidate("ENG-1", column="Todo",
+                                blockers=["Cancelled"])]
+            r = self._run_filter(td, _default_validator_output(), cands, {})
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            out = json.loads(r.stdout)
+            self.assertEqual(out["ordered_identifiers"], ["ENG-1"])
+
+    def test_unresolvable_blocker_token_blocks(self):
+        """The reserved "__cadence_unresolved__" token (producer could not
+        determine the blocker's column) is always treated as unresolved,
+        so the candidate is held (conservative-hold path)."""
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            cands = [_candidate("ENG-1", column="Todo",
+                                blockers=["__cadence_unresolved__"])]
+            r = self._run_filter(td, _default_validator_output(), cands, {})
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            out = json.loads(r.stdout)
+            self.assertEqual(out["ordered_identifiers"], [])
+            self.assertEqual(out["prereq_blocked"][0]["waiting_on"],
+                             ["__cadence_unresolved__"])
+
+    def test_prereq_blocked_diagnostic(self):
+        """When the only candidate is held for an unresolved prerequisite,
+        prereq_blocked names it and diagnostic_message says so."""
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            cands = [_candidate("ENG-9", column="Todo",
+                                blockers=["Implementing"])]
+            r = self._run_filter(td, _default_validator_output(), cands, {})
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            out = json.loads(r.stdout)
+            self.assertEqual(out["ordered_identifiers"], [])
+            self.assertEqual(out["prereq_blocked"],
+                             [{"identifier": "ENG-9",
+                               "waiting_on": ["Implementing"]}])
+            self.assertIn("waiting on incomplete prerequisites: ENG-9",
+                          out["diagnostic_message"])
+
+    def test_prereq_and_cap_both_reported(self):
+        """One candidate suppressed by a cap and another by a prerequisite
+        => diagnostic_message carries both the caps line and the
+        prerequisites line (caps first)."""
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            wf = _default_validator_output(caps={"plan_review": 1})
+            cands = [
+                _candidate("ENG-CAP", column="Todo"),
+                _candidate("ENG-PRE", column="Todo",
+                           blockers=["Implementing"]),
+            ]
+            r = self._run_filter(td, wf, cands, {"plan_review": 1})
+            self.assertEqual(r.returncode, 0, msg=r.stderr)
+            out = json.loads(r.stdout)
+            self.assertEqual(out["ordered_identifiers"], [])
+            self.assertEqual(out["over_cap_states_that_blocked"],
+                             ["plan_review"])
+            self.assertEqual([p["identifier"] for p in out["prereq_blocked"]],
+                             ["ENG-PRE"])
+            msg = out["diagnostic_message"]
+            self.assertIn("caps reached for: plan_review", msg)
+            self.assertIn("waiting on incomplete prerequisites: ENG-PRE", msg)
+            self.assertLess(msg.index("caps reached for"),
+                            msg.index("waiting on incomplete prerequisites"))
+
     def test_gate_waiting_without_verdict_dropped(self):
         """Issue in a gate's waiting column with neither verdict label =>
         dropped (the bootstrap can't do anything for it until a human acts)."""
