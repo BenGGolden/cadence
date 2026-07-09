@@ -4,6 +4,53 @@ All notable changes to Cadence are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-07-09
+
+### Added
+
+- **`/cadence:triage` — interactive, one-ticket finding triage.** A review often
+  surfaces non-blocking concerns (reviewer `major`/`minor` and `[follow-up]`
+  findings, planner "Risks / open questions", implementer caveats) that nothing
+  routes anywhere on approve-and-merge. `/cadence:triage <IDENT>` enumerates them
+  for a single ticket, assesses each for accuracy (a full-repo read) and existing
+  coverage (full Linear visibility) with a **cited** verdict, and — after one
+  confirmation preview — files the wanted ones as new **Backlog** issues
+  back-linked to the source. It is explicitly *not* automation: it never dismisses
+  a finding without citing the specific ticket (and acceptance criterion) that
+  covers it, and its only write to the source issue is one inert `cadence:triage`
+  marker comment (no state move, no label) that a re-run reads to skip
+  already-handled findings. Backed by a new deterministic, unit-tested
+  `extract_findings.py` enumerator (a plugin-owned hook); like the other
+  interactive front-door commands, it invokes no subagent.
+
+### Changed
+
+- **Sharper review verdicts.** The reviewer now demotes concerns the *ticket
+  itself* defers — via its Description, `## Out of scope`, or an acceptance
+  criterion — to `minor [follow-up]`, while a reviewer-*inferred* deferral still
+  ranks on its merits so the adversarial pass keeps catching punts. Its first
+  output line is now a mechanical `Recommendation: APPROVE | REQUEST CHANGES`
+  banner (REQUEST CHANGES iff ≥ 1 blocking finding), so an "approve with 2
+  majors" review no longer reads as contradictory at the human gate. A new
+  `[manual-eval]` acceptance-criteria tag marks outcomes an automated test can't
+  cheaply assert: the reviewer routes those to the human gate instead of raising
+  a missing-test blocker, and the tag survives AC promotion into the description
+  unchanged.
+
+### Fixed
+
+- **The oversized-parent context warning now reaches Linear reliably.** It
+  previously travelled on stderr and had to be hand-carried across dispatch steps
+  8→10, so it landed only about half the time and was formatted inconsistently.
+  It now flows through Cadence's verbatim-from-helper discipline:
+  `compose_lifecycle_context.py` writes it to a payload file (deduped per issue
+  on `has_context_warning`), `emit_tracking_comment.py` renders a
+  `cadence:warning` comment from that payload, and `tick.md` posts it at most once
+  per issue *before* invoking the subagent, so it survives a subagent failure.
+- Corrected a stale `ticket-template.md` comment (the planner *proposes*
+  acceptance criteria — it no longer refuses AC-less tickets), and added a
+  regression test pinning that the `[manual-eval]` tag survives AC promotion.
+
 ## [0.5.1] — 2026-07-07
 
 ### Changed
@@ -210,6 +257,7 @@ a local `/loop`.
 - Installable via `/plugin` from the bundled `marketplace.json`, or from a
   local checkout with `--plugin-dir`.
 
+[0.6.0]: https://github.com/BenGGolden/cadence/releases/tag/v0.6.0
 [0.5.1]: https://github.com/BenGGolden/cadence/releases/tag/v0.5.1
 [0.5.0]: https://github.com/BenGGolden/cadence/releases/tag/v0.5.0
 [0.4.0]: https://github.com/BenGGolden/cadence/releases/tag/v0.4.0
