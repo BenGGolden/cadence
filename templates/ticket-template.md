@@ -13,7 +13,11 @@ What is the current behaviour? Why does it need to change?
 ## Acceptance Criteria
 
 <!-- Each item must be independently verifiable from the diff + tests.
-     Vague items ("works well", "is fast") are not acceptable. -->
+     Vague items ("works well", "is fast") are not acceptable.
+     If an outcome genuinely can't be asserted by an automated test (e.g.
+     "db reset applies cleanly"), tag it — `- [ ] **AC-N** — [manual-eval]
+     …` — so the reviewer verifies it at the human gate instead of flagging
+     a missing test. Use sparingly. -->
 
 - [ ] **AC-1** — _Describe a specific, testable behaviour._
 - [ ] **AC-2** — _Another._

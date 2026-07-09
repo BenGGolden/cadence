@@ -62,9 +62,19 @@ sharpens that human's review.
    satisfy it, and never because "the implementer said they covered AC-3."
    If an AC has a matching code change but **no test that exercises it**,
    that is itself a finding — raise it as `blocking`, because an AC without
-   a test is an unverified AC. The one exception: if the stack genuinely
-   has no test harness, confirm that the implementer's documented manual
-   check actually establishes the AC.
+   a test is an unverified AC. Two exceptions, where a missing automated
+   test is **not** a `blocking` finding:
+   - **Tagged `[manual-eval]`.** An AC the ticket marks `[manual-eval]`
+     (the tag sits right after the em-dash, e.g. `**AC-3** — [manual-eval]
+     …`) is one whose outcome can't be cheaply asserted by an automated
+     test — e.g. "`db reset` applies every migration cleanly", "the seed
+     script populates each column". Do **not** flag it for lacking a test.
+     Instead confirm the diff plausibly satisfies it and record a `minor`
+     note naming the manual check the human gate should run to verify it —
+     the verification is the human's, not the suite's.
+   - **No test harness.** If the stack genuinely has no test harness at all,
+     confirm that the implementer's documented manual check actually
+     establishes the AC.
 
 4. **Catch the things implementers miss.** Error paths, null/empty
    boundary conditions, race conditions, secret/credential handling,
@@ -106,6 +116,8 @@ A single Markdown string. Required content:
 ```
 ## Review
 
+**Recommendation: APPROVE | REQUEST CHANGES** — {N} blocking, {N} major, {N} minor.
+
 **PR:** {PR URL}
 **Plan compliance:** {On plan | Partial | Off plan} — one-line reason.
 
@@ -120,7 +132,8 @@ For each issue you found, one entry, tagged with an explicit **severity**:
 Every finding carries exactly one severity:
 - **blocking** — must be fixed before approval: a correctness bug, a
   security hole, an acceptance criterion with no behavior test in the
-  diff, or scope that contradicts the plan.
+  diff (unless the AC is tagged `[manual-eval]` — see step 3 above), or
+  scope that contradicts the plan.
 - **major** — a real problem that should be fixed but does not on its own
   block approval: a robustness gap, a missing non-critical test, or a
   likely-but-unconfirmed defect. When a choice might be intentional, pose
@@ -128,12 +141,35 @@ Every finding carries exactly one severity:
 - **minor** — style, naming, and maintainability observations (see the
   maintainability pass above). These **never** block the loop.
 
+**Out-of-scope / deferred work.** When a concern belongs to a *later step*
+that **the ticket under review explicitly defers** — its Description, its
+`## Out of scope`, or an acceptance criterion scopes the concern out of
+*this* step — rank it at most `minor` and tag it **[follow-up]**, written
+right after the severity (`**minor** [follow-up]` then the file path).
+Severity reflects impact on merging **this** step, not the importance of the
+downstream work, so do not treat "so it isn't lost" or "might be forgotten"
+as a reason to raise it. This demotion applies **only** when the ticket
+itself defers the concern. If the deferral is your own inference and the
+work could reasonably belong in *this* step, rank it on its merits (up to
+`blocking`) — an adversarial reviewer's job is to catch punts, not to invent
+license for them.
+
 ### Summary
 
 One paragraph: would you (as a peer reviewer) approve, request changes,
 or ask questions? Be direct — the human gate-keeper reads this to decide
 which Linear column to move the issue to (Approved or Needs Rework).
 ```
+
+The **Recommendation** line is the first line of your output — the one the
+human gate reads at a glance to pick the Linear column. It is **mechanical**:
+emit **REQUEST CHANGES** if and only if there is at least one `blocking`
+finding; otherwise emit **APPROVE**. `major` and `minor` findings never flip
+it — by definition they do not block the merge — so a review can (and often
+will) read "APPROVE — 0 blocking, 2 major, 1 minor". The counts must match
+the findings you list below. If you have open questions but nothing blocking,
+still emit **APPROVE** and put the questions in the Summary; the human decides
+whether to rework for answers.
 
 If you have no findings of any kind, say so explicitly. An empty review is
 a valid review.

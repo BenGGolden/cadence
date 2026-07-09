@@ -82,6 +82,17 @@ changed or which functions were added. "Requests over the rate limit get a
 429 with a `Retry-After` header" is an outcome; "add a rate-limit check to
 `middleware.ts`" is an implementation detail and does not belong in an AC.
 
+**Mark manual-eval AC.** A few outcomes are real and checkable but can't be
+cheaply asserted by an automated test — "`supabase db reset` applies every
+migration cleanly", "the seed script populates each column". When a proposed
+AC is one of these, write it as `- [ ] **AC-N** — [manual-eval] <outcome>`:
+the `[manual-eval]` tag (right after the em-dash) tells the reviewer not to
+flag the AC for lacking an automated test and routes its verification to the
+human gate. Use the tag **sparingly** — only when an automated assertion is
+genuinely impractical, not merely inconvenient to write. Most AC should stay
+test-verifiable, and a `[manual-eval]` tag on an outcome a test *could* cover
+is a defect a reviewer will (rightly) push back on.
+
 Look at the Lifecycle Context block's **Description**:
 
 - **If its `## Acceptance Criteria` block already has one or more valid
