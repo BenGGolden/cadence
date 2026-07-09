@@ -14,6 +14,7 @@ Files written:
   .claude/cadence/hooks/parse_comments.py
   .claude/cadence/hooks/promote_acceptance_criteria.py
   .claude/cadence/hooks/emit_tracking_comment.py
+  .claude/cadence/hooks/extract_findings.py
   .claude/cadence/hooks/classify_drift.py
   .claude/cadence/hooks/classify_gate.py
   .claude/cadence/hooks/classify_merge.py

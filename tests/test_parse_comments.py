@@ -317,6 +317,36 @@ class ParseCommentsTests(unittest.TestCase):
                  "branch": "feat/eng-7-thing"},
             )
 
+    # ---------- triage marker is inert to the tick parse ----------
+
+    def test_triage_marker_is_non_tracking_cadence_comment(self):
+        # /cadence:triage posts a `<!-- cadence:triage ... -->` marker on the
+        # source issue, which may still be sitting in a gate. That marker must
+        # be inert here: it is a Cadence comment (so not human rework feedback)
+        # but NOT a tracking comment (triage is not state/gate/reconcile), so it
+        # must not bump attempt_count / rework_count, must not become the latest
+        # tracking boundary, and must not appear in rework_context.
+        triage = ('<!-- cadence:triage {"created":["ENG-42"],"merged":[],'
+                  '"dismissed":1} -->\n**Cadence triage** — reviewed 2 findings.')
+        comments = [
+            attempt_marker("implement", 1, "2026-05-26T09:00:00Z"),
+            gate_rework("human_review", "2026-05-26T10:00:00Z"),
+            _comment(triage, "2026-05-26T11:00:00Z", user="Human"),
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            p = write_comments(td, comments)
+            payload = json.loads(
+                run_parser(p, target_state="implement",
+                           gate_name="human_review").stdout)
+            self.assertEqual(payload["attempt_count"], 1)
+            self.assertEqual(payload["rework_count"], 1)
+            self.assertEqual(payload["rework_context"], [])
+            self.assertEqual(payload["parse_errors"], [])
+            # The gate rework comment, not the later triage marker, is the
+            # latest tracking boundary.
+            self.assertEqual(
+                payload["latest_tracking_comment"]["kind"], "gate")
+
     # ---------- malformed input ----------
 
     def test_malformed_tracking_json_surfaces_in_parse_errors(self):
