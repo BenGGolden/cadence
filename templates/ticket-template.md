@@ -1,8 +1,10 @@
 <!--
   Cadence ticket template. Copy-paste into the Linear "Description"
-  field, then fill in. Cadence's planner subagent refuses to plan
-  tickets that don't have the `## Acceptance Criteria` block below
-  with at least one independently-verifiable item.
+  field, then fill in. The `## Acceptance Criteria` block is recommended
+  but not required: if you leave it out, Cadence's planner proposes
+  acceptance criteria for you and the bootstrap promotes them into this
+  description once you approve the plan at plan_review. Authoring your own
+  up front keeps the planner anchored to the outcomes you care about.
 -->
 
 ## Context
