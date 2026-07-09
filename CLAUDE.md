@@ -12,12 +12,13 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
 
 ## Repo map
 
-- `commands/` — the seven slash commands (`tick`, `init`, `sweep`, `status`,
-  `create-ticket`, `plan-epic`, `uninstall`). Each `.md` is **dispatch prose the
-  harness executes**, not documentation. `tick.md`, `sweep.md`, and `status.md`
-  are also copied to the consumer's `.claude/commands/cadence/` at init so
-  `/schedule` cloud routines can dispatch them without resolving a plugin root.
-  `plan-epic.md` (`/cadence:plan-epic`, the interactive epic decomposer) and
+- `commands/` — the eight slash commands (`tick`, `init`, `sweep`, `status`,
+  `create-ticket`, `plan-epic`, `triage`, `uninstall`). Each `.md` is **dispatch
+  prose the harness executes**, not documentation. `tick.md`, `sweep.md`, and
+  `status.md` are also copied to the consumer's `.claude/commands/cadence/` at
+  init so `/schedule` cloud routines can dispatch them without resolving a plugin
+  root. `plan-epic.md` (`/cadence:plan-epic`, the interactive epic decomposer),
+  `triage.md` (`/cadence:triage`, the one-ticket finding triager) and
   `uninstall.md` (`/cadence:uninstall`, reverses init) are plugin-only and *not*
   scaffolded — like `create-ticket.md`, they're deliberate local operations.
 - `templates/` — **mirror of the consumer's `.claude/` tree.** Everything
@@ -37,7 +38,13 @@ gates. There is no daemon — each tick is one shot, fired by `/schedule` or
   `classify_gate.py`, `classify_merge.py`, `route_fire.py`,
   `compose_lifecycle_context.py`,
   `filter_candidates.py`, `render_status_report.py`,
-  `render_sweep_report.py`, `promote_acceptance_criteria.py`).
+  `render_sweep_report.py`, `promote_acceptance_criteria.py`,
+  `extract_findings.py`).
+  `extract_findings.py` is the `commands/triage.md` finding enumerator: it
+  imports `parse_comments`' classifiers to pair each subagent output with its
+  attempt marker (no PR-URL gate, so it finds the planner and reviewer too) and
+  parses the reviewer's `### Findings` block structurally; `/cadence:triage`
+  reads its JSON and a human decides each disposition.
   `route_fire.py` is the tick.md routing
   orchestrator (the fire's routing decision core) — it imports
   `parse_comments`, `classify_drift`, `classify_gate`, and
