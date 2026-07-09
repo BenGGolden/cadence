@@ -217,16 +217,53 @@ MCP queries the script tells it to and feed the results back in.
 
    You need each issue's human key (the MCP's `id`, e.g. `ENG-3`), its
    current Linear column name (the MCP's `status`), `labels`, `priority`,
-   `createdAt`, and — if the MCP exposes them — its blocker issues'
-   Linear states (as a list of strings on a `blockers` field; absent if
-   the MCP does not surface this, in which case the blocker filter is
-   skipped per the script's contract). Do **not** rename or reshape the
-   MCP's fields when you write them in step 4: the script accepts the
-   Linear MCP's native names directly (`id`, `status`, and the
+   and `createdAt`. The `blockers` field is **not** read from this query —
+   `list_issues` does not return issue relations — it is assembled in
+   step 3 below from each candidate's `blockedBy`. Do **not** rename or
+   reshape the MCP's fields when you write them in step 5: the script
+   accepts the Linear MCP's native names directly (`id`, `status`, and the
    `{"value": …}` priority object), so a verbatim pass-through is correct
    and a hand-translation only risks transcribing a field wrong.
 
-3. **Run the per-state in-flight queries.** For each entry in
+3. **Enrich candidates with blocker states.** The filter holds back a
+   candidate whose `blockedBy` prerequisites are not yet complete, but it
+   only sees prerequisites through the `blockers` field — which the pickup
+   query cannot supply (`list_issues` returns no relations). Assemble it
+   here, before writing `candidates.json`:
+
+   - Build an in-memory map `identifier → Linear column` from the
+     pickup-query results (they already carry `id` + `status` for every
+     workflow-state issue, Done ones included).
+   - For each candidate whose current column is **not** the terminal
+     column, call the Linear MCP `get_issue` with `includeRelations: true`
+     and read `relations.blockedBy` — an array of `{id, title}`. It
+     carries **no state field**, so a blocker's column takes a second
+     lookup. Skip terminal-column candidates entirely: the filter drops
+     them anyway, so spend no call on them.
+   - Resolve each blocker's Linear column: use the map above when the
+     blocker `id` is in it; otherwise call `get_issue` on that blocker id
+     and read its `status`. (A blocker in a foreign column — or a Done
+     blocker that paginated out of the pickup query — won't be in the map
+     and needs this fallback.)
+   - Set that candidate's `blockers` to the list of resolved blocker
+     column strings, one entry per `blockedBy` relation. A candidate with
+     an empty or absent `blockedBy` gets **no** `blockers` key, so the
+     filter's "absent ⇒ skip the check" path is preserved for genuinely
+     unblocked issues.
+   - If a blocker's column **cannot** be determined (the fallback
+     `get_issue` errors or returns no `status`), append the reserved
+     string `"__cadence_unresolved__"` to that candidate's `blockers`
+     instead of a column name. The filter always treats that token as
+     unresolved, so the candidate is **held** rather than run on an
+     unverified dependency; the operator sees the hold in the script's
+     `(waiting on incomplete prerequisites: …)` diagnostic and can act.
+
+   The `blockers` array holds one Linear column-name string (or the
+   `"__cadence_unresolved__"` token) per `blockedBy` relation; terminal
+   (Done) and foreign columns are allowed in it — the script decides they
+   are resolved.
+
+4. **Run the per-state in-flight queries.** For each entry in
    `in_flight_queries`, query the Linear MCP for issues in
    `pickup_query.team` (narrowed to `pickup_query.project_slug` when
    non-null) whose current Linear column equals `entry.linear_state`.
@@ -237,7 +274,7 @@ MCP queries the script tells it to and feed the results back in.
    gate edge case; do not pre-filter here. When `in_flight_queries` is
    empty, `inFlightCounts` is `{}`.
 
-4. **Hand the results back to the script.** Write the pickup-query
+5. **Hand the results back to the script.** Write the pickup-query
    results as a JSON array to `.cadence/candidates.json` (call it
    `candidatesPath`) using the Write tool — one slim object per issue,
    carrying the MCP fields through unrenamed. Extra MCP fields (`title`,
@@ -256,16 +293,19 @@ MCP queries the script tells it to and feed the results back in.
    ]
    ```
 
-   Add a `"blockers": ["Implementing", …]` field only when the MCP
-   surfaced blocker states for that issue (step 2). Then write
-   `inFlightCounts` to `.cadence/in-flight.json` (call it `inFlightPath`).
+   Include the `"blockers": ["Implementing", …]` field exactly as step 3
+   assembled it — present (one entry per `blockedBy` relation) for a
+   candidate that has blocker relations, absent for one that has none.
+   Then write `inFlightCounts` to `.cadence/in-flight.json` (call it
+   `inFlightPath`).
    Invoke Bash:
    `python "${CLAUDE_PROJECT_DIR:-.}"/.claude/cadence/hooks/filter_candidates.py --workflow-path "${CLAUDE_PROJECT_DIR:-.}/.claude/workflow.yaml" --candidates <candidatesPath> --in-flight <inFlightPath>`
    Parse the JSON on stdout.
 
-5. **Act on the script's output.** If `diagnostic_message` is non-null,
+6. **Act on the script's output.** If `diagnostic_message` is non-null,
    print it verbatim and exit — that is the canonical "no work to do"
-   message (with or without the `(caps reached for: ...)` line). If
+   message (with or without the `(caps reached for: …)` and
+   `(waiting on incomplete prerequisites: …)` lines). If
    `diagnostic_message` is null, set `candidates = ordered_identifiers`
    and proceed to step 4 below.
 
