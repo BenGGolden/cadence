@@ -190,6 +190,40 @@ class PromoteACTests(unittest.TestCase):
         # The new item lands before the next ## Other heading.
         self.assertLess(nd.index("First real criterion"), nd.index("## Other"))
 
+    # ---------- [manual-eval] tag survives promotion ----------
+
+    def test_manual_eval_tag_survives_into_new_block(self):
+        # A proposed AC an automated test can't cheaply assert carries the
+        # [manual-eval] tag right after the em-dash. The reviewer keys off it,
+        # so it must reach the promoted description byte-for-byte.
+        comments = [_proposal(["[manual-eval] `db reset` applies every "
+                               "migration cleanly"])]
+        description = "## Context\n\nSchema work.\n"
+        out = json.loads(_run(comments, description).stdout)
+        self.assertTrue(out["promote"])
+        self.assertIn(
+            "- [ ] **AC-1** — [manual-eval] `db reset` applies every "
+            "migration cleanly",
+            out["new_description"])
+
+    def test_manual_eval_tag_survives_augment_and_dedupes(self):
+        # Appended after an existing operator AC — renumbered, tag intact —
+        # and a re-run with the same proposal is a no-op (the tagged text
+        # dedupes against itself; the tag doesn't defeat the normalise step).
+        description = ("## Acceptance Criteria\n\n"
+                       "- [ ] **AC-1** — Endpoint exists\n")
+        comments = [_proposal(["[manual-eval] the seed script populates "
+                               "every column"])]
+        first = json.loads(_run(comments, description).stdout)
+        self.assertTrue(first["promote"])
+        self.assertEqual(first["added_count"], 1)
+        nd = first["new_description"]
+        self.assertIn("- [ ] **AC-2** — [manual-eval] the seed script "
+                      "populates every column", nd)
+        second = json.loads(_run(comments, nd).stdout)
+        self.assertFalse(second["promote"])
+        self.assertEqual(second["added_count"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
