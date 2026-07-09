@@ -71,9 +71,10 @@ This copies the plugin into `~/.claude/plugins/` — no `--plugin-dir` flag on
 every launch. See the [plugin marketplaces docs][marketplaces] for managing and
 updating marketplaces.
 
-Once loaded, the seven slash commands appear under the `cadence:` namespace:
+Once loaded, the eight slash commands appear under the `cadence:` namespace:
 `/cadence:tick`, `/cadence:init`, `/cadence:sweep`, `/cadence:status`,
-`/cadence:create-ticket`, `/cadence:plan-epic`, `/cadence:uninstall`.
+`/cadence:create-ticket`, `/cadence:plan-epic`, `/cadence:triage`,
+`/cadence:uninstall`.
 
 [marketplaces]: https://code.claude.com/docs/en/plugin-marketplaces
 
@@ -226,6 +227,29 @@ instead of being repeated on every sub-issue. An oversized epic body fails the
 fire (rather than being silently trimmed), keeping the inherited spec honest. Point it at an existing backlog issue (`/cadence:plan-epic ENG-12`)
 to add children to it, or run it with no argument (or `-`) to create a brand-new
 epic. Like `/cadence:create-ticket`, it invokes no subagent.
+
+### Triaging leftover findings
+
+A review often surfaces concerns that don't block the merge — reviewer findings
+ranked `major`/`minor` or tagged `[follow-up]`, planner "Risks / open
+questions", implementer caveats. On approve-and-merge, nothing routes those
+anywhere; noticing them, judging whether they're real, checking whether they're
+already tracked, and filing the wanted ones is manual work. Run
+`/cadence:triage <IDENT>` *locally* to make that consistent. It operates on
+**one** ticket: it enumerates the non-blocking findings from that ticket's
+comments (`[follow-up]` ones first), and for each one shows an **accuracy**
+assessment (read from the repo) and a **coverage verdict** that either cites a
+specific existing ticket — and acceptance criterion — that already covers it, or
+says "not covered". You set a disposition per finding — create / skip / merge
+into an existing ticket / edit-then-create — and, **after a single confirmation
+preview**, it files the wanted ones as new **Backlog** issues (a non-workflow
+state, so they aren't auto-picked by the next tick), each back-linked to the
+source. It is **explicitly not automation**: the command proposes and cites
+evidence, but never dismisses a finding without a cited coverer and never writes
+without your say-so. Its **only** write to the source ticket is a single
+`cadence:triage` marker comment recording every disposition — no state move, no
+label change — and a re-run reads that marker to skip already-handled findings.
+Like `/cadence:create-ticket`, it invokes no subagent.
 
 ### Mode B — Local (`/loop`)
 
