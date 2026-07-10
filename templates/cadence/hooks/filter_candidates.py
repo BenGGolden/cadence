@@ -59,17 +59,33 @@ Input shapes (filter mode):
                                           object)
                   createdAt               ISO 8601 str
                   blockers                optional list of blocker
-                                          Linear-state strings
+                                          Linear-state strings. A blocker
+                                          holds this candidate only when
+                                          its state is a *non-terminal*
+                                          workflow state; a terminal
+                                          (Done) or foreign (non-workflow)
+                                          column counts as resolved. The
+                                          reserved token
+                                          "__cadence_unresolved__" — a
+                                          blocker whose column the
+                                          producer could not determine —
+                                          is always treated as unresolved.
   --in-flight   JSON object mapping state_name -> int.
 
 Output JSON (filter mode):
   {
     "ordered_identifiers": ["ENG-3", ...],
     "over_cap_states_that_blocked": ["plan_review"],
+    "prereq_blocked": [{"identifier": "ENG-9",
+                        "waiting_on": ["Implementing", ...]}, ...],
     "diagnostic_message": null | "No eligible issues.\\n(caps reached for: ...)"
   }
   `diagnostic_message` is non-null only when `ordered_identifiers` is
-  empty; the parenthetical is omitted when no caps blocked anything.
+  empty; the `(caps reached for: ...)` line is omitted when no caps
+  blocked anything, and a `(waiting on incomplete prerequisites: ...)`
+  line is added when candidates were held for unresolved blockers.
+  `prereq_blocked` lists each candidate dropped for unresolved blockers
+  (empty when none were).
 
 Exit codes: 0 success; 1 bad / missing required input.
 """
@@ -82,6 +98,11 @@ from pathlib import Path
 from _common import die
 
 import validate_workflow
+
+# Reserved blocker sentinel: the tick.md producer appends this to a
+# candidate's `blockers` when it could not determine a blocker's Linear
+# column. The filter always treats it as unresolved (conservative hold).
+UNRESOLVED_TOKEN = "__cadence_unresolved__"
 
 
 def _load_json(path, label):
@@ -266,6 +287,12 @@ def _filter(config, candidates, in_flight_counts):
     pickup_state = linear.get("pickup_state")
     entry_state = config.get("entry_state_name")
     workflow_linear_states = set(config.get("workflow_linear_states") or [])
+    terminal_linear_states = {
+        body.get("linear_state")
+        for body in states.values()
+        if isinstance(body, dict) and body.get("type") == "terminal"
+        and isinstance(body.get("linear_state"), str)
+    }
     label_active = label.get("cadence_active")
     label_needs_human = label.get("cadence_needs_human")
     label_approve = label.get("cadence_approve")
@@ -296,6 +323,7 @@ def _filter(config, candidates, in_flight_counts):
             states_by_linear_body.setdefault(ls, body)
 
     pre_filtered = []
+    prereq_blocked = []
     for c in candidates:
         if not isinstance(c, dict):
             continue
@@ -319,8 +347,15 @@ def _filter(config, candidates, in_flight_counts):
         blockers = c.get("blockers")
         if blockers is not None and isinstance(blockers, list):
             unresolved = [b for b in blockers
-                          if isinstance(b, str) and b in workflow_linear_states]
+                          if isinstance(b, str) and (
+                              b == UNRESOLVED_TOKEN
+                              or (b in workflow_linear_states
+                                  and b not in terminal_linear_states))]
             if unresolved:
+                prereq_blocked.append({
+                    "identifier": _identifier(c),
+                    "waiting_on": unresolved,
+                })
                 continue
         if col in gate_by_linear:
             has_approve = bool(label_approve) and label_approve in labels_present
@@ -360,15 +395,23 @@ def _filter(config, candidates, in_flight_counts):
 
     if ordered:
         diagnostic = None
-    elif blocked_states:
-        diagnostic = ("No eligible issues.\n"
-                      f"(caps reached for: {', '.join(blocked_states)})")
     else:
-        diagnostic = "No eligible issues."
+        lines = ["No eligible issues."]
+        if blocked_states:
+            lines.append(
+                f"(caps reached for: {', '.join(blocked_states)})")
+        prereq_idents = [p["identifier"] for p in prereq_blocked
+                         if isinstance(p.get("identifier"), str)
+                         and p["identifier"]]
+        if prereq_idents:
+            lines.append("(waiting on incomplete prerequisites: "
+                         f"{', '.join(prereq_idents)})")
+        diagnostic = "\n".join(lines)
 
     return {
         "ordered_identifiers": ordered,
         "over_cap_states_that_blocked": blocked_states,
+        "prereq_blocked": prereq_blocked,
         "diagnostic_message": diagnostic,
     }
 

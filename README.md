@@ -221,7 +221,10 @@ acceptance criteria against the same vagueness heuristic, and — after a single
 confirmation preview — **writes everything to Linear** in one shot. The children
 land in the workflow's pickup state under the epic, with `blockedBy` links only
 where a step must merge before another, so the unblocked steps flow first on the
-next tick. Each child inherits the epic's description as its **Parent Context**
+next tick: Cadence holds a child out of pickup until every issue it is
+`blockedBy` has reached the terminal (Done) column, so a dependent step never
+starts against an unfinished prerequisite. Each child inherits the epic's
+description as its **Parent Context**
 — **in full**, never truncated — so the shared spec lives once on the parent
 instead of being repeated on every sub-issue. An oversized epic body fails the
 fire (rather than being silently trimmed), keeping the inherited spec honest. Point it at an existing backlog issue (`/cadence:plan-epic ENG-12`)

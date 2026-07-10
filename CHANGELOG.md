@@ -4,6 +4,22 @@ All notable changes to Cadence are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **The `blockedBy` pickup filter is now active and correct.** `/cadence:tick`
+  enriches each pickup candidate with its `blockedBy` prerequisites' Linear
+  states — a `get_issue(includeRelations)` read plus a per-blocker state
+  resolution — so an issue whose prerequisites are not yet complete is **held
+  out of pickup** instead of being planned against work that does not exist yet.
+  Previously the filter received no blocker input at all (the pickup query does
+  not return relations), so every issue was treated as unblocked. A completed
+  (**Done**) blocker now correctly counts as **resolved** — a dependent issue no
+  longer stays stuck until its predecessor is moved off the board. When
+  candidates are held this way, the tick's "no eligible issues." diagnostic names
+  them (`waiting on incomplete prerequisites: …`).
+
 ## [0.6.0] — 2026-07-09
 
 ### Added
@@ -257,6 +273,7 @@ a local `/loop`.
 - Installable via `/plugin` from the bundled `marketplace.json`, or from a
   local checkout with `--plugin-dir`.
 
+[Unreleased]: https://github.com/BenGGolden/cadence/compare/v0.6.0...HEAD
 [0.6.0]: https://github.com/BenGGolden/cadence/releases/tag/v0.6.0
 [0.5.1]: https://github.com/BenGGolden/cadence/releases/tag/v0.5.1
 [0.5.0]: https://github.com/BenGGolden/cadence/releases/tag/v0.5.0
