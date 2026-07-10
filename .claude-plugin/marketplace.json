@@ -14,7 +14,7 @@
       "source": {
         "source": "url",
         "url": "https://github.com/BenGGolden/cadence.git",
-        "ref": "v0.6.0"
+        "ref": "v0.6.1"
       }
     }
   ]
